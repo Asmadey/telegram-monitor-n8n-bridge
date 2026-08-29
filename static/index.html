@@ -503,7 +503,7 @@
     .channel-target {
       font-size: 12.5px;
       color: var(--body-mid);
-      font-family: 'Inconsolata', monospace;
+      font-variant-numeric: tabular-nums;
     }
 
     .channel-meta-group {
@@ -524,8 +524,8 @@
       background: rgba(59, 137, 255, 0.08);
       color: var(--accent-blue-deep);
       border: 1px solid rgba(59, 137, 255, 0.25);
-      font-family: 'Inconsolata', monospace;
       font-weight: 500;
+      font-variant-numeric: tabular-nums;
     }
 
     .meta-tag {
@@ -710,13 +710,13 @@
       display: inline-flex;
       align-items: center;
       gap: 3px;
-      font-size: 11px;
+      font-size: 11.5px;
       color: var(--body-mid);
       background: var(--canvas-soft);
       border: 1px solid var(--hairline);
       padding: 2px 6px;
       border-radius: var(--rounded-sm);
-      font-family: 'Inconsolata', monospace;
+      font-variant-numeric: tabular-nums;
     }
 
     .badge-media {
@@ -739,7 +739,7 @@
       font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
-      font-family: 'Inconsolata', monospace;
+      letter-spacing: 0.02em;
     }
 
     .status-tag.SUCCESS {
@@ -786,7 +786,7 @@
       font-size: 24px;
       font-weight: 600;
       color: var(--ink);
-      font-family: 'Inconsolata', monospace;
+      font-variant-numeric: tabular-nums;
     }
 
     /* Modal */
@@ -959,7 +959,6 @@
     .autocomplete-item-id {
       font-size: 11.5px;
       color: var(--body-mid);
-      font-family: 'Inconsolata', monospace;
     }
 
     .autocomplete-group-header {
@@ -1372,7 +1371,7 @@
           </div>
           <div class="form-group">
             <label for="channelPrompt">Промпт LLM для этого источника (опционально):</label>
-            <textarea id="channelPrompt" rows="6" style="width: 100%; min-height: 160px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: 'Inconsolata', monospace; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="Инструкция для LLM по обработке сообщений канала"></textarea>
+            <textarea id="channelPrompt" rows="6" style="width: 100%; min-height: 160px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: inherit; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="Инструкция для LLM по обработке сообщений канала"></textarea>
             <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
               Входной JSON для модели: <code>{ "post": [ { "ID": "...", "пост": "...", "ссылка": "..." } ] }</code>
             </p>
@@ -1606,7 +1605,7 @@
         </div>
         <div class="form-group">
           <label for="editMonitorPrompt">Промпт LLM для этого канала:</label>
-          <textarea id="editMonitorPrompt" rows="10" style="width: 100%; min-height: 240px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: 'Inconsolata', monospace; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="Инструкция для LLM по обработке массива постов (ID, пост, ссылка). Если пусто — сообщения отправляются в исходном виде."></textarea>
+          <textarea id="editMonitorPrompt" rows="10" style="width: 100%; min-height: 240px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: inherit; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="Инструкция для LLM по обработке массива постов (ID, пост, ссылка). Если пусто — сообщения отправляются в исходном виде."></textarea>
           <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
             Входной JSON для модели: <code>{ "post": [ { "ID": "...", "пост": "...", "ссылка": "..." } ] }</code>
           </p>
