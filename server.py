@@ -736,6 +736,21 @@ async def get_dialogs(limit: int = Query(50, ge=1, le=100)):
         })
     return {"total": len(dialogs), "dialogs": dialogs}
 
+@app.get("/api/messages")
+async def get_saved_messages(limit: int = Query(100, ge=1, le=500)):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT sm.*, m.chat_title, m.chat_username 
+        FROM sent_messages sm
+        LEFT JOIN monitors m ON sm.chat_id = m.chat_id
+        ORDER BY sm.id DESC LIMIT ?
+    """, (limit,))
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    return {"total": len(rows), "messages": rows}
+
 @app.get("/api/monitors")
 async def get_monitors():
     conn = get_db()

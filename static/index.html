@@ -2246,27 +2246,30 @@
 
     document.getElementById('closeDialogsModal').addEventListener('click', () => dialogsModal.classList.remove('active'));
 
+    async function loadSavedMessages() {
+      try {
+        const res = await fetch('/api/messages?limit=100');
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          currentMessages = data.messages;
+          renderTable();
+        }
+      } catch (e) {
+        console.error('Error loading saved messages:', e);
+      }
+    }
+
     checkHealth();
     loadConfig();
     loadLogs();
+    loadSavedMessages();
 
-    // Auto-load all active channels on start
-    setTimeout(async () => {
-      if (currentMonitors.length > 0) {
-        for (const m of currentMonitors) {
-          if (m.is_active) {
-            await runMonitor(m.id);
-          }
-        }
-      }
-    }, 800);
-
-    // Периодический пересчет таймеров обратного отсчета
+    // Периодический пересчет таймеров обратного отсчета (каждые 15 секунд)
     setInterval(() => {
       if (currentMonitors.length > 0) {
         renderMonitors();
       }
-    }, 30000);
+    }, 15000);
   </script>
 </body>
 </html>
