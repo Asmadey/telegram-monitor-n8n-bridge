@@ -1491,9 +1491,9 @@
       <!-- ==================== TELEGRAM BOT FORWARD CARD ==================== -->
       <div class="card" style="max-width: 800px; margin: 0 auto 24px auto;">
         <div class="card-header">
-          <div class="card-title">Пересылка в Telegram (Bot API)</div>
+          <div class="card-title">Отправка в Telegram</div>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 12px; color: var(--body-mid);">Пересылка:</span>
+            <span style="font-size: 12px; color: var(--body-mid);">Отправка:</span>
             <label class="switch" title="Включить авто-отправку постов ботом в целевой канал/чат">
               <input type="checkbox" id="tgForwardEnabled">
               <span class="slider"></span>
@@ -3490,7 +3490,7 @@
           body: JSON.stringify(payload)
         });
         if (res.ok) {
-          showToast(`Пересылка в Telegram: ${tgForwardEnabled.checked ? 'Включена' : 'Отключена'}`);
+          showToast(`Отправка в Telegram: ${tgForwardEnabled.checked ? 'Включена' : 'Отключена'}`);
         }
       } catch (e) {
         showToast('Ошибка сохранения', true);
