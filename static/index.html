@@ -2103,9 +2103,11 @@
             chat_id: data.chat_id
           }));
 
-          const existingIds = new Set(currentMessages.map(m => `${m.chat_id}_${m.id}`));
           newFormatted.forEach(msg => {
-            if (!existingIds.has(`${msg.chat_id}_${msg.id}`)) {
+            const idx = currentMessages.findIndex(m => String(m.chat_id) === String(msg.chat_id) && String(m.id) === String(msg.id));
+            if (idx >= 0) {
+              currentMessages[idx] = { ...currentMessages[idx], ...msg };
+            } else {
               currentMessages.unshift(msg);
             }
           });
@@ -2269,25 +2271,31 @@
         return;
       }
 
-      messagesTableBody.innerHTML = filtered.map(msg => `
+      messagesTableBody.innerHTML = filtered.map(msg => {
+        const reactionsList = Array.isArray(msg.reactions) ? msg.reactions : [];
+        const hasReactions = (msg.reactions_count && msg.reactions_count > 0) || reactionsList.length > 0;
+        const totalReactions = msg.reactions_count || reactionsList.reduce((sum, r) => sum + (r.count || 0), 0);
+        const reactionsTitle = reactionsList.length > 0 ? reactionsList.map(r => (r.emoji || '👍') + ' ' + r.count).join(' ') : `${totalReactions} реакций`;
+
+        return `
         <tr>
           <td><span class="badge-metric">${msg.id}</span></td>
-          <td style="color: var(--body-mid); font-size: 12px; font-family: 'Inconsolata', monospace;">
+          <td style="color: var(--body-mid); font-size: 12px; font-family: 'Inconsolata', monospace; white-space: nowrap;">
             ${new Date(msg.date).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
           </td>
           <td>
-            <div style="font-weight: 600; color: var(--ink);">${msg.chat_title || 'Канал'}</div>
-            <div style="font-size: 11px; color: var(--body-mid);">${msg.sender || ''}</div>
+            <div style="font-weight: 600; color: var(--ink);">${escapeHtml(msg.chat_title || 'Канал')}</div>
+            <div style="font-size: 11px; color: var(--body-mid);">${escapeHtml(msg.sender || '')}</div>
           </td>
           <td class="msg-text-cell">
             <div class="msg-text" id="msg-text-${msg.chat_id}-${msg.id}">${escapeHtml(msg.text)}</div>
             ${msg.text && msg.text.length > 140 ? `<button class="expand-btn" onclick="toggleExpand('${msg.chat_id}-${msg.id}')">Развернуть / Свернуть</button>` : ''}
           </td>
           <td>
-            <div style="display: flex; flex-direction: column; gap: 4px;">
-              ${msg.views !== null && msg.views !== undefined ? `<span class="badge-metric" title="Просмотры">👁️ ${msg.views}</span>` : ''}
-              ${msg.reactions_count ? `<span class="badge-metric" style="color: #ed52cb; background: rgba(237, 82, 203, 0.08); border-color: rgba(237, 82, 203, 0.25);" title="Всего реакций: ${msg.reactions_count}${msg.reactions && msg.reactions.length ? ' (' + msg.reactions.map(r => (r.emoji || '👍') + ' ' + r.count).join(', ') + ')' : ''}">❤️ ${msg.reactions_count}</span>` : ''}
-              ${msg.forwards ? `<span class="badge-metric" title="Пересылки">↗️ ${msg.forwards}</span>` : ''}
+            <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+              ${msg.views !== null && msg.views !== undefined ? `<span class="badge-metric" title="Просмотры">👁️ ${Number(msg.views).toLocaleString('ru-RU')}</span>` : ''}
+              ${hasReactions ? `<span class="badge-metric" style="color: #ed52cb; background: rgba(237, 82, 203, 0.08); border-color: rgba(237, 82, 203, 0.25);" title="${reactionsTitle}">❤️ ${totalReactions}</span>` : ''}
+              ${msg.forwards ? `<span class="badge-metric" title="Пересылки">↗️ ${Number(msg.forwards).toLocaleString('ru-RU')}</span>` : ''}
               ${msg.has_media ? `<span class="badge-media">📎 Медиа</span>` : ''}
             </div>
           </td>
@@ -2299,7 +2307,8 @@
             ` : '<span style="color: var(--mute);">-</span>'}
           </td>
         </tr>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function toggleExpand(key) {

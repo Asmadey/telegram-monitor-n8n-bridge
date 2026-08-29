@@ -137,6 +137,24 @@ def init_db():
         pass
 
     try:
+        cur.execute("ALTER TABLE sent_messages ADD COLUMN forwards INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE sent_messages ADD COLUMN has_media INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE sent_messages ADD COLUMN reactions_json TEXT DEFAULT '[]'")
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
         cur.execute("ALTER TABLE monitors ADD COLUMN prompt TEXT")
         conn.commit()
     except Exception:
@@ -371,16 +389,23 @@ def filter_and_save_new_messages(chat_id: int, messages: List[Dict[str, Any]], m
         max_id = max(m["id"] for m in new_messages)
         for msg in new_messages:
             cur.execute("""
-            INSERT OR IGNORE INTO sent_messages (chat_id, message_id, date, sender, text, views, reactions_count, post_url, sent_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR IGNORE INTO sent_messages (
+                chat_id, message_id, date, sender, text, 
+                views, forwards, has_media, reactions_count, reactions_json, 
+                post_url, sent_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 chat_id,
                 msg["id"],
                 msg.get("date"),
                 msg.get("sender"),
-                msg.get("text", "")[:500],
+                msg.get("text", "")[:1000],
                 msg.get("views"),
+                msg.get("forwards", 0),
+                1 if msg.get("has_media") else 0,
                 msg.get("reactions_count", 0),
+                json.dumps(msg.get("reactions", []), ensure_ascii=False),
                 msg.get("post_url"),
                 now_str
             ))
@@ -1095,12 +1120,22 @@ async def get_saved_messages(limit: int = Query(100, ge=1, le=500)):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT sm.*, m.chat_title, m.chat_username 
+        SELECT sm.message_id AS id, sm.chat_id, sm.date, sm.sender, sm.text,
+               sm.views, sm.forwards, sm.has_media, sm.reactions_count, sm.reactions_json,
+               sm.post_url, sm.sent_at, m.chat_title, m.chat_username
         FROM sent_messages sm
         LEFT JOIN monitors m ON sm.chat_id = m.chat_id
         ORDER BY sm.id DESC LIMIT ?
     """, (limit,))
-    rows = [dict(r) for r in cur.fetchall()]
+    rows = []
+    for r in cur.fetchall():
+        item = dict(r)
+        try:
+            item["reactions"] = json.loads(item.get("reactions_json") or "[]")
+        except Exception:
+            item["reactions"] = []
+        item["has_media"] = bool(item.get("has_media"))
+        rows.append(item)
     conn.close()
 
     return {"total": len(rows), "messages": rows}
