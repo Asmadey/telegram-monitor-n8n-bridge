@@ -672,6 +672,30 @@
       font-size: 13px;
     }
 
+    .input-with-icon {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .input-with-icon .input-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 13px;
+      pointer-events: none;
+      user-select: none;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-with-icon input {
+      padding-left: 30px !important;
+      background: var(--canvas-soft);
+    }
+
     .table-wrapper {
       overflow-x: auto;
       max-height: 680px;
@@ -1358,8 +1382,14 @@
             <select id="filterChatSelect" style="width: 170px; background: var(--canvas-soft);">
               <option value="ALL">Все каналы</option>
             </select>
-            <input type="text" inputmode="numeric" id="filterMinViews" placeholder="👁️ Просмотры от..." style="width: 140px; background: var(--canvas-soft);">
-            <input type="text" inputmode="numeric" id="filterMinReactions" placeholder="❤️ Реакции от..." style="width: 130px; background: var(--canvas-soft);">
+            <div class="input-with-icon" style="width: 145px;">
+              <span class="input-icon">👁️</span>
+              <input type="text" inputmode="numeric" id="filterMinViews" placeholder="Просмотры от..." style="width: 100%;">
+            </div>
+            <div class="input-with-icon" style="width: 135px;">
+              <span class="input-icon">❤️</span>
+              <input type="text" inputmode="numeric" id="filterMinReactions" placeholder="Реакции от..." style="width: 100%;">
+            </div>
             <select id="sortMessagesSelect" style="width: 175px; background: var(--canvas-soft);">
               <option value="date_desc">📅 Сначала новые</option>
               <option value="views_desc">👁️ Больше просмотров</option>
