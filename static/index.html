@@ -980,19 +980,184 @@
     .quick-model-tag {
       background: var(--canvas-soft);
       border: 1px solid var(--hairline);
-      border-radius: 12px;
+      border-radius: var(--rounded-xs);
+      padding: 4px 8px;
       font-size: 11px;
-      padding: 2px 9px;
+      font-weight: 500;
+      color: var(--body);
       cursor: pointer;
-      color: var(--body-mid);
-      transition: all 0.15s ease;
-      user-select: none;
+      transition: all 0.12s ease;
     }
 
     .quick-model-tag:hover {
       background: #eef2ff;
       color: #5533ff;
       border-color: #5533ff;
+    }
+
+    /* ==================== FEED (MASTER-DETAIL) STYLES ==================== */
+    .feed-layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .feed-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .feed-sidebar {
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-md);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 120px);
+    }
+
+    .feed-sidebar-header {
+      padding: 12px 14px;
+      background: var(--canvas-soft);
+      border-bottom: 1px solid var(--hairline);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .feed-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .feed-card {
+      padding: 12px;
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-sm);
+      background: var(--canvas);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .feed-card:hover {
+      border-color: #bbb;
+      background: #fafbfc;
+    }
+
+    .feed-card.active {
+      border-color: var(--primary);
+      background: rgba(0, 0, 0, 0.02);
+      box-shadow: 0 0 0 1.5px var(--primary);
+    }
+
+    .feed-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .feed-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: var(--canvas-soft);
+      border: 1px solid var(--hairline);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--primary);
+    }
+
+    .feed-card-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--ink);
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .feed-card-meta {
+      font-size: 11.5px;
+      color: var(--body-mid);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .feed-card-snippet {
+      font-size: 12px;
+      color: var(--body);
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .feed-detail-panel {
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-md);
+      padding: 24px;
+      min-height: 520px;
+    }
+
+    .feed-detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--hairline);
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .feed-summary-box {
+      background: var(--canvas-soft);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-sm);
+      padding: 18px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+      font-size: 13.5px;
+      color: var(--ink);
+      white-space: pre-wrap;
+    }
+
+    .feed-summary-box strong {
+      color: #000;
+      font-weight: 600;
+    }
+
+    .feed-raw-post {
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-sm);
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      transition: all 0.12s ease;
+    }
+
+    .feed-raw-post:hover {
+      border-color: #bbb;
     }
   </style>
 </head>
@@ -1009,6 +1174,10 @@
       <!-- Navigation Tabs inside Header -->
       <div class="tabs-nav">
         <button class="tab-btn active" onclick="switchTab('feed')">
+          Лента
+          <span id="tabFeedCount" class="tab-badge">0</span>
+        </button>
+        <button class="tab-btn" onclick="switchTab('messages')">
           Сообщения
           <span id="tabMessagesCount" class="tab-badge">0</span>
         </button>
@@ -1035,8 +1204,84 @@
       </div>
     </header>
 
-    <!-- ==================== TAB 1: FEED / MESSAGES ==================== -->
+    <!-- ==================== TAB 1: FEED (AI Summaries & Jobs) ==================== -->
     <div id="tab-feed" class="tab-pane active">
+      <div class="feed-layout">
+        <!-- Left: Feed Jobs List -->
+        <div class="feed-sidebar">
+          <div class="feed-sidebar-header">
+            <div style="font-size: 13.5px; font-weight: 600; color: var(--ink);">
+              Выполненные задачи (<span id="feedTotalCount">0</span>)
+            </div>
+            <button id="refreshFeedBtn" class="btn btn-secondary btn-icon-sm" type="button" title="Обновить ленту">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+            </button>
+          </div>
+          <div id="feedListContainer" class="feed-list">
+            <div style="text-align: center; padding: 36px 16px; color: var(--mute); font-size: 12.5px;">
+              Загрузка выполненных задач...
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Feed Detail View -->
+        <div class="feed-detail-panel" id="feedDetailPanel">
+          <div id="feedDetailPlaceholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 380px; color: var(--mute); text-align: center;">
+            <div style="font-size: 38px; margin-bottom: 12px;">📑</div>
+            <div style="font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 4px;">Выберите задачу из списка слева</div>
+            <div style="font-size: 12.5px; color: var(--body-mid); max-width: 320px;">
+              Здесь отобразится AI Summary, статистика выборки и исходные посты Telegram-канала.
+            </div>
+          </div>
+
+          <div id="feedDetailContent" style="display: none;">
+            <div class="feed-detail-header">
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <div id="feedDetailAvatar" class="feed-avatar" style="width: 48px; height: 48px; font-size: 18px;"></div>
+                <div>
+                  <h2 id="feedDetailTitle" style="font-size: 17px; font-weight: 700; color: var(--ink); margin: 0 0 4px 0;"></h2>
+                  <div class="feed-card-meta">
+                    <span id="feedDetailTime" style="font-family: 'Inconsolata', monospace; font-size: 12px;"></span>
+                    <span>•</span>
+                    <span id="feedDetailRelativeTime" style="color: var(--accent-blue-deep); font-weight: 500;"></span>
+                    <span>•</span>
+                    <span id="feedDetailCount" class="badge-metric"></span>
+                    <span id="feedDetailModel" class="meta-tag"></span>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="copyFeedSummaryBtn" class="btn btn-secondary btn-sm" type="button">📋 Скопировать Summary</button>
+                <a id="feedDetailTgLink" href="#" target="_blank" class="btn btn-secondary btn-sm" style="display: none;">🔗 В Telegram</a>
+                <button id="deleteFeedItemBtn" class="btn btn-danger btn-icon-sm" type="button" title="Удалить из ленты">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- AI Summary Card -->
+            <div style="margin-bottom: 24px;">
+              <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--body-mid); margin-bottom: 8px;">
+                ✨ AI Summary & Анализ
+              </div>
+              <div id="feedDetailSummary" class="feed-summary-box"></div>
+            </div>
+
+            <!-- Raw Telegram Messages List -->
+            <div>
+              <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--body-mid); margin-bottom: 12px;">
+                📥 Исходные посты Telegram (<span id="feedRawCount">0</span>)
+              </div>
+              <div id="feedRawMessagesList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 2: MESSAGES ==================== -->
+    <div id="tab-messages" class="tab-pane">
       <div class="table-container">
         <div class="table-toolbar">
           <div class="toolbar-filters" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; max-width: none; flex: 1;">
@@ -1592,6 +1837,8 @@
     let currentMonitors = [];
     let currentMessages = [];
     let currentLogs = [];
+    let currentFeed = [];
+    let selectedFeedId = null;
     let currentPhone = '';
     let currentPhoneCodeHash = '';
 
@@ -1599,12 +1846,32 @@
     const statusUser = document.getElementById('statusUser');
     const monitorsList = document.getElementById('monitorsList');
     const monitorsCount = document.getElementById('monitorsCount');
+    const tabFeedCount = document.getElementById('tabFeedCount');
     const tabMessagesCount = document.getElementById('tabMessagesCount');
     const tabChannelsCount = document.getElementById('tabChannelsCount');
     const tabLogsCount = document.getElementById('tabLogsCount');
     const statTotalLogs = document.getElementById('statTotalLogs');
     const statSentMessagesDb = document.getElementById('statSentMessagesDb');
     
+    // Feed Elements
+    const feedTotalCount = document.getElementById('feedTotalCount');
+    const feedListContainer = document.getElementById('feedListContainer');
+    const feedDetailPlaceholder = document.getElementById('feedDetailPlaceholder');
+    const feedDetailContent = document.getElementById('feedDetailContent');
+    const feedDetailAvatar = document.getElementById('feedDetailAvatar');
+    const feedDetailTitle = document.getElementById('feedDetailTitle');
+    const feedDetailTime = document.getElementById('feedDetailTime');
+    const feedDetailRelativeTime = document.getElementById('feedDetailRelativeTime');
+    const feedDetailCount = document.getElementById('feedDetailCount');
+    const feedDetailModel = document.getElementById('feedDetailModel');
+    const feedDetailSummary = document.getElementById('feedDetailSummary');
+    const feedRawCount = document.getElementById('feedRawCount');
+    const feedRawMessagesList = document.getElementById('feedRawMessagesList');
+    const feedDetailTgLink = document.getElementById('feedDetailTgLink');
+    const copyFeedSummaryBtn = document.getElementById('copyFeedSummaryBtn');
+    const deleteFeedItemBtn = document.getElementById('deleteFeedItemBtn');
+    const refreshFeedBtn = document.getElementById('refreshFeedBtn');
+
     // Add Channel Drawer Elements
     const addChannelDrawer = document.getElementById('addChannelDrawer');
     const toggleAddChannelBtn = document.getElementById('toggleAddChannelBtn');
@@ -1716,7 +1983,7 @@
       }
     }
 
-    const VALID_TABS = ['feed', 'channels', 'integration', 'logs'];
+    const VALID_TABS = ['feed', 'messages', 'channels', 'integration', 'logs'];
 
     function switchTab(tabId, updateUrl = true) {
       if (!VALID_TABS.includes(tabId)) {
@@ -1747,7 +2014,11 @@
         }
       }
 
-      if (tabId === 'logs') {
+      if (tabId === 'feed') {
+        loadFeed();
+      } else if (tabId === 'messages') {
+        loadSavedMessages();
+      } else if (tabId === 'logs') {
         loadLogs();
       } else if (tabId === 'channels') {
         loadConfig();
@@ -1765,7 +2036,9 @@
 
     function initTabFromUrl() {
       const cleanPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-      if (cleanPath === 'channels') {
+      if (cleanPath === 'messages') {
+        switchTab('messages', false);
+      } else if (cleanPath === 'channels') {
         switchTab('channels', false);
       } else if (cleanPath === 'integration') {
         switchTab('integration', false);
@@ -1774,6 +2047,218 @@
       } else {
         switchTab('feed', false);
       }
+    }
+
+    // ==================== FEED (JOBS & SUMMARIES) LOGIC ====================
+
+    function formatRelativeTime(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      const now = new Date();
+      const diffSec = Math.floor((now - d) / 1000);
+      if (diffSec < 45) return 'только что';
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin} мин назад`;
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours < 24) return `${diffHours} ч назад`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return 'вчера';
+      if (diffDays < 7) return `${diffDays} дн назад`;
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+
+    async function loadFeed(silent = false) {
+      try {
+        const res = await fetch('/api/feed?limit=50');
+        if (!res.ok) return;
+        const data = await res.json();
+        const prevCount = currentFeed.length;
+        currentFeed = data.feed || [];
+        
+        if (tabFeedCount) tabFeedCount.textContent = currentFeed.length;
+        if (feedTotalCount) feedTotalCount.textContent = currentFeed.length;
+
+        renderFeedList();
+
+        if (currentFeed.length > 0) {
+          if (!selectedFeedId || !currentFeed.find(f => f.id === selectedFeedId)) {
+            selectFeedItem(currentFeed[0].id);
+          }
+        } else {
+          selectedFeedId = null;
+          if (feedDetailPlaceholder) feedDetailPlaceholder.style.display = 'flex';
+          if (feedDetailContent) feedDetailContent.style.display = 'none';
+        }
+
+        if (!silent && prevCount > 0 && currentFeed.length > prevCount) {
+          showToast(`Получено новых отчетов: ${currentFeed.length - prevCount}`);
+        }
+      } catch (e) {
+        console.error('Error loading feed:', e);
+      }
+    }
+
+    function renderFeedList() {
+      if (!feedListContainer) return;
+      if (currentFeed.length === 0) {
+        feedListContainer.innerHTML = `
+          <div style="text-align: center; padding: 48px 16px; color: var(--mute); font-size: 13px;">
+            Пока нет выполненных задач анализа.<br>
+            <span style="font-size: 11.5px; color: var(--body-mid); display: inline-block; margin-top: 6px;">
+              Запустите опрос канала на вкладке «Каналы».
+            </span>
+          </div>
+        `;
+        return;
+      }
+
+      feedListContainer.innerHTML = currentFeed.map(item => {
+        const isActive = item.id === selectedFeedId;
+        const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
+        const avatarHtml = item.photo_base64 
+          ? `<img src="${item.photo_base64}" class="feed-avatar" alt="${escapeHtml(item.chat_title)}">`
+          : `<div class="feed-avatar">${initial}</div>`;
+        
+        const rawMsgs = Array.isArray(item.messages) ? item.messages : [];
+        const snippet = item.ai_analysis 
+          ? item.ai_analysis.replace(/[*#`_]/g, '') 
+          : (rawMsgs[0]?.text || 'Выборка сообщений Telegram');
+
+        return `
+          <div class="feed-card ${isActive ? 'active' : ''}" onclick="selectFeedItem(${item.id})">
+            <div class="feed-card-header">
+              ${avatarHtml}
+              <div style="min-width: 0; flex: 1;">
+                <div class="feed-card-title">${escapeHtml(item.chat_title || 'Канал')}</div>
+                <div class="feed-card-meta">
+                  <span>${formatRelativeTime(item.created_at)}</span>
+                  <span>•</span>
+                  <span>📊 ${item.messages_count} постов</span>
+                </div>
+              </div>
+            </div>
+            <div class="feed-card-snippet">${escapeHtml(snippet)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectFeedItem(id) {
+      selectedFeedId = id;
+      const item = currentFeed.find(f => f.id === id);
+      if (!item) return;
+
+      document.querySelectorAll('.feed-card').forEach(el => el.classList.remove('active'));
+      const cards = document.querySelectorAll('.feed-card');
+      const activeCard = Array.from(cards).find(el => el.getAttribute('onclick')?.includes(String(id)));
+      if (activeCard) activeCard.classList.add('active');
+
+      if (feedDetailPlaceholder) feedDetailPlaceholder.style.display = 'none';
+      if (feedDetailContent) {
+        feedDetailContent.style.display = 'block';
+        if (window.gsap) {
+          gsap.fromTo(feedDetailContent, { autoAlpha: 0, y: 6 }, { autoAlpha: 1, y: 0, duration: 0.2, ease: "power2.out" });
+        }
+      }
+
+      const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
+      if (feedDetailAvatar) {
+        if (item.photo_base64) {
+          feedDetailAvatar.innerHTML = `<img src="${item.photo_base64}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        } else {
+          feedDetailAvatar.textContent = initial;
+        }
+      }
+
+      if (feedDetailTitle) feedDetailTitle.textContent = item.chat_title || 'Канал';
+      if (feedDetailTime) feedDetailTime.textContent = new Date(item.created_at).toLocaleString([], {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+      if (feedDetailRelativeTime) feedDetailRelativeTime.textContent = formatRelativeTime(item.created_at);
+      if (feedDetailCount) feedDetailCount.textContent = `📊 ${item.messages_count} постов`;
+      if (feedDetailModel) feedDetailModel.textContent = item.model_name || 'DeepSeek V3';
+
+      if (feedDetailSummary) {
+        const text = item.ai_analysis || 'AI-анализ не был сгенерирован для этой выборки (OpenRouter был выключен).';
+        feedDetailSummary.innerHTML = formatTelegramText(text);
+      }
+
+      if (feedDetailTgLink) {
+        if (item.chat_username) {
+          feedDetailTgLink.href = `https://t.me/${item.chat_username}`;
+          feedDetailTgLink.style.display = 'inline-flex';
+        } else {
+          feedDetailTgLink.style.display = 'none';
+        }
+      }
+
+      // Рендерим исходные посты Telegram
+      const msgs = Array.isArray(item.messages) ? item.messages : [];
+      if (feedRawCount) feedRawCount.textContent = msgs.length;
+      if (feedRawMessagesList) {
+        if (msgs.length === 0) {
+          feedRawMessagesList.innerHTML = '<div style="color: var(--mute); font-size: 12.5px;">Нет исходных постов в этой выборке.</div>';
+        } else {
+          feedRawMessagesList.innerHTML = msgs.map((m, idx) => `
+            <div class="feed-raw-post">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <div style="font-size: 12px; font-weight: 600; color: var(--ink);">
+                  Пост #${m.id || idx + 1}
+                </div>
+                <div style="font-size: 11.5px; color: var(--body-mid); font-family: 'Inconsolata', monospace;">
+                  ${m.date ? new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                </div>
+              </div>
+              <div style="font-size: 13px; line-height: 1.5; color: var(--body); margin-bottom: 8px;">
+                ${formatTelegramText(m.text || '')}
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                ${m.views !== null && m.views !== undefined ? `<span class="badge-metric">👁️ ${Number(m.views).toLocaleString('ru-RU')}</span>` : ''}
+                ${m.reactions_count ? `<span class="badge-metric" style="color: #ed52cb;">❤️ ${m.reactions_count}</span>` : ''}
+                ${m.forwards ? `<span class="badge-metric">↗️ ${m.forwards}</span>` : ''}
+                ${m.has_media ? `<span class="badge-media">📎 Медиа</span>` : ''}
+                ${m.post_url ? `<a href="${m.post_url}" target="_blank" class="post-link-btn" style="margin-left: auto;">🔗 Открыть в TG</a>` : ''}
+              </div>
+            </div>
+          `).join('');
+        }
+      }
+    }
+
+    if (refreshFeedBtn) {
+      refreshFeedBtn.addEventListener('click', () => {
+        loadFeed();
+        showToast('Лента обновлена');
+      });
+    }
+
+    if (copyFeedSummaryBtn) {
+      copyFeedSummaryBtn.addEventListener('click', () => {
+        const item = currentFeed.find(f => f.id === selectedFeedId);
+        if (!item || !item.ai_analysis) {
+          showToast('Нет текста Summary для копирования', true);
+          return;
+        }
+        navigator.clipboard.writeText(item.ai_analysis);
+        showToast('✨ AI Summary скопировано в буфер обмена!');
+      });
+    }
+
+    if (deleteFeedItemBtn) {
+      deleteFeedItemBtn.addEventListener('click', async () => {
+        if (!selectedFeedId) return;
+        if (!confirm('Удалить эту карточку из ленты?')) return;
+        try {
+          const res = await fetch(`/api/feed/${selectedFeedId}`, { method: 'DELETE' });
+          if (res.ok) {
+            showToast('Карточка удалена из ленты');
+            selectedFeedId = null;
+            loadFeed();
+          }
+        } catch (e) {
+          showToast('Ошибка удаления', true);
+        }
+      });
     }
 
     let toastTimer = null;
@@ -3291,12 +3776,18 @@
 
     checkHealth();
     loadConfig();
+    loadFeed();
     loadLogs();
     loadCleanupConfig();
     loadSavedMessages();
     loadOpenRouterConfig();
     loadTgForwardConfig();
     initTabFromUrl();
+
+    // Фоновое авто-обновление ленты (каждые 8 секунд)
+    setInterval(() => {
+      loadFeed(true);
+    }, 8000);
 
     // Периодический пересчет таймеров обратного отсчета (каждые 15 секунд)
     setInterval(() => {

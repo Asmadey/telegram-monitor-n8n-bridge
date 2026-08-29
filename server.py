@@ -127,6 +127,24 @@ def init_db():
     );
     """)
     cur.execute("INSERT OR IGNORE INTO integrations_config (id) VALUES (1)")
+
+    # Таблица ленты выполненных задач анализа (Feed Jobs)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS analysis_feed (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id TEXT UNIQUE,
+        created_at TEXT NOT NULL,
+        chat_id INTEGER,
+        chat_title TEXT,
+        chat_username TEXT,
+        photo_base64 TEXT,
+        messages_count INTEGER DEFAULT 0,
+        ai_analysis TEXT,
+        raw_messages_json TEXT,
+        model_name TEXT,
+        delivery_status TEXT
+    );
+    """)
     conn.commit()
 
     # Миграция колонок (если база уже создана)
@@ -429,8 +447,65 @@ def get_sent_ids_count(chat_id: int) -> int:
     conn.close()
     return row["cnt"] if row else 0
 
+AVATARS_CACHE: Dict[int, str] = {}
+
+async def get_chat_avatar_base64(chat_id_or_target) -> Optional[str]:
+    """Извлекает аватарку канала через MTProto Telethon и возвращает data:image/jpeg;base64"""
+    if not chat_id_or_target:
+        return None
+    try:
+        c = get_client()
+        if not c.is_connected():
+            await c.connect()
+        entity = await c.get_entity(chat_id_or_target)
+        entity_id = getattr(entity, 'id', None)
+        if entity_id and entity_id in AVATARS_CACHE:
+            return AVATARS_CACHE[entity_id]
+        
+        photo_bytes = await c.download_profile_photo(entity, file=bytes, download_big=False)
+        if photo_bytes:
+            b64 = f"data:image/jpeg;base64,{base64.b64encode(photo_bytes).decode('utf-8')}"
+            if entity_id:
+                AVATARS_CACHE[entity_id] = b64
+            return b64
+    except Exception as e:
+        pass
+    return None
+
+def add_feed_item(
+    chat_id: int,
+    chat_title: str,
+    chat_username: Optional[str],
+    messages: List[Dict[str, Any]],
+    ai_analysis: Optional[str] = None,
+    photo_base64: Optional[str] = None,
+    model_name: Optional[str] = None,
+    delivery_status: str = "SUCCESS"
+) -> int:
+    """Сохраняет выполненный job анализа в ленту (analysis_feed)"""
+    conn = get_db()
+    cur = conn.cursor()
+    job_id = str(uuid.uuid4())[:8]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    
+    cur.execute("""
+    INSERT INTO analysis_feed (
+        job_id, created_at, chat_id, chat_title, chat_username,
+        photo_base64, messages_count, ai_analysis, raw_messages_json,
+        model_name, delivery_status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        job_id, now_iso, chat_id, chat_title, chat_username or "",
+        photo_base64, len(messages), ai_analysis or "", json.dumps(messages, ensure_ascii=False),
+        model_name or "", delivery_status
+    ))
+    feed_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return feed_id
+
 def run_database_cleanup(days: int = 30) -> Dict[str, int]:
-    """Удаляет устаревшие логи и записи сообщений старше X дней"""
+    """Удаляет устаревшие логи, записи сообщений и старые записи ленты старше X дней"""
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     conn = get_db()
     cur = conn.cursor()
@@ -442,6 +517,10 @@ def run_database_cleanup(days: int = 30) -> Dict[str, int]:
     # 2. Удаляем устаревшие записи истории сообщений
     cur.execute("DELETE FROM sent_messages WHERE date < ? OR sent_at < ?", (cutoff_date, cutoff_date))
     deleted_messages = cur.rowcount
+
+    # 3. Удаляем устаревшие записи ленты
+    cur.execute("DELETE FROM analysis_feed WHERE created_at < ?", (cutoff_date,))
+    deleted_feed = cur.rowcount
     
     conn.commit()
     conn.close()
@@ -449,13 +528,13 @@ def run_database_cleanup(days: int = 30) -> Dict[str, int]:
     now_iso = datetime.now(timezone.utc).isoformat()
     set_setting("auto_cleanup_last_run", now_iso)
     
-    if deleted_logs > 0 or deleted_messages > 0:
+    if deleted_logs > 0 or deleted_messages > 0 or deleted_feed > 0:
         add_log(
             event_type="AUTO_CLEANUP",
-            details=f"Автоочистка базы (> {days} дн.): удалено {deleted_logs} логов и {deleted_messages} записей истории",
+            details=f"Автоочистка базы (> {days} дн.): удалено {deleted_logs} логов, {deleted_messages} постов, {deleted_feed} записей ленты",
             status="SUCCESS"
         )
-    return {"deleted_logs": deleted_logs, "deleted_messages": deleted_messages}
+    return {"deleted_logs": deleted_logs, "deleted_messages": deleted_messages, "deleted_feed": deleted_feed}
 
 # ==================== Фоновый планировщик ====================
 
@@ -926,7 +1005,29 @@ async def process_and_dispatch_messages(payload: Dict[str, Any], channel_prompt:
                 chat_title=payload.get("chat_title"),
                 chat_id=payload.get("chat_id")
             )
-            return {"status": "error", "error": str(we)}
+
+    # 4. Сохранение выполненного задания в ленту (analysis_feed)
+    try:
+        chat_id_val = payload.get("chat_id") or 0
+        chat_title_val = payload.get("chat_title", "Канал")
+        chat_username_val = payload.get("chat_username", "")
+        avatar_b64 = await get_chat_avatar_base64(chat_id_val or chat_username_val)
+        
+        cfg = get_integrations_config()
+        model_name_val = cfg.get("openrouter_model", "DeepSeek V3") if openrouter_on else "MTProto Direct"
+        
+        add_feed_item(
+            chat_id=chat_id_val,
+            chat_title=chat_title_val,
+            chat_username=chat_username_val,
+            messages=messages,
+            ai_analysis=payload.get("ai_analysis", ""),
+            photo_base64=avatar_b64,
+            model_name=model_name_val,
+            delivery_status="SUCCESS"
+        )
+    except Exception as fe:
+        print(f"⚠️ Ошибка сохранения в ленту analysis_feed: {fe}")
 
     return {"status": "dispatched"}
 
@@ -1780,6 +1881,49 @@ async def run_cleanup_now_endpoint():
         days = 30
     res = run_database_cleanup(days)
     return {"status": "success", **res}
+
+# --- API Ленты (Analysis Feed & Jobs) ---
+
+@app.get("/api/feed")
+async def get_feed_list(limit: int = Query(50, ge=1, le=200)):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT id, job_id, created_at, chat_id, chat_title, chat_username,
+           photo_base64, messages_count, ai_analysis, raw_messages_json,
+           model_name, delivery_status
+    FROM analysis_feed
+    ORDER BY id DESC
+    LIMIT ?
+    """, (limit,))
+    rows = cur.fetchall()
+    conn.close()
+    
+    feed_items = []
+    for r in rows:
+        item = dict(r)
+        try:
+            item["messages"] = json.loads(item.get("raw_messages_json") or "[]")
+        except Exception:
+            item["messages"] = []
+        feed_items.append(item)
+    return {"total": len(feed_items), "feed": feed_items}
+
+@app.delete("/api/feed/{id}")
+async def delete_feed_item(id: int):
+    conn = get_db()
+    conn.cursor().execute("DELETE FROM analysis_feed WHERE id = ?", (id,))
+    conn.commit()
+    conn.close()
+    return {"status": "deleted"}
+
+@app.delete("/api/feed")
+async def clear_all_feed():
+    conn = get_db()
+    conn.cursor().execute("DELETE FROM analysis_feed")
+    conn.commit()
+    conn.close()
+    return {"status": "cleared"}
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/feed", response_class=HTMLResponse)
