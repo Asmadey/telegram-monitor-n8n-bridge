@@ -1191,15 +1191,12 @@
               <button type="button" id="refreshModelsBtn" class="btn btn-secondary btn-sm" style="padding: 1px 7px; font-size: 11px; height: 22px;" title="Загрузить все доступные модели с OpenRouter">🔄 Обновить</button>
             </div>
             <div style="position: relative;">
-              <input type="text" id="openrouterModel" list="openrouterModelsList" placeholder="Введите 'deepseek', 'claude', 'gemini' для фильтрации..." value="google/gemini-2.0-flash-001" spellcheck="false" autocomplete="off" style="width: 100%; padding-right: 32px; font-family: 'Inconsolata', monospace; font-size: 13px;">
+              <input type="text" id="openrouterModel" placeholder="Введите 'deepseek', 'claude', 'gemini' для фильтрации..." value="google/gemini-2.0-flash-001" spellcheck="false" autocomplete="off" style="width: 100%; padding-right: 32px; font-family: 'Inconsolata', monospace; font-size: 13px;">
               <span id="modelDropdownTrigger" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--body-mid); font-size: 11px; user-select: none;" title="Показать все модели">▼</span>
               
               <!-- Autocomplete Dropdown List прямо под полем ввода -->
               <div id="openrouterModelsDropdown" class="autocomplete-dropdown" style="top: 100%; margin-top: 2px;"></div>
             </div>
-
-            <!-- Native Datalist Fallback -->
-            <datalist id="openrouterModelsList"></datalist>
           </div>
         </div>
 
@@ -2434,13 +2431,6 @@
       { id: "x-ai/grok-2-1212", name: "xAI: Grok 2" }
     ];
     let highlightedModelIndex = -1;
-
-    function populateDatalist(models) {
-      const dl = document.getElementById('openrouterModelsList');
-      if (!dl) return;
-      dl.innerHTML = models.map(m => `<option value="${m.id}">${escapeHtml(m.name || m.id)}</option>`).join('');
-    }
-    populateDatalist(allOpenRouterModels);
 
     toggleApiKeyVisibility.addEventListener('click', () => {
       openrouterApiKey.type = openrouterApiKey.type === 'password' ? 'text' : 'password';
