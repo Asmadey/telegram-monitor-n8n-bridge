@@ -119,7 +119,7 @@ def init_db():
         telegram_forward_enabled INTEGER DEFAULT 0,
         openrouter_api_key TEXT DEFAULT '',
         openrouter_base_url TEXT DEFAULT 'https://openrouter.ai/api/v1',
-        openrouter_model TEXT DEFAULT 'google/gemini-2.0-flash-001',
+        openrouter_model TEXT DEFAULT 'deepseek/deepseek-chat',
         openrouter_enabled INTEGER DEFAULT 0,
         webhook_url TEXT DEFAULT '',
         auto_webhook_enabled INTEGER DEFAULT 1,
@@ -177,38 +177,6 @@ def init_db():
         conn.commit()
     except Exception:
         pass
-
-    # Миграция из settings в integrations_config (если настройки были сохранены ранее в settings)
-    try:
-        cur.execute("SELECT key, value FROM settings")
-        old_settings = dict(cur.fetchall())
-        if old_settings:
-            cur.execute("""
-            UPDATE integrations_config SET
-                telegram_bot_token = COALESCE(NULLIF(?, ''), telegram_bot_token),
-                telegram_sender_id = COALESCE(NULLIF(?, ''), telegram_sender_id),
-                telegram_forward_enabled = COALESCE(?, telegram_forward_enabled),
-                openrouter_api_key = COALESCE(NULLIF(?, ''), openrouter_api_key),
-                openrouter_base_url = COALESCE(NULLIF(?, ''), openrouter_base_url),
-                openrouter_model = COALESCE(NULLIF(?, ''), openrouter_model),
-                openrouter_enabled = COALESCE(?, openrouter_enabled),
-                webhook_url = COALESCE(NULLIF(?, ''), webhook_url),
-                auto_webhook_enabled = COALESCE(?, auto_webhook_enabled)
-            WHERE id = 1
-            """, (
-                old_settings.get("telegram_bot_token", ""),
-                old_settings.get("telegram_forward_chat_id", ""),
-                int(old_settings["telegram_forward_enabled"]) if "telegram_forward_enabled" in old_settings else None,
-                old_settings.get("openrouter_api_key", ""),
-                old_settings.get("openrouter_base_url", ""),
-                old_settings.get("openrouter_model", ""),
-                int(old_settings["openrouter_enabled"]) if "openrouter_enabled" in old_settings else None,
-                old_settings.get("webhook_url", ""),
-                int(old_settings["auto_webhook_enabled"]) if "auto_webhook_enabled" in old_settings else None
-            ))
-            conn.commit()
-    except Exception as e:
-        print(f"⚠️ Ошибка миграции в integrations_config: {e}")
 
     # Миграция из monitors.json, если он еще существует
     if MONITORS_OLD_FILE.exists():
@@ -1718,7 +1686,7 @@ async def get_openrouter_config():
         "api_key": key,
         "api_key_masked": masked_key,
         "has_key": bool(key),
-        "model": cfg.get("openrouter_model") or "google/gemini-2.0-flash-001",
+        "model": cfg.get("openrouter_model") or "deepseek/deepseek-chat",
         "is_enabled": bool(cfg.get("openrouter_enabled", 0))
     }
 
