@@ -1117,6 +1117,11 @@ async def clear_system_logs():
     return {"status": "cleared", "message": "Логи успешно очищены"}
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/feed", response_class=HTMLResponse)
+@app.get("/messages", response_class=HTMLResponse)
+@app.get("/channels", response_class=HTMLResponse)
+@app.get("/integration", response_class=HTMLResponse)
+@app.get("/logs", response_class=HTMLResponse)
 async def serve_ui():
     index_file = STATIC_DIR / "index.html"
     if not index_file.exists():

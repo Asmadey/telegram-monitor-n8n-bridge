@@ -1417,7 +1417,7 @@
 
     const VALID_TABS = ['feed', 'channels', 'integration', 'logs'];
 
-    function switchTab(tabId, updateHash = true) {
+    function switchTab(tabId, updateUrl = true) {
       if (!VALID_TABS.includes(tabId)) {
         tabId = 'feed';
       }
@@ -1431,11 +1431,10 @@
       const targetPane = document.getElementById(`tab-${tabId}`);
       if (targetPane) targetPane.classList.add('active');
 
-      if (updateHash) {
-        if (history.pushState) {
-          history.pushState(null, null, `#${tabId}`);
-        } else {
-          window.location.hash = tabId;
+      if (updateUrl) {
+        const targetPath = tabId === 'feed' ? '/' : `/${tabId}`;
+        if (window.location.pathname !== targetPath) {
+          history.pushState({ tab: tabId }, '', targetPath);
         }
       }
 
@@ -1446,18 +1445,19 @@
       }
     }
 
-    // Слушатель изменения слага (хэша) в URL / кнопок браузера Назад и Вперед
-    window.addEventListener('hashchange', () => {
-      const hash = window.location.hash.replace('#', '').trim();
-      if (hash) {
-        switchTab(hash, false);
-      }
+    // Слушатель кнопок браузера «Назад» и «Вперед»
+    window.addEventListener('popstate', () => {
+      initTabFromUrl();
     });
 
     function initTabFromUrl() {
-      const hash = window.location.hash.replace('#', '').trim();
-      if (hash && VALID_TABS.includes(hash)) {
-        switchTab(hash, false);
+      const cleanPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+      if (cleanPath === 'channels') {
+        switchTab('channels', false);
+      } else if (cleanPath === 'integration') {
+        switchTab('integration', false);
+      } else if (cleanPath === 'logs') {
+        switchTab('logs', false);
       } else {
         switchTab('feed', false);
       }
