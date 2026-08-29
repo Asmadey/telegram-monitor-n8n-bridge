@@ -78,23 +78,25 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 16px 24px;
+      padding: 10px 18px;
       background: var(--canvas);
       border: 1px solid var(--hairline);
       border-radius: var(--rounded-md);
       margin-bottom: 24px;
       box-shadow: var(--shadow-layered-sm);
+      gap: 16px;
+      flex-wrap: wrap;
     }
 
     .brand-group {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
     }
 
     .brand-mark {
-      width: 38px;
-      height: 38px;
+      width: 34px;
+      height: 34px;
       background: var(--primary);
       color: var(--on-primary);
       border-radius: var(--rounded-sm);
@@ -102,36 +104,25 @@
       align-items: center;
       justify-content: center;
       font-weight: 600;
-      font-size: 16px;
+      font-size: 15px;
       letter-spacing: -0.5px;
+      flex-shrink: 0;
     }
 
-    .brand-info h1 {
-      font-size: 17px;
+    .brand-group h1 {
+      font-size: 16px;
       font-weight: 600;
       color: var(--ink);
       letter-spacing: -0.3px;
-      line-height: 1.2;
-    }
-
-    .brand-info p {
-      font-size: 12px;
-      color: var(--body-mid);
-      font-weight: 400;
-    }
-
-    .eyebrow {
-      font-size: 11.5px;
-      font-weight: 500;
-      color: var(--body-mid);
-      margin-bottom: 4px;
-      display: block;
+      margin: 0;
+      line-height: 1;
+      white-space: nowrap;
     }
 
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
 
     .status-pill {
@@ -163,25 +154,25 @@
       background: var(--accent-red);
     }
 
-    /* Tabs Navigation */
+    /* Tabs Navigation inside Header */
     .tabs-nav {
       display: flex;
-      gap: 8px;
-      background: var(--canvas);
-      padding: 6px;
-      border: 1px solid var(--hairline);
-      border-radius: var(--rounded-md);
-      margin-bottom: 24px;
-      box-shadow: var(--shadow-layered-sm);
+      gap: 4px;
+      background: transparent;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      margin-bottom: 0;
+      box-shadow: none;
       overflow-x: auto;
     }
 
     .tab-btn {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      padding: 10px 20px;
-      font-size: 13.5px;
+      gap: 6px;
+      padding: 7px 12px;
+      font-size: 13px;
       font-weight: 500;
       color: var(--body-mid);
       background: transparent;
@@ -205,17 +196,29 @@
     }
 
     .tab-btn .tab-badge {
-      padding: 2px 6px;
+      padding: 1px 5px;
       background: var(--canvas-soft);
       color: var(--body);
-      border-radius: var(--rounded-sm);
+      border-radius: var(--rounded-full);
       font-size: 11px;
       font-weight: 600;
     }
 
     .tab-btn.active .tab-badge {
       background: rgba(255, 255, 255, 0.2);
-      color: var(--on-primary);
+      color: #ffffff;
+    }
+
+    .btn-icon-sm {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border-radius: var(--rounded-sm);
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
 
     .tab-pane {
@@ -968,43 +971,41 @@
 <body>
 
   <div class="container">
-    <!-- Header -->
+    <!-- Unified Header with Tabs -->
     <header>
       <div class="brand-group">
         <div class="brand-mark">WF</div>
-        <div class="brand-info">
-          <span class="eyebrow">Enterprise Telethon Bridge (SQLite)</span>
-          <h1>Telegram Monitor</h1>
-        </div>
+        <h1>Telegram Monitor</h1>
       </div>
+
+      <!-- Navigation Tabs inside Header -->
+      <div class="tabs-nav">
+        <button class="tab-btn active" onclick="switchTab('feed')">
+          Сообщения
+          <span id="tabMessagesCount" class="tab-badge">0</span>
+        </button>
+        <button class="tab-btn" onclick="switchTab('channels')">
+          Каналы
+          <span id="tabChannelsCount" class="tab-badge">0</span>
+        </button>
+        <button class="tab-btn" onclick="switchTab('integration')">
+          Интеграция
+        </button>
+        <button class="tab-btn" onclick="switchTab('logs')">
+          Логи
+          <span id="tabLogsCount" class="tab-badge">0</span>
+        </button>
+      </div>
+
       <div class="header-actions">
         <div id="statusBadge" class="status-pill">
           <span class="status-dot"></span>
           <span id="statusUser">Подключение...</span>
         </div>
-        <button id="openSettingsModalBtn" class="btn btn-secondary btn-sm">⚙️ MTProto & Вход</button>
+        <button id="openSettingsModalBtn" class="btn btn-secondary btn-sm">⚙️ MTProto</button>
         <a href="/docs" target="_blank" class="btn btn-secondary btn-sm">API Docs</a>
       </div>
     </header>
-
-    <!-- Navigation Tabs -->
-    <div class="tabs-nav">
-      <button class="tab-btn active" onclick="switchTab('feed')">
-        📰 Сообщения
-        <span id="tabMessagesCount" class="tab-badge">0</span>
-      </button>
-      <button class="tab-btn" onclick="switchTab('channels')">
-        📡 Каналы
-        <span id="tabChannelsCount" class="tab-badge">0</span>
-      </button>
-      <button class="tab-btn" onclick="switchTab('integration')">
-        🔗 Интеграция (n8n)
-      </button>
-      <button class="tab-btn" onclick="switchTab('logs')">
-        📋 Логи
-        <span id="tabLogsCount" class="tab-badge">0</span>
-      </button>
-    </div>
 
     <!-- ==================== TAB 1: FEED / MESSAGES ==================== -->
     <div id="tab-feed" class="tab-pane active">
@@ -1106,16 +1107,11 @@
         </form>
       </div>
 
-      <!-- Channels List Section Header with Action Buttons -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px;">
-        <div>
-          <span class="eyebrow">База каналов</span>
-          <h2 style="font-size: 16px; font-weight: 600; color: var(--ink);">Отслеживаемые источники (<span id="monitorsCount">0</span>)</h2>
-        </div>
-        <div style="display: flex; gap: 10px;">
-          <button id="toggleAddChannelBtn" class="btn btn-primary btn-sm">+ Добавить канал</button>
-          <button id="refreshMonitorsBtn" class="btn btn-secondary btn-sm">Обновить</button>
-        </div>
+      <!-- Action Buttons -->
+      <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 18px; gap: 10px;">
+        <span id="monitorsCount" style="display: none;">0</span>
+        <button id="toggleAddChannelBtn" class="btn btn-primary btn-sm">+ Добавить канал</button>
+        <button id="refreshMonitorsBtn" class="btn btn-secondary btn-sm">Обновить</button>
       </div>
 
       <!-- Full-Width Horizontal Channels List -->
@@ -1958,15 +1954,21 @@
           </div>
 
           <!-- Column 3: Actions & Toggle -->
-          <div class="channel-actions-group">
+          <div class="channel-actions-group" style="display: flex; align-items: center; gap: 8px;">
             <label class="switch" title="Включить / Приостановить мониторинг">
               <input type="checkbox" ${m.is_active ? 'checked' : ''} onchange="toggleMonitor('${m.id}', this.checked)">
               <span class="slider"></span>
             </label>
-            <button class="btn btn-primary btn-sm" onclick="runMonitor('${m.id}')">⚡ Запустить</button>
-            <button class="btn btn-secondary btn-sm" onclick="openEditModal('${m.id}')" title="Изменить интервал, лимиты и промпт">✏️ Редактировать</button>
-            <button class="btn btn-secondary btn-sm" onclick="resetDedup('${m.id}')" title="Сбросить историю дубликатов">🔄 Сброс дублей</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteMonitor('${m.id}')">Удалить</button>
+            <button class="btn btn-primary btn-sm" onclick="runMonitor('${m.id}')" title="Запустить опрос сейчас">⚡ Запустить</button>
+            <button class="btn btn-secondary btn-icon-sm" onclick="openEditModal('${m.id}')" title="Редактировать параметры и промпт">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+            </button>
+            <button class="btn btn-secondary btn-icon-sm" onclick="resetDedup('${m.id}')" title="Сбросить историю дубликатов">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+            </button>
+            <button class="btn btn-danger btn-icon-sm" onclick="deleteMonitor('${m.id}')" title="Удалить канал из мониторинга">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+            </button>
           </div>
 
         </div>
@@ -2786,16 +2788,16 @@
 
     // Logs logic
     async function loadLogs() {
-      const status = filterLogStatus.value;
+      const status = filterLogStatus ? filterLogStatus.value : 'ALL';
       try {
         const res = await fetch(`/api/logs?limit=150&status=${status}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         currentLogs = data.logs || [];
-        tabLogsCount.textContent = data.total || 0;
-        statTotalLogs.textContent = data.total || 0;
-        statSentMessagesDb.textContent = data.total_sent_messages_db || 0;
+        if (tabLogsCount) tabLogsCount.textContent = data.total || 0;
         renderLogs();
       } catch (e) {
+        console.error('Logs fetch error:', e);
         showToast('Ошибка загрузки логов', true);
       }
     }
