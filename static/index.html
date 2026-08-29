@@ -1193,24 +1193,13 @@
             <div style="position: relative;">
               <input type="text" id="openrouterModel" list="openrouterModelsList" placeholder="Введите 'deepseek', 'claude', 'gemini' для фильтрации..." value="google/gemini-2.0-flash-001" spellcheck="false" autocomplete="off" style="width: 100%; padding-right: 32px; font-family: 'Inconsolata', monospace; font-size: 13px;">
               <span id="modelDropdownTrigger" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--body-mid); font-size: 11px; user-select: none;" title="Показать все модели">▼</span>
+              
+              <!-- Autocomplete Dropdown List прямо под полем ввода -->
+              <div id="openrouterModelsDropdown" class="autocomplete-dropdown" style="top: 100%; margin-top: 2px;"></div>
             </div>
 
             <!-- Native Datalist Fallback -->
             <datalist id="openrouterModelsList"></datalist>
-
-            <!-- Autocomplete Dropdown List -->
-            <div id="openrouterModelsDropdown" class="autocomplete-dropdown"></div>
-
-            <!-- Quick Filter Tags -->
-            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center;">
-              <span style="font-size: 11px; color: var(--mute);">Фильтр:</span>
-              <button type="button" class="quick-model-tag" onclick="quickFilterModel('gemini')">Gemini</button>
-              <button type="button" class="quick-model-tag" onclick="quickFilterModel('claude')">Claude</button>
-              <button type="button" class="quick-model-tag" onclick="quickFilterModel('gpt-4o')">GPT-4o</button>
-              <button type="button" class="quick-model-tag" onclick="quickFilterModel('deepseek')">DeepSeek</button>
-              <button type="button" class="quick-model-tag" onclick="quickFilterModel('llama')">Llama</button>
-              <button type="button" class="quick-model-tag" onclick="quickFilterModel('qwen')">Qwen</button>
-            </div>
           </div>
         </div>
 
