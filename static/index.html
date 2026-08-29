@@ -667,6 +667,11 @@
       -webkit-line-clamp: unset;
     }
 
+    .msg-text strong, .msg-text b {
+      font-weight: 600;
+      color: var(--ink-strong);
+    }
+
     .expand-btn {
       color: var(--accent-blue-deep);
       background: none;
@@ -2390,7 +2395,7 @@
             <div style="font-size: 11px; color: var(--body-mid);">${escapeHtml(msg.sender || '')}</div>
           </td>
           <td class="msg-text-cell">
-            <div class="msg-text" id="msg-text-${msg.chat_id}-${msg.id}">${escapeHtml(msg.text)}</div>
+            <div class="msg-text" id="msg-text-${msg.chat_id}-${msg.id}">${formatTelegramText(msg.text)}</div>
             ${msg.text && msg.text.length > 140 ? `<button class="expand-btn" onclick="toggleExpand('${msg.chat_id}-${msg.id}')">Развернуть / Свернуть</button>` : ''}
           </td>
           <td>
@@ -2423,6 +2428,20 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    function formatTelegramText(text) {
+      if (!text) return '';
+      // 1. Безопасное экранирование спецсимволов HTML
+      let safe = escapeHtml(text);
+      
+      // 2. Жирный шрифт: **текст** -> <strong>текст</strong>
+      safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      
+      // 3. Моноширинный инлайн-код: `текст` -> <code>текст</code>
+      safe = safe.replace(/`([^`]+)`/g, '<code style="background: var(--canvas-soft); padding: 2px 5px; border-radius: var(--rounded-xs); font-family: monospace; font-size: 12px; border: 1px solid var(--hairline);">$1</code>');
+      
+      return safe;
     }
 
     tableSearch.addEventListener('input', renderTable);
