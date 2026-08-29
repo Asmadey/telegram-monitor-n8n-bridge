@@ -64,6 +64,7 @@ def init_db():
         is_active INTEGER DEFAULT 1,
         last_checked TEXT,
         last_sent_message_id INTEGER DEFAULT 0,
+        prompt TEXT,
         created_at TEXT
     );
     """)
@@ -110,6 +111,12 @@ def init_db():
     # Миграция колонок (если база уже создана)
     try:
         cur.execute("ALTER TABLE sent_messages ADD COLUMN reactions_count INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        cur.execute("ALTER TABLE monitors ADD COLUMN prompt TEXT")
         conn.commit()
     except Exception:
         pass
@@ -337,7 +344,7 @@ async def background_monitor_worker():
                                     "messages": new_messages
                                 }
                                 try:
-                                    await send_to_n8n_webhook(webhook_url, payload_to_send)
+                                    await send_to_n8n_webhook(webhook_url, payload_to_send, monitor.get("prompt"))
                                     add_log(
                                         event_type="WEBHOOK_SENT",
                                         details=f"Отправлено {len(new_messages)} новых сообщений в n8n",
@@ -542,26 +549,80 @@ async def call_openrouter(text: str, custom_prompt: Optional[str] = None) -> Opt
         add_log("OPENROUTER_ERROR", f"Ошибка генерации ответа OpenRouter: {str(e)}", "ERROR")
     return None
 
-async def enrich_messages_with_ai(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+async def process_messages_batch_with_llm(messages: List[Dict[str, Any]], custom_prompt: Optional[str] = None) -> Optional[str]:
     is_enabled = get_setting("openrouter_enabled", "0") == "1"
     api_key = get_setting("openrouter_api_key", "").strip()
     if not is_enabled or not api_key:
-        return messages
+        return None
 
-    for msg in messages:
-        text = msg.get("text", "")
-        if text and len(text) > 10 and not msg.get("ai_analysis"):
-            ai_res = await call_openrouter(text)
-            if ai_res:
-                msg["ai_analysis"] = ai_res
-    return messages
+    # Формируем компактный массив строго из 3 атрибутов (ID, пост, ссылка)
+    post_items = []
+    for item in messages:
+        text = (item.get("text") or "").strip()
+        if text and text != "📎 [Медиа/Вложение]":
+            post_items.append({
+                "ID": str(item.get("id", "")),
+                "пост": text,
+                "ссылка": item.get("post_url", "") or f"https://t.me/{item.get('chat_username', 'c')}/{item.get('id', '')}"
+            })
 
-async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    # Если включен OpenRouter, обогащаем сообщения AI-выжимкой
+    if not post_items:
+        return None
+
+    base_url = get_setting("openrouter_base_url", "https://openrouter.ai/api/v1").rstrip("/")
+    model = get_setting("openrouter_model", "google/gemini-2.0-flash-001").strip()
+    
+    # Приоритет: промпт канала -> глобальный системный промпт -> дефолт
+    effective_prompt = (custom_prompt or "").strip()
+    if not effective_prompt:
+        effective_prompt = get_setting(
+            "openrouter_system_prompt",
+            "Выдели ключевую суть сообщений, ключевые технологии, условия и теги. Будь краток."
+        )
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://telegram-monitor.local",
+        "X-Title": "Telegram MTProto Monitor"
+    }
+
+    # В LLM отправляется строго структура { "post": [ { "ID": "...", "пост": "...", "ссылка": "..." } ] }
+    user_payload = {
+        "post": post_items
+    }
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": effective_prompt},
+            {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False, indent=2)}
+        ]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as http_client:
+            url = f"{base_url}/chat/completions"
+            resp = await http_client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            choices = data.get("choices", [])
+            if choices and len(choices) > 0:
+                ai_content = choices[0].get("message", {}).get("content", "").strip()
+                return ai_content
+    except Exception as e:
+        print(f"⚠️ Ошибка OpenRouter Batch: {e}")
+        add_log("OPENROUTER_ERROR", f"Ошибка обработки батча сообщений через LLM: {str(e)}", "ERROR")
+    return None
+
+async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel_prompt: Optional[str] = None) -> Dict[str, Any]:
+    # Если включен OpenRouter и есть сообщения, генерируем ai_analysis по компактному батчу (ID, пост, ссылка)
     if "messages" in payload and payload["messages"]:
-        payload["messages"] = await enrich_messages_with_ai(payload["messages"])
+        ai_res = await process_messages_batch_with_llm(payload["messages"], channel_prompt)
+        if ai_res:
+            payload["ai_analysis"] = ai_res
 
-    async with httpx.AsyncClient(timeout=20.0) as http_client:
+    async with httpx.AsyncClient(timeout=25.0) as http_client:
         data_to_send = {
             "source": "telethon_monitor",
             "event": "telegram_messages_batch",
@@ -598,12 +659,14 @@ class MonitorCreateRequest(BaseModel):
     limit: int = 20
     offset_hours: Optional[int] = 24
     is_active: bool = True
+    prompt: Optional[str] = None
 
 class MonitorUpdateRequest(BaseModel):
     interval_minutes: Optional[int] = None
     limit: Optional[int] = None
     offset_hours: Optional[int] = None
     is_active: Optional[bool] = None
+    prompt: Optional[str] = None
 
 class WebhookConfigRequest(BaseModel):
     webhook_url: str
@@ -887,11 +950,12 @@ async def add_monitor(req: MonitorCreateRequest):
     INSERT INTO monitors (
         id, chat_target, chat_title, chat_username, chat_id,
         interval_minutes, limit_count, offset_hours, is_active,
-        last_checked, last_sent_message_id, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?)
+        last_checked, last_sent_message_id, prompt, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?)
     """, (
         new_id, req.chat_target, title, username, chat_id,
         req.interval_minutes, req.limit, req.offset_hours, 1 if req.is_active else 0,
+        req.prompt.strip() if req.prompt else None,
         now_iso
     ))
     conn.commit()
@@ -909,6 +973,7 @@ async def add_monitor(req: MonitorCreateRequest):
         "limit": req.limit,
         "offset_hours": req.offset_hours,
         "is_active": req.is_active,
+        "prompt": req.prompt,
         "last_checked": None,
         "last_sent_message_id": 0,
         "sent_count": 0,
@@ -934,12 +999,14 @@ async def update_monitor(monitor_id: str, req: MonitorUpdateRequest):
         m["offset_hours"] = req.offset_hours
     if req.is_active is not None:
         m["is_active"] = 1 if req.is_active else 0
+    if req.prompt is not None:
+        m["prompt"] = req.prompt.strip() if req.prompt else ""
 
     cur.execute("""
     UPDATE monitors 
-    SET interval_minutes = ?, limit_count = ?, offset_hours = ?, is_active = ?
+    SET interval_minutes = ?, limit_count = ?, offset_hours = ?, is_active = ?, prompt = ?
     WHERE id = ?
-    """, (m["interval_minutes"], m["limit_count"], m["offset_hours"], m["is_active"], monitor_id))
+    """, (m["interval_minutes"], m["limit_count"], m["offset_hours"], m["is_active"], m.get("prompt"), monitor_id))
     conn.commit()
     conn.close()
 
@@ -1029,7 +1096,7 @@ async def run_monitor_now(
                 "messages_count": len(new_messages),
                 "messages": new_messages
             }
-            background_tasks.add_task(send_to_n8n_webhook, webhook_url, payload_to_send)
+            background_tasks.add_task(send_to_n8n_webhook, webhook_url, payload_to_send, monitor.get("prompt"))
             sent_to_webhook = True
             add_log(
                 event_type="MANUAL_PUSH",

@@ -1020,6 +1020,13 @@
               <input type="number" id="msgLimit" value="20" min="1" max="100">
             </div>
           </div>
+          <div class="form-group">
+            <label for="channelPrompt">🤖 Кастомный промпт LLM для этого источника (опционально):</label>
+            <textarea id="channelPrompt" rows="2" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 10px; font-family: inherit; font-size: 13px; resize: vertical;" placeholder="Индивидуальная инструкция для нейросети по обработке постов (ID, пост, ссылка)"></textarea>
+            <p style="font-size: 11px; color: var(--body-mid); margin-top: 4px;">
+              В модель передаются 3 атрибута: <code>{ "post": [ { "ID": "...", "пост": "...", "ссылка": "..." } ] }</code>
+            </p>
+          </div>
           <button type="submit" class="btn btn-primary btn-block">+ Добавить канал в мониторинг</button>
         </form>
       </div>
@@ -1260,6 +1267,13 @@
         <div class="form-group">
           <label for="editMsgLimit">Лимит постов за один опрос (1 - 100):</label>
           <input type="number" id="editMsgLimit" min="1" max="100">
+        </div>
+        <div class="form-group">
+          <label for="editMonitorPrompt">🤖 Кастомный промпт LLM для этого канала:</label>
+          <textarea id="editMonitorPrompt" rows="3" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 10px; font-family: inherit; font-size: 13px; resize: vertical;" placeholder="Инструкция для LLM по обработке массива постов (ID, пост, ссылка). Если пусто — используется системный промпт OpenRouter."></textarea>
+          <p style="font-size: 11px; color: var(--body-mid); margin-top: 4px;">
+            В модель передаются 3 атрибута: <code>{ "post": [ { "ID": "...", "пост": "...", "ссылка": "..." } ] }</code>
+          </p>
         </div>
       </div>
       <div class="modal-footer">
@@ -1821,6 +1835,7 @@
             <span class="meta-tag" style="background: rgba(0, 215, 34, 0.08); border-color: rgba(0, 215, 34, 0.3); color: #008715; font-weight: 500;" title="Расчетное время следующей отправки (последний запуск + интервал)">
               ⏳ След. отправка: ${formatNextRun(m)}
             </span>
+            ${m.prompt ? `<span class="meta-tag" style="background: rgba(85, 51, 255, 0.08); border-color: rgba(85, 51, 255, 0.25); color: #5533ff; font-weight: 500;" title="Кастомный промпт: ${escapeHtml(m.prompt)}">🤖 LLM Промпт</span>` : ''}
           </div>
 
           <!-- Column 3: Actions & Toggle -->
@@ -1830,7 +1845,7 @@
               <span class="slider"></span>
             </label>
             <button class="btn btn-primary btn-sm" onclick="runMonitor('${m.id}')">⚡ Запустить</button>
-            <button class="btn btn-secondary btn-sm" onclick="openEditModal('${m.id}')" title="Изменить интервал и лимиты">✏️ Редактировать</button>
+            <button class="btn btn-secondary btn-sm" onclick="openEditModal('${m.id}')" title="Изменить интервал, лимиты и промпт">✏️ Редактировать</button>
             <button class="btn btn-secondary btn-sm" onclick="resetDedup('${m.id}')" title="Сбросить историю дубликатов">🔄 Сброс дублей</button>
             <button class="btn btn-danger btn-sm" onclick="deleteMonitor('${m.id}')">Удалить</button>
           </div>
@@ -1851,6 +1866,7 @@
       editModalTitle.textContent = `Редактирование: ${m.chat_title}`;
       editIntervalMin.value = String(m.interval_minutes || 60);
       editMsgLimit.value = m.limit || 20;
+      document.getElementById('editMonitorPrompt').value = m.prompt || '';
 
       editMonitorModal.classList.add('active');
     }
@@ -1866,6 +1882,7 @@
       const id = editMonitorId.value;
       const interval = parseInt(editIntervalMin.value);
       const limit = parseInt(editMsgLimit.value);
+      const promptVal = document.getElementById('editMonitorPrompt').value.trim();
 
       if (!limit || limit < 1 || limit > 100) {
         showToast('Лимит должен быть от 1 до 100', true);
@@ -1881,7 +1898,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             interval_minutes: interval,
-            limit: limit
+            limit: limit,
+            prompt: promptVal
           })
         });
 
@@ -2009,13 +2027,15 @@
       showToast('Подключение к каналу...');
 
       try {
+        const promptVal = document.getElementById('channelPrompt').value.trim();
         const res = await fetch('/api/monitors', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_target: target,
             interval_minutes: interval,
-            limit: limit
+            limit: limit,
+            prompt: promptVal
           })
         });
 
@@ -2027,6 +2047,7 @@
         const data = await res.json();
         showToast(`Канал "${data.chat_title}" добавлен в SQLite!`);
         document.getElementById('chatTarget').value = '';
+        document.getElementById('channelPrompt').value = '';
         addChannelDrawer.classList.remove('open');
         toggleAddChannelBtn.textContent = '➕ Добавить канал';
         toggleAddChannelBtn.className = 'btn btn-primary btn-sm';
