@@ -1438,23 +1438,25 @@
           </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div class="form-group">
+        <div style="display: grid; grid-template-columns: 1.25fr 0.85fr; gap: 16px; align-items: start; margin-bottom: 16px;">
+          <div class="form-group" style="margin-bottom: 0;">
             <label for="openrouterBaseUrl">Base URL (OpenRouter API):</label>
             <input type="text" id="openrouterBaseUrl" placeholder="https://openrouter.ai/api/v1" value="https://openrouter.ai/api/v1" spellcheck="false">
           </div>
 
-          <div class="form-group" style="position: relative;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-              <label for="openrouterModel" style="margin-bottom: 0;">Модель (Model):</label>
-              <button type="button" id="refreshModelsBtn" class="btn btn-secondary btn-sm" style="padding: 1px 7px; font-size: 11px; height: 22px;" title="Загрузить каталог моделей с OpenRouter">Обновить</button>
-            </div>
-            <div style="position: relative;">
-              <input type="text" id="openrouterModel" name="openrouter_model" placeholder="Введите 'deepseek', 'claude', 'gemini' для фильтрации..." value="deepseek/deepseek-chat" spellcheck="false" autocomplete="off" style="width: 100%; padding-right: 32px; font-family: 'Inconsolata', monospace; font-size: 13px;">
-              <span id="modelDropdownTrigger" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--body-mid); font-size: 11px; user-select: none;" title="Показать все модели">▼</span>
-              
-              <!-- Autocomplete Dropdown List прямо под полем ввода -->
-              <div id="openrouterModelsDropdown" class="autocomplete-dropdown" style="top: 100%; margin-top: 2px;"></div>
+          <div class="form-group" style="margin-bottom: 0; position: relative;">
+            <label for="openrouterModel">Модель (Model):</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <div style="position: relative; flex: 1;">
+                <input type="text" id="openrouterModel" name="openrouter_model" placeholder="Поиск модели (deepseek, claude, gpt)..." value="deepseek/deepseek-chat" spellcheck="false" autocomplete="off" style="width: 100%; padding-right: 28px;">
+                <span id="modelDropdownTrigger" style="position: absolute; right: 9px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--body-mid); font-size: 10px; user-select: none;" title="Показать каталог моделей">▼</span>
+                
+                <!-- Autocomplete Dropdown List -->
+                <div id="openrouterModelsDropdown" class="autocomplete-dropdown" style="top: 100%; margin-top: 2px;"></div>
+              </div>
+              <button type="button" id="refreshModelsBtn" class="btn btn-secondary btn-icon-sm" title="Загрузить актуальный каталог моделей с OpenRouter" style="height: 38px; width: 38px; padding: 0; flex-shrink: 0;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+              </button>
             </div>
           </div>
         </div>
@@ -3270,9 +3272,12 @@
     }
 
     async function loadOpenRouterModels(targetModel = '') {
+      const svgIcon = refreshModelsBtn?.querySelector('svg');
       try {
-        refreshModelsBtn.disabled = true;
-        refreshModelsBtn.textContent = '⏳...';
+        if (refreshModelsBtn) refreshModelsBtn.disabled = true;
+        if (window.gsap && svgIcon) {
+          gsap.to(svgIcon, { rotation: "+=360", duration: 0.6, repeat: -1, ease: "linear" });
+        }
 
         const res = await fetch('/api/openrouter/models');
         const data = await res.json();
@@ -3281,12 +3286,18 @@
           populateDatalist(allOpenRouterModels);
         }
 
-        refreshModelsBtn.disabled = false;
-        refreshModelsBtn.textContent = '🔄 Обновить';
+        if (refreshModelsBtn) refreshModelsBtn.disabled = false;
+        if (window.gsap && svgIcon) {
+          gsap.killTweensOf(svgIcon);
+          gsap.to(svgIcon, { rotation: 0, duration: 0.2, ease: "power2.out" });
+        }
       } catch (e) {
         console.error('Error fetching OpenRouter models:', e);
-        refreshModelsBtn.disabled = false;
-        refreshModelsBtn.textContent = '🔄 Обновить';
+        if (refreshModelsBtn) refreshModelsBtn.disabled = false;
+        if (window.gsap && svgIcon) {
+          gsap.killTweensOf(svgIcon);
+          gsap.set(svgIcon, { rotation: 0 });
+        }
       }
     }
 
