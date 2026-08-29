@@ -1305,14 +1305,13 @@
               <div style="display: flex; align-items: center; gap: 14px;">
                 <div id="feedDetailAvatar" class="feed-avatar" style="width: 48px; height: 48px; font-size: 18px;"></div>
                 <div>
-                  <h2 id="feedDetailTitle" style="font-size: 17px; font-weight: 700; color: var(--ink); margin: 0 0 4px 0;"></h2>
-                  <div class="feed-card-meta">
+                  <h2 id="feedDetailTitle" style="font-size: 17px; font-weight: 700; color: var(--ink); margin: 0 0 6px 0;"></h2>
+                  <div class="feed-card-meta" style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; line-height: 1;">
                     <span id="feedDetailTime" style="font-size: 12.5px; color: var(--body-mid); font-variant-numeric: tabular-nums;"></span>
-                    <span>•</span>
-                    <span id="feedDetailRelativeTime" style="color: var(--accent-blue-deep); font-weight: 500;"></span>
-                    <span>•</span>
-                    <span id="feedDetailCount" class="badge-metric"></span>
-                    <span id="feedDetailModel" class="meta-tag"></span>
+                    <span style="color: var(--hairline-strong); opacity: 0.6;">•</span>
+                    <span id="feedDetailRelativeTime" style="font-size: 12.5px; color: var(--accent-blue-deep); font-weight: 500; font-variant-numeric: tabular-nums;"></span>
+                    <span style="color: var(--hairline-strong); opacity: 0.6;">•</span>
+                    <span id="feedDetailCount" style="font-size: 12.5px; color: #008715; font-weight: 500; font-variant-numeric: tabular-nums;"></span>
                   </div>
                 </div>
               </div>
@@ -1932,7 +1931,6 @@
     const feedDetailTime = document.getElementById('feedDetailTime');
     const feedDetailRelativeTime = document.getElementById('feedDetailRelativeTime');
     const feedDetailCount = document.getElementById('feedDetailCount');
-    const feedDetailModel = document.getElementById('feedDetailModel');
     const feedDetailSummary = document.getElementById('feedDetailSummary');
     const feedRawCount = document.getElementById('feedRawCount');
     const feedRawMessagesList = document.getElementById('feedRawMessagesList');
@@ -2202,8 +2200,8 @@
                 <div class="feed-card-title">${escapeHtml(item.chat_title || 'Канал')}</div>
                 <div class="feed-card-meta">
                   <span>${formatRelativeTime(item.created_at)}</span>
-                  <span>•</span>
-                  <span>📊 ${item.messages_count} постов</span>
+                  <span style="opacity: 0.5;">•</span>
+                  <span style="color: #008715; font-weight: 500;">${item.messages_count} постов</span>
                 </div>
               </div>
             </div>
@@ -2245,8 +2243,7 @@
         month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
       });
       if (feedDetailRelativeTime) feedDetailRelativeTime.textContent = formatRelativeTime(item.created_at);
-      if (feedDetailCount) feedDetailCount.textContent = `📊 ${item.messages_count} постов`;
-      if (feedDetailModel) feedDetailModel.textContent = item.model_name || 'DeepSeek V3';
+      if (feedDetailCount) feedDetailCount.textContent = `${item.messages_count} постов`;
 
       if (feedDetailSummary) {
         const text = item.ai_analysis || 'AI-анализ не был сгенерирован для этой выборки (OpenRouter был выключен).';
