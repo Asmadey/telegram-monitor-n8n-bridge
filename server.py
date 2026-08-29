@@ -633,15 +633,15 @@ async def fetch_chat_messages(target: str, limit: int = 20, offset_hours: Option
     }
 
 async def call_openrouter(text: str, custom_prompt: Optional[str] = None) -> Optional[str]:
-    api_key = get_setting("openrouter_api_key", "").strip()
+    api_key = (get_setting("openrouter_api_key", "") or "").strip()
     if not api_key:
         return None
-    base_url = get_setting("openrouter_base_url", "https://openrouter.ai/api/v1").rstrip("/")
-    model = get_setting("openrouter_model", "google/gemini-2.0-flash-001").strip()
-    system_prompt = custom_prompt or get_setting(
+    base_url = (get_setting("openrouter_base_url", "https://openrouter.ai/api/v1") or "").rstrip("/")
+    model = (get_setting("openrouter_model", "google/gemini-2.0-flash-001") or "").strip()
+    system_prompt = (custom_prompt or get_setting(
         "openrouter_system_prompt",
         "Выдели ключевую суть сообщения, ключевые технологии, условия и теги. Будь краток."
-    )
+    ) or "").strip()
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -672,8 +672,8 @@ async def call_openrouter(text: str, custom_prompt: Optional[str] = None) -> Opt
     return None
 
 async def process_messages_batch_with_llm(messages: List[Dict[str, Any]], custom_prompt: Optional[str] = None) -> Optional[str]:
-    is_enabled = get_setting("openrouter_enabled", "0") == "1"
-    api_key = get_setting("openrouter_api_key", "").strip()
+    is_enabled = str(get_setting("openrouter_enabled", "0")) in ("1", "True", "true")
+    api_key = (get_setting("openrouter_api_key", "") or "").strip()
     if not is_enabled or not api_key:
         return None
 
@@ -691,16 +691,16 @@ async def process_messages_batch_with_llm(messages: List[Dict[str, Any]], custom
     if not post_items:
         return None
 
-    base_url = get_setting("openrouter_base_url", "https://openrouter.ai/api/v1").rstrip("/")
-    model = get_setting("openrouter_model", "google/gemini-2.0-flash-001").strip()
+    base_url = (get_setting("openrouter_base_url", "https://openrouter.ai/api/v1") or "").rstrip("/")
+    model = (get_setting("openrouter_model", "google/gemini-2.0-flash-001") or "").strip()
     
-    # Приоритет: промпт канала -> глобальный системный промпт -> дефолт
+    # Приоритет: промпт канала -> дефолт
     effective_prompt = (custom_prompt or "").strip()
     if not effective_prompt:
-        effective_prompt = get_setting(
+        effective_prompt = (get_setting(
             "openrouter_system_prompt",
             "Выдели ключевую суть сообщений, ключевые технологии, условия и теги. Будь краток."
-        )
+        ) or "").strip()
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -767,6 +767,13 @@ async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel
         ai_res = await process_messages_batch_with_llm(payload["messages"], channel_prompt)
         if ai_res:
             payload["ai_analysis"] = ai_res
+            add_log(
+                event_type="AI_ANALYSIS",
+                details=f"Сгенерирован AI анализ ({len(ai_res)} симв.): {ai_res[:250]}...",
+                status="SUCCESS",
+                chat_title=payload.get("chat_title"),
+                chat_id=payload.get("chat_id")
+            )
 
     # Если включена прямая пересылка в Telegram-канал через Bot API
     if get_setting("telegram_forward_enabled", "0") == "1" and "messages" in payload and payload["messages"]:
@@ -783,7 +790,14 @@ async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel
                 msg_lines.append(f"• {m_text}{link_html}\n")
             
             full_msg = "\n".join(msg_lines)
-            await send_telegram_bot_message(full_msg)
+            tg_ok = await send_telegram_bot_message(full_msg)
+            if tg_ok:
+                add_log(
+                    event_type="TG_BOT_SENT",
+                    details=f"Отправлена сводка в Telegram ботом для '{chat_title}'",
+                    status="SUCCESS",
+                    chat_title=chat_title
+                )
         except Exception as fe:
             print(f"⚠️ Ошибка фоновой пересылки ботом: {fe}")
 
@@ -796,6 +810,14 @@ async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel
         }
         resp = await http_client.post(webhook_url, json=data_to_send)
         resp.raise_for_status()
+        add_log(
+            event_type="WEBHOOK_SENT",
+            details=f"Отправлен вебхук в n8n ({len(payload.get('messages', []))} постов, AI analysis: {'Да' if 'ai_analysis' in payload else 'Нет'})",
+            status="SUCCESS",
+            chat_title=payload.get("chat_title"),
+            chat_id=payload.get("chat_id"),
+            messages_count=len(payload.get("messages", []))
+        )
         return {
             "status": "success",
             "status_code": resp.status_code,
