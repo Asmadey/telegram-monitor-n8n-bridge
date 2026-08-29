@@ -18,10 +18,13 @@ from telethon import TelegramClient, errors
 from telethon.tl.types import User, Chat, Channel
 
 BASE_DIR = Path(__file__).parent
+DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
 ENV_FILE = BASE_DIR / ".env"
-DB_FILE = BASE_DIR / "storage.db"
+DB_FILE = DATA_DIR / "storage.db"
 MONITORS_OLD_FILE = BASE_DIR / "monitors.json"
-EXPORTS_DIR = BASE_DIR / "exports"
+EXPORTS_DIR = DATA_DIR / "exports"
 EXPORTS_DIR.mkdir(exist_ok=True)
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(exist_ok=True)
@@ -31,7 +34,7 @@ load_dotenv(ENV_FILE)
 API_ID = os.getenv("TELEGRAM_API_ID", "")
 API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 
-SESSION_PATH = BASE_DIR / "personal_account"
+SESSION_PATH = DATA_DIR / "personal_account"
 client: Optional[TelegramClient] = None
 
 auth_state = {
