@@ -1019,8 +1019,8 @@
             <select id="filterChatSelect" style="width: 170px; background: var(--canvas-soft);">
               <option value="ALL">Все каналы</option>
             </select>
-            <input type="number" id="filterMinViews" placeholder="👁️ Просмотры от..." min="0" style="width: 140px; background: var(--canvas-soft);">
-            <input type="number" id="filterMinReactions" placeholder="❤️ Реакции от..." min="0" style="width: 130px; background: var(--canvas-soft);">
+            <input type="text" inputmode="numeric" id="filterMinViews" placeholder="👁️ Просмотры от..." style="width: 140px; background: var(--canvas-soft);">
+            <input type="text" inputmode="numeric" id="filterMinReactions" placeholder="❤️ Реакции от..." style="width: 130px; background: var(--canvas-soft);">
             <select id="sortMessagesSelect" style="width: 175px; background: var(--canvas-soft);">
               <option value="date_desc">📅 Сначала новые</option>
               <option value="views_desc">👁️ Больше просмотров</option>
@@ -2227,8 +2227,8 @@
     function getFilteredMessages() {
       const query = tableSearch.value.toLowerCase();
       const filterChat = filterChatSelect.value;
-      const minViews = parseInt(filterMinViews.value) || 0;
-      const minReactions = parseInt(filterMinReactions.value) || 0;
+      const minViews = parseInt(String(filterMinViews.value || '').replace(/\D/g, '')) || 0;
+      const minReactions = parseInt(String(filterMinReactions.value || '').replace(/\D/g, '')) || 0;
       const sortBy = sortMessagesSelect.value;
 
       let filtered = currentMessages.filter(msg => {
