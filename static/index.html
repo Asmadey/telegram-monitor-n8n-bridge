@@ -888,6 +888,84 @@
       padding: 18px;
       margin-top: 14px;
     }
+
+    /* Autocomplete Combobox Styles */
+    .autocomplete-dropdown {
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 100%;
+      z-index: 1000;
+      background: #ffffff;
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-xs);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+      max-height: 290px;
+      overflow-y: auto;
+      margin-top: 4px;
+    }
+
+    .autocomplete-item {
+      padding: 9px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(0,0,0,0.04);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.1s ease;
+    }
+
+    .autocomplete-item:hover,
+    .autocomplete-item.selected {
+      background: #f0f4ff;
+      color: #3b28cc;
+    }
+
+    .autocomplete-item-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .autocomplete-item-id {
+      font-size: 11.5px;
+      color: var(--body-mid);
+      font-family: 'Inconsolata', monospace;
+    }
+
+    .autocomplete-group-header {
+      padding: 6px 12px;
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: var(--canvas-soft);
+      color: var(--body-mid);
+      border-bottom: 1px solid var(--hairline);
+      border-top: 1px solid var(--hairline);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .quick-model-tag {
+      background: var(--canvas-soft);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      font-size: 11px;
+      padding: 2px 9px;
+      cursor: pointer;
+      color: var(--body-mid);
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+
+    .quick-model-tag:hover {
+      background: #eef2ff;
+      color: #5533ff;
+      border-color: #5533ff;
+    }
   </style>
 </head>
 <body>
@@ -1107,23 +1185,29 @@
             <input type="text" id="openrouterBaseUrl" placeholder="https://openrouter.ai/api/v1" value="https://openrouter.ai/api/v1" spellcheck="false">
           </div>
 
-          <div class="form-group">
+          <div class="form-group" style="position: relative;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-              <label for="openrouterModelSelect" style="margin-bottom: 0;">Модель (Model):</label>
-              <button type="button" id="refreshModelsBtn" class="btn btn-secondary btn-sm" style="padding: 1px 7px; font-size: 11px; height: 22px;" title="Загрузить все доступные модели с OpenRouter">🔄 Загрузить список</button>
+              <label for="openrouterModel" style="margin-bottom: 0;">Модель (Model):</label>
+              <button type="button" id="refreshModelsBtn" class="btn btn-secondary btn-sm" style="padding: 1px 7px; font-size: 11px; height: 22px;" title="Загрузить все доступные модели с OpenRouter">🔄 Обновить</button>
             </div>
-            <select id="openrouterModelSelect" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 8px 10px; font-family: inherit; font-size: 13px; background: #fff; cursor: pointer;">
-              <option value="google/gemini-2.0-flash-001">Google: Gemini 2.0 Flash</option>
-              <option value="anthropic/claude-3.5-sonnet">Anthropic: Claude 3.5 Sonnet</option>
-              <option value="openai/gpt-4o">OpenAI: GPT-4o</option>
-              <option value="openai/gpt-4o-mini">OpenAI: GPT-4o Mini</option>
-              <option value="deepseek/deepseek-chat">DeepSeek: DeepSeek V3</option>
-              <option value="deepseek/deepseek-r1">DeepSeek: DeepSeek R1</option>
-              <option value="meta-llama/llama-3.3-70b-instruct">Meta: Llama 3.3 70B</option>
-              <option value="qwen/qwen-2.5-72b-instruct">Qwen: Qwen 2.5 72B</option>
-              <option value="mistralai/mistral-large-2411">Mistral: Mistral Large</option>
-            </select>
-            <input type="hidden" id="openrouterModel" value="google/gemini-2.0-flash-001">
+            <div style="position: relative;">
+              <input type="text" id="openrouterModel" placeholder="Введите или выберите модель (например: claude, gemini, gpt, deepseek)..." value="google/gemini-2.0-flash-001" spellcheck="false" autocomplete="off" style="width: 100%; padding-right: 32px; font-family: 'Inconsolata', monospace; font-size: 13px;">
+              <span id="modelDropdownTrigger" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--body-mid); font-size: 11px; user-select: none;" title="Показать все модели">▼</span>
+            </div>
+
+            <!-- Autocomplete Dropdown List -->
+            <div id="openrouterModelsDropdown" class="autocomplete-dropdown"></div>
+
+            <!-- Quick Filter Tags -->
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; align-items: center;">
+              <span style="font-size: 11px; color: var(--mute);">Фильтр:</span>
+              <button type="button" class="quick-model-tag" onclick="quickFilterModel('gemini')">Gemini</button>
+              <button type="button" class="quick-model-tag" onclick="quickFilterModel('claude')">Claude</button>
+              <button type="button" class="quick-model-tag" onclick="quickFilterModel('gpt-4o')">GPT-4o</button>
+              <button type="button" class="quick-model-tag" onclick="quickFilterModel('deepseek')">DeepSeek</button>
+              <button type="button" class="quick-model-tag" onclick="quickFilterModel('llama')">Llama</button>
+              <button type="button" class="quick-model-tag" onclick="quickFilterModel('qwen')">Qwen</button>
+            </div>
           </div>
         </div>
 
@@ -2326,7 +2410,8 @@
     // ==================== OPENROUTER AI JS LOGIC ====================
     const openrouterBaseUrl = document.getElementById('openrouterBaseUrl');
     const openrouterModel = document.getElementById('openrouterModel');
-    const openrouterModelSelect = document.getElementById('openrouterModelSelect');
+    const openrouterModelsDropdown = document.getElementById('openrouterModelsDropdown');
+    const modelDropdownTrigger = document.getElementById('modelDropdownTrigger');
     const refreshModelsBtn = document.getElementById('refreshModelsBtn');
     const openrouterApiKey = document.getElementById('openrouterApiKey');
     const toggleApiKeyVisibility = document.getElementById('toggleApiKeyVisibility');
@@ -2336,14 +2421,168 @@
     const openrouterTestResultBox = document.getElementById('openrouterTestResultBox');
     const openrouterTestResultText = document.getElementById('openrouterTestResultText');
 
+    let allOpenRouterModels = [];
+    let highlightedModelIndex = -1;
+
     toggleApiKeyVisibility.addEventListener('click', () => {
       openrouterApiKey.type = openrouterApiKey.type === 'password' ? 'text' : 'password';
       toggleApiKeyVisibility.textContent = openrouterApiKey.type === 'password' ? '👁️' : '🙈';
     });
 
-    openrouterModelSelect.addEventListener('change', () => {
-      openrouterModel.value = openrouterModelSelect.value;
+    function selectModelItem(modelId) {
+      openrouterModel.value = modelId;
+      hideModelsDropdown();
+      showToast(`Выбрана модель: ${modelId}`);
+    }
+
+    function hideModelsDropdown() {
+      openrouterModelsDropdown.style.display = 'none';
+      highlightedModelIndex = -1;
+    }
+
+    function showModelsDropdown() {
+      openrouterModelsDropdown.style.display = 'block';
+    }
+
+    function renderModelsDropdown(query = '') {
+      const q = query.trim().toLowerCase();
+      let filtered = allOpenRouterModels;
+
+      if (q) {
+        filtered = allOpenRouterModels.filter(m => 
+          m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q))
+        );
+      }
+
+      if (filtered.length === 0) {
+        openrouterModelsDropdown.innerHTML = `
+          <div style="padding: 14px; text-align: center; color: var(--mute); font-size: 12.5px;">
+            Модели по запросу <b>"${escapeHtml(query)}"</b> не найдены в каталоге.<br>
+            <span style="font-size: 11px; color: var(--body-mid);">Вы можете оставить введенный ID как есть.</span>
+          </div>
+        `;
+        showModelsDropdown();
+        return;
+      }
+
+      const groups = {
+        'Google (Gemini)': [],
+        'Anthropic (Claude)': [],
+        'OpenAI (ChatGPT)': [],
+        'DeepSeek': [],
+        'Meta (Llama)': [],
+        'Qwen': [],
+        'Mistral': [],
+        'xAI (Grok)': [],
+        'Другие модели': []
+      };
+
+      filtered.forEach(m => {
+        const id = m.id.toLowerCase();
+        if (id.startsWith('google/')) groups['Google (Gemini)'].push(m);
+        else if (id.startsWith('anthropic/')) groups['Anthropic (Claude)'].push(m);
+        else if (id.startsWith('openai/')) groups['OpenAI (ChatGPT)'].push(m);
+        else if (id.startsWith('deepseek/')) groups['DeepSeek'].push(m);
+        else if (id.startsWith('meta-llama/')) groups['Meta (Llama)'].push(m);
+        else if (id.startsWith('qwen/')) groups['Qwen'].push(m);
+        else if (id.startsWith('mistralai/')) groups['Mistral'].push(m);
+        else if (id.startsWith('x-ai/')) groups['xAI (Grok)'].push(m);
+        else groups['Другие модели'].push(m);
+      });
+
+      let html = '';
+      for (const [groupName, groupModels] of Object.entries(groups)) {
+        if (groupModels.length > 0) {
+          html += `<div class="autocomplete-group-header">🌟 ${groupName} (${groupModels.length})</div>`;
+          html += groupModels.map(m => {
+            const isCurrent = (m.id === openrouterModel.value.trim());
+            return `
+              <div class="autocomplete-item ${isCurrent ? 'selected' : ''}" data-model-id="${m.id}" onclick="selectModelItem('${m.id}')">
+                <div>
+                  <div class="autocomplete-item-name">${escapeHtml(m.name || m.id)}</div>
+                  <div class="autocomplete-item-id">${escapeHtml(m.id)}</div>
+                </div>
+                ${isCurrent ? '<span style="font-size: 12px; color: #5533ff; font-weight: 700;">✓</span>' : ''}
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      openrouterModelsDropdown.innerHTML = html;
+      showModelsDropdown();
+    }
+
+    // Input events for real-time live filtering
+    openrouterModel.addEventListener('input', () => {
+      renderModelsDropdown(openrouterModel.value);
     });
+
+    openrouterModel.addEventListener('focus', () => {
+      renderModelsDropdown(openrouterModel.value);
+    });
+
+    modelDropdownTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (openrouterModelsDropdown.style.display === 'block') {
+        hideModelsDropdown();
+      } else {
+        openrouterModel.focus();
+        renderModelsDropdown('');
+      }
+    });
+
+    window.quickFilterModel = function(tag) {
+      openrouterModel.value = tag;
+      openrouterModel.focus();
+      renderModelsDropdown(tag);
+    };
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!openrouterModel.contains(e.target) && 
+          !openrouterModelsDropdown.contains(e.target) && 
+          !modelDropdownTrigger.contains(e.target)) {
+        hideModelsDropdown();
+      }
+    });
+
+    // Keyboard navigation (ArrowDown, ArrowUp, Enter, Escape)
+    openrouterModel.addEventListener('keydown', (e) => {
+      const items = openrouterModelsDropdown.querySelectorAll('.autocomplete-item');
+      if (!items || items.length === 0 || openrouterModelsDropdown.style.display !== 'block') return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        highlightedModelIndex = (highlightedModelIndex + 1) % items.length;
+        updateItemHighlight(items);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        highlightedModelIndex = (highlightedModelIndex - 1 + items.length) % items.length;
+        updateItemHighlight(items);
+      } else if (e.key === 'Enter') {
+        if (highlightedModelIndex >= 0 && highlightedModelIndex < items.length) {
+          e.preventDefault();
+          const targetId = items[highlightedModelIndex].getAttribute('data-model-id');
+          if (targetId) selectModelItem(targetId);
+        } else {
+          hideModelsDropdown();
+        }
+      } else if (e.key === 'Escape') {
+        hideModelsDropdown();
+      }
+    });
+
+    function updateItemHighlight(items) {
+      items.forEach((it, idx) => {
+        if (idx === highlightedModelIndex) {
+          it.classList.add('selected');
+          it.scrollIntoView({ block: 'nearest' });
+        } else {
+          it.classList.remove('selected');
+        }
+      });
+    }
 
     async function loadOpenRouterModels(targetModel = '') {
       try {
@@ -2352,85 +2591,22 @@
 
         const res = await fetch('/api/openrouter/models');
         const data = await res.json();
-        const models = data.models || [];
-
-        if (models.length > 0) {
-          const groups = {
-            'Google': [],
-            'Anthropic (Claude)': [],
-            'OpenAI (ChatGPT)': [],
-            'DeepSeek': [],
-            'Meta (Llama)': [],
-            'Qwen': [],
-            'Mistral': [],
-            'xAI (Grok)': [],
-            'Другие модели': []
-          };
-
-          models.forEach(m => {
-            const id = m.id.toLowerCase();
-            const label = m.name || m.id;
-            const opt = { id: m.id, label: label };
-
-            if (id.startsWith('google/')) {
-              groups['Google'].push(opt);
-            } else if (id.startsWith('anthropic/')) {
-              groups['Anthropic (Claude)'].push(opt);
-            } else if (id.startsWith('openai/')) {
-              groups['OpenAI (ChatGPT)'].push(opt);
-            } else if (id.startsWith('deepseek/')) {
-              groups['DeepSeek'].push(opt);
-            } else if (id.startsWith('meta-llama/')) {
-              groups['Meta (Llama)'].push(opt);
-            } else if (id.startsWith('qwen/')) {
-              groups['Qwen'].push(opt);
-            } else if (id.startsWith('mistralai/')) {
-              groups['Mistral'].push(opt);
-            } else if (id.startsWith('x-ai/')) {
-              groups['xAI (Grok)'].push(opt);
-            } else {
-              groups['Другие модели'].push(opt);
-            }
-          });
-
-          let html = '';
-          for (const [groupName, groupModels] of Object.entries(groups)) {
-            if (groupModels.length > 0) {
-              html += `<optgroup label="🌟 ${groupName}">`;
-              html += groupModels.map(gm => `<option value="${gm.id}">${gm.label} (${gm.id})</option>`).join('');
-              html += `</optgroup>`;
-            }
-          }
-
-          openrouterModelSelect.innerHTML = html;
-        }
-
-        const modelToSet = targetModel || openrouterModel.value || 'google/gemini-2.0-flash-001';
-        
-        // Если модели нет в списке, добавляем ее
-        if (!Array.from(openrouterModelSelect.options).some(o => o.value === modelToSet)) {
-          const customOpt = document.createElement('option');
-          customOpt.value = modelToSet;
-          customOpt.textContent = `🎯 ${modelToSet}`;
-          openrouterModelSelect.prepend(customOpt);
-        }
-
-        openrouterModelSelect.value = modelToSet;
-        openrouterModel.value = modelToSet;
+        allOpenRouterModels = data.models || [];
 
         refreshModelsBtn.disabled = false;
-        refreshModelsBtn.textContent = '🔄 Загрузить список';
+        refreshModelsBtn.textContent = '🔄 Обновить';
       } catch (e) {
         console.error('Error fetching OpenRouter models:', e);
         refreshModelsBtn.disabled = false;
-        refreshModelsBtn.textContent = '🔄 Загрузить список';
+        refreshModelsBtn.textContent = '🔄 Обновить';
       }
     }
 
     refreshModelsBtn.addEventListener('click', async () => {
       showToast('Загрузка актуального каталога моделей с OpenRouter...');
-      await loadOpenRouterModels(openrouterModel.value);
-      showToast('✅ Список моделей успешно обновлен!');
+      await loadOpenRouterModels();
+      renderModelsDropdown(openrouterModel.value);
+      showToast('✅ Каталог моделей обновлен!');
     });
 
     async function loadOpenRouterConfig() {
@@ -2447,7 +2623,7 @@
         if (data.has_key) {
           openrouterApiKey.placeholder = `Ключ: ${data.api_key_masked}`;
         }
-        await loadOpenRouterModels(currentModel);
+        await loadOpenRouterModels();
       } catch (e) {
         console.error('Error loading OpenRouter config:', e);
       }
