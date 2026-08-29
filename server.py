@@ -1877,6 +1877,80 @@ async def get_feed_list(limit: int = Query(50, ge=1, le=200)):
         feed_items.append(item)
     return {"total": len(feed_items), "feed": feed_items}
 
+@app.post("/api/feed/{id}/reanalyze")
+async def reanalyze_feed_item(id: int):
+    conn = get_db()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM analysis_feed WHERE id = ?", (id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Запись задачи не найдена в ленте")
+    
+    item = dict(row)
+    raw_json = item.get("raw_messages_json") or "[]"
+    try:
+        messages = json.loads(raw_json)
+    except Exception:
+        messages = []
+        
+    if not messages:
+        conn.close()
+        raise HTTPException(status_code=400, detail="В этой задаче отсутствуют исходные посты для анализа")
+
+    # Ищем индивидуальный промпт для этого канала
+    chat_id = item.get("chat_id")
+    chat_username = item.get("chat_username")
+    channel_prompt = None
+    if chat_id or chat_username:
+        cur.execute("SELECT prompt FROM monitors WHERE chat_id = ? OR chat_username = ? LIMIT 1", (chat_id, chat_username))
+        mon_row = cur.fetchone()
+        if mon_row and mon_row["prompt"]:
+            channel_prompt = mon_row["prompt"]
+
+    # Проверяем доступность OpenRouter
+    api_key = (get_setting("openrouter_api_key", "") or "").strip()
+    if not api_key:
+        conn.close()
+        raise HTTPException(status_code=400, detail="API ключ OpenRouter не настроен во вкладке «Интеграция»")
+
+    cfg = get_integrations_config()
+    model_name = cfg.get("openrouter_model", "deepseek/deepseek-chat")
+
+    ai_res = await process_messages_batch_with_llm(messages, custom_prompt=channel_prompt)
+    if not ai_res:
+        conn.close()
+        raise HTTPException(status_code=500, detail="OpenRouter LLM не вернул ответ. Проверьте баланс или ключ.")
+
+    cur.execute("""
+    UPDATE analysis_feed 
+    SET ai_analysis = ?, model_name = ?
+    WHERE id = ?
+    """, (ai_res, model_name, id))
+    conn.commit()
+    
+    cur.execute("SELECT * FROM analysis_feed WHERE id = ?", (id,))
+    updated_row = dict(cur.fetchone())
+    conn.close()
+    
+    add_log(
+        event_type="AI_REANALYZE",
+        details=f"Перезапущен AI анализ для '{item.get('chat_title')}' через {model_name}",
+        status="SUCCESS",
+        chat_title=item.get("chat_title"),
+        chat_id=chat_id,
+        messages_count=len(messages)
+    )
+
+    return {
+        "status": "success",
+        "feed_item": {
+            **updated_row,
+            "messages": messages
+        }
+    }
+
 @app.delete("/api/feed/{id}")
 async def delete_feed_item(id: int):
     conn = get_db()
