@@ -1239,8 +1239,19 @@ async def send_custom_payload(payload: Dict[str, Any]):
     chat_id = payload.get("chat_id")
     cnt = payload.get("messages_count", len(payload.get("messages", [])))
 
+    # Подтягиваем индивидуальный промпт источника из базы SQLite
+    channel_prompt = payload.get("prompt")
+    if not channel_prompt and chat_id:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT prompt FROM monitors WHERE chat_id = ? LIMIT 1", (chat_id,))
+        row = cur.fetchone()
+        conn.close()
+        if row and row["prompt"]:
+            channel_prompt = row["prompt"]
+
     try:
-        res = await send_to_n8n_webhook(webhook_url, payload)
+        res = await send_to_n8n_webhook(webhook_url, payload, channel_prompt)
         add_log(
             event_type="WEBHOOK_SENT",
             details=f"Отправлен пакет из {cnt} сообщений по каналу '{chat_title or 'Без названия'}' в n8n",
