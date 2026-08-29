@@ -738,8 +738,8 @@ async def process_messages_batch_with_llm(messages: List[Dict[str, Any]], custom
     return None
 
 async def send_telegram_bot_message(text: str, custom_chat_id: Optional[str] = None) -> bool:
-    token = get_setting("telegram_bot_token", "").strip()
-    chat_id = custom_chat_id or get_setting("telegram_forward_chat_id", "").strip()
+    token = (get_setting("telegram_bot_token", "") or "").strip()
+    chat_id = custom_chat_id or (get_setting("telegram_forward_chat_id", "") or "").strip()
     if not token or not chat_id:
         return False
 
@@ -754,6 +754,10 @@ async def send_telegram_bot_message(text: str, custom_chat_id: Optional[str] = N
     try:
         async with httpx.AsyncClient(timeout=15.0) as http_client:
             resp = await http_client.post(url, json=payload)
+            if resp.status_code != 200:
+                # Если ошибка парсинга HTML, отправляем как обычный текст
+                payload.pop("parse_mode", None)
+                resp = await http_client.post(url, json=payload)
             resp.raise_for_status()
             return True
     except Exception as e:
@@ -776,25 +780,35 @@ async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel
             )
 
     # Если включена прямая пересылка в Telegram-канал через Bot API
-    if get_setting("telegram_forward_enabled", "0") == "1" and "messages" in payload and payload["messages"]:
+    if str(get_setting("telegram_forward_enabled", "0")) in ("1", "True", "true") and "messages" in payload and payload["messages"]:
         try:
             chat_title = payload.get("chat_title", "Источник")
             ai_summary = payload.get("ai_analysis")
-            msg_lines = [f"📢 <b>Новые посты: {chat_title}</b> ({len(payload['messages'])} шт.)\n"]
-            if ai_summary:
-                msg_lines.append(f"🤖 <b>AI Анализ:</b>\n{ai_summary}\n")
-            for m in payload["messages"][:5]:
-                m_text = (m.get("text") or "")[:250]
-                m_url = m.get("post_url", "")
-                link_html = f" — <a href='{m_url}'>🔗 Источник</a>" if m_url else ""
-                msg_lines.append(f"• {m_text}{link_html}\n")
             
-            full_msg = "\n".join(msg_lines)
-            tg_ok = await send_telegram_bot_message(full_msg)
-            if tg_ok:
+            if ai_summary:
+                # Если сгенерирован готовый AI HTML (по промпту), отправляем его напрямую
+                text_to_send = ai_summary
+            else:
+                msg_lines = [f"📢 <b>Новые посты: {chat_title}</b> ({len(payload['messages'])} шт.)\n"]
+                for m in payload["messages"][:5]:
+                    m_text = (m.get("text") or "")[:250]
+                    m_url = m.get("post_url", "")
+                    link_html = f" — <a href='{m_url}'>🔗 Источник</a>" if m_url else ""
+                    msg_lines.append(f"• {m_text}{link_html}\n")
+                text_to_send = "\n".join(msg_lines)
+
+            # Отправка через Bot API (с поддержкой разбиения длинных сообщений > 4000 симв.)
+            chunks = [text_to_send[i:i+3900] for i in range(0, len(text_to_send), 3900)]
+            sent_all = True
+            for chunk in chunks:
+                ok = await send_telegram_bot_message(chunk)
+                if not ok:
+                    sent_all = False
+            
+            if sent_all:
                 add_log(
                     event_type="TG_BOT_SENT",
-                    details=f"Отправлена сводка в Telegram ботом для '{chat_title}'",
+                    details=f"Отправлено сообщение в Telegram ботом для '{chat_title}' (AI Анализ: {'Да' if ai_summary else 'Нет'})",
                     status="SUCCESS",
                     chat_title=chat_title
                 )
@@ -1500,15 +1514,19 @@ async def get_openrouter_config():
 
 @app.post("/api/openrouter")
 async def save_openrouter_config(req: OpenRouterConfigRequest):
+    chosen_model = req.model.strip() if req.model and req.model.strip() else "deepseek/deepseek-chat"
+    if chosen_model == "google/gemini-2.0-flash-001":
+        chosen_model = "deepseek/deepseek-chat"
+
     data = {
         "openrouter_base_url": req.base_url.strip() or "https://openrouter.ai/api/v1",
-        "openrouter_model": req.model.strip() or "google/gemini-2.0-flash-001",
+        "openrouter_model": chosen_model,
         "openrouter_enabled": 1 if req.is_enabled else 0
     }
-    if req.api_key:
+    if req.api_key and not req.api_key.startswith("******"):
         data["openrouter_api_key"] = req.api_key.strip()
     update_integrations_config(data)
-    add_log("SETTINGS", f"Сохранены настройки OpenRouter в таблицу integrations_config (Модель: {req.model}, Активен: {req.is_enabled})", "SUCCESS")
+    add_log("SETTINGS", f"Сохранены настройки OpenRouter в таблицу integrations_config (Модель: {chosen_model}, Активен: {req.is_enabled})", "SUCCESS")
     return {"status": "saved"}
 
 @app.post("/api/openrouter/test")
@@ -1548,12 +1566,19 @@ async def get_telegram_forward_config():
 
 @app.post("/api/telegram-forward")
 async def save_telegram_forward_config(req: TelegramForwardConfigRequest):
+    token_val = req.bot_token.strip() if req.bot_token else ""
+    
+    # Защита от автозаполнения браузером ключа OpenRouter в поле токена бота
+    if token_val.startswith("sk-or-"):
+        raise HTTPException(status_code=400, detail="В поле токена бота попал API-ключ OpenRouter (sk-or-...). Вставьте токен Telegram-бота из @BotFather (например: 8902726828:AAH...)")
+
     data = {
         "telegram_sender_id": req.sender_id.strip(),
         "telegram_forward_enabled": 1 if req.is_enabled else 0
     }
-    if req.bot_token:
-        data["telegram_bot_token"] = req.bot_token.strip()
+    if token_val and not token_val.startswith("******"):
+        data["telegram_bot_token"] = token_val
+
     update_integrations_config(data)
     add_log("SETTINGS", f"Сохранены настройки Telegram-бота в таблицу integrations_config (ID: {req.sender_id}, Активен: {req.is_enabled})", "SUCCESS")
     return {"status": "saved"}
