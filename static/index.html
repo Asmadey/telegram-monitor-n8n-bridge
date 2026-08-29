@@ -1,0 +1,2272 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telegram Monitor & n8n Bridge (SQLite Edition)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #080808;
+      --on-primary: #ffffff;
+      --ink: #080808;
+      --ink-strong: #222222;
+      --body: #363636;
+      --body-mid: #5a5a5a;
+      --mute: #898989;
+      --mute-soft: #ababab;
+      --hairline: #d8d8d8;
+      --hairline-subtle: #eaeaea;
+      --canvas: #ffffff;
+      --canvas-alt: #f7f8f9;
+      --canvas-soft: #f1f3f5;
+      
+      /* Webflow 5-Stop Chromatic Category Accents */
+      --accent-purple: #7a3dff;
+      --accent-pink: #ed52cb;
+      --accent-blue: #3b89ff;
+      --accent-blue-deep: #006acc;
+      --accent-blue-info: #146ef5;
+      --accent-orange: #ff6b00;
+      --accent-green: #00d722;
+      --accent-yellow: #ffae13;
+      --accent-red: #ee1d36;
+
+      /* Shapes & Spacing */
+      --rounded-sm: 4px;
+      --rounded-md: 8px;
+      --rounded-full: 9999px;
+      
+      /* Webflow Layered Drop Shadows */
+      --shadow-layered-sm: 0 2px 5px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-layered-md: 0 13px 13px rgba(0,0,0,0.04), 0 3px 7px rgba(0,0,0,0.06);
+      --shadow-layered-lg: 0 30px 18px rgba(0,0,0,0.04), 0 13px 13px rgba(0,0,0,0.06), 0 3px 7px rgba(0,0,0,0.08);
+      --shadow-modal: 0 40px 30px rgba(0,0,0,0.12), 0 15px 15px rgba(0,0,0,0.08), 0 4px 8px rgba(0,0,0,0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      font-feature-settings: "ss01" on, "cv05" on;
+      background-color: var(--canvas-alt);
+      color: var(--body);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--canvas-alt); }
+    ::-webkit-scrollbar-thumb { background: #c5c5c5; border-radius: var(--rounded-sm); }
+    ::-webkit-scrollbar-thumb:hover { background: #999; }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 32px 24px;
+      width: 100%;
+      flex: 1;
+    }
+
+    /* Header Nav */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-md);
+      margin-bottom: 24px;
+      box-shadow: var(--shadow-layered-sm);
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      background: var(--primary);
+      color: var(--on-primary);
+      border-radius: var(--rounded-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 16px;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-info h1 {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+    }
+
+    .brand-info p {
+      font-size: 12px;
+      color: var(--body-mid);
+      font-weight: 400;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--body-mid);
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: rgba(0, 215, 34, 0.08);
+      border: 1px solid rgba(0, 215, 34, 0.3);
+      color: #008715;
+      border-radius: var(--rounded-full);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--accent-green);
+      border-radius: var(--rounded-full);
+    }
+
+    .status-pill.offline {
+      background: rgba(238, 29, 54, 0.08);
+      border-color: rgba(238, 29, 54, 0.3);
+      color: var(--accent-red);
+    }
+    .status-pill.offline .status-dot {
+      background: var(--accent-red);
+    }
+
+    /* Tabs Navigation */
+    .tabs-nav {
+      display: flex;
+      gap: 8px;
+      background: var(--canvas);
+      padding: 6px;
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-md);
+      margin-bottom: 24px;
+      box-shadow: var(--shadow-layered-sm);
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--body-mid);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--rounded-sm);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: var(--ink);
+      background: var(--canvas-soft);
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: var(--on-primary);
+      border-color: var(--primary);
+    }
+
+    .tab-btn .tab-badge {
+      padding: 2px 6px;
+      background: var(--canvas-soft);
+      color: var(--body);
+      border-radius: var(--rounded-sm);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .tab-btn.active .tab-badge {
+      background: rgba(255, 255, 255, 0.2);
+      color: var(--on-primary);
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-md);
+      padding: 24px;
+      box-shadow: var(--shadow-layered-sm);
+      margin-bottom: 24px;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .card:hover {
+      box-shadow: var(--shadow-layered-md);
+      border-color: #c5c5c5;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--hairline-subtle);
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: -0.2px;
+    }
+
+    /* Form Controls */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--ink-strong);
+      margin-bottom: 6px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-sm);
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 13.5px;
+      transition: all 0.15s ease;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--ink);
+      box-shadow: 0 0 0 2px rgba(8, 8, 8, 0.08);
+    }
+
+    input::placeholder {
+      color: var(--mute-soft);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 640px) {
+      .form-row { grid-template-columns: 1fr; }
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 16px;
+      font-size: 13.5px;
+      font-weight: 500;
+      border-radius: var(--rounded-sm);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      font-family: inherit;
+      letter-spacing: -0.1px;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--on-primary);
+      border-color: var(--primary);
+    }
+
+    .btn-primary:hover {
+      background: #222;
+      border-color: #222;
+    }
+
+    .btn-secondary {
+      background: var(--canvas);
+      color: var(--ink);
+      border-color: var(--hairline);
+    }
+
+    .btn-secondary:hover {
+      background: var(--canvas-soft);
+      border-color: #bbb;
+    }
+
+    .btn-danger {
+      background: #fff5f5;
+      color: var(--accent-red);
+      border-color: #fed7d7;
+    }
+
+    .btn-danger:hover {
+      background: var(--accent-red);
+      color: #fff;
+      border-color: var(--accent-red);
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12.5px;
+    }
+
+    .btn-block {
+      width: 100%;
+    }
+
+    /* Toggle Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 38px;
+      height: 20px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #d1d5db;
+      transition: .25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: var(--rounded-full);
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: var(--rounded-full);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    input:checked + .slider {
+      background-color: var(--primary);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(18px);
+    }
+
+    /* Collapsible Add Channel Drawer */
+    #addChannelDrawer {
+      display: none;
+      animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    #addChannelDrawer.open {
+      display: block;
+    }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Full-Width Channel Row Cards */
+    .channels-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .monitor-row-card {
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-md);
+      padding: 18px 24px;
+      transition: all 0.2s ease;
+      border-left: 4px solid var(--accent-blue);
+      box-shadow: var(--shadow-layered-sm);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .monitor-row-card:hover {
+      border-color: #bbb;
+      border-left-color: var(--primary);
+      box-shadow: var(--shadow-layered-md);
+    }
+
+    .monitor-row-card.inactive {
+      opacity: 0.65;
+      border-left-color: var(--mute-soft);
+    }
+
+    .channel-main-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 240px;
+      flex: 1.2;
+    }
+
+    .channel-title {
+      font-weight: 600;
+      font-size: 15.5px;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .channel-target {
+      font-size: 12.5px;
+      color: var(--body-mid);
+      font-family: 'Inconsolata', monospace;
+    }
+
+    .channel-meta-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      flex: 1.5;
+    }
+
+    .dedup-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: var(--rounded-sm);
+      background: rgba(59, 137, 255, 0.08);
+      color: var(--accent-blue-deep);
+      border: 1px solid rgba(59, 137, 255, 0.25);
+      font-family: 'Inconsolata', monospace;
+      font-weight: 500;
+    }
+
+    .meta-tag {
+      background: var(--canvas-soft);
+      padding: 4px 10px;
+      border-radius: var(--rounded-sm);
+      border: 1px solid var(--hairline);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--body);
+    }
+
+    .channel-actions-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    @media (max-width: 960px) {
+      .monitor-row-card {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .channel-actions-group {
+        width: 100%;
+        justify-content: space-between;
+        padding-top: 12px;
+        border-top: 1px solid var(--hairline-subtle);
+      }
+    }
+
+    /* Data Table */
+    .table-container {
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-layered-sm);
+    }
+
+    .table-toolbar {
+      padding: 16px 20px;
+      background: var(--canvas);
+      border-bottom: 1px solid var(--hairline);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .toolbar-filters {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      max-width: 650px;
+    }
+
+    .search-input {
+      position: relative;
+      flex: 1;
+    }
+
+    .search-input input {
+      padding-left: 32px;
+      background: var(--canvas-soft);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--mute);
+      font-size: 13px;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      max-height: 680px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      text-align: left;
+    }
+
+    thead th {
+      background: var(--canvas-soft);
+      padding: 11px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--body-mid);
+      border-bottom: 1px solid var(--hairline);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      white-space: nowrap;
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--hairline-subtle);
+      transition: background 0.12s ease;
+    }
+
+    tbody tr:hover {
+      background: #fafbfc;
+    }
+
+    td {
+      padding: 14px 16px;
+      vertical-align: top;
+      color: var(--body);
+    }
+
+    .msg-text-cell {
+      max-width: 480px;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+
+    .msg-text {
+      white-space: pre-wrap;
+      font-family: inherit;
+      color: var(--ink);
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .msg-text.expanded {
+      -webkit-line-clamp: unset;
+    }
+
+    .expand-btn {
+      color: var(--accent-blue-deep);
+      background: none;
+      border: none;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 4px;
+      padding: 0;
+      text-decoration: underline;
+    }
+
+    .post-link-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: var(--canvas);
+      color: var(--ink);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-sm);
+      font-size: 12px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .post-link-btn:hover {
+      background: var(--primary);
+      color: var(--on-primary);
+      border-color: var(--primary);
+    }
+
+    .badge-metric {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 11px;
+      color: var(--body-mid);
+      background: var(--canvas-soft);
+      border: 1px solid var(--hairline);
+      padding: 2px 6px;
+      border-radius: var(--rounded-sm);
+      font-family: 'Inconsolata', monospace;
+    }
+
+    .badge-media {
+      background: rgba(122, 61, 255, 0.08);
+      color: var(--accent-purple);
+      border: 1px solid rgba(122, 61, 255, 0.2);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 6px;
+      border-radius: var(--rounded-sm);
+    }
+
+    /* Status Badges in Logs */
+    .status-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: var(--rounded-sm);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-family: 'Inconsolata', monospace;
+    }
+
+    .status-tag.SUCCESS {
+      background: rgba(0, 215, 34, 0.1);
+      color: #008715;
+      border: 1px solid rgba(0, 215, 34, 0.3);
+    }
+
+    .status-tag.ERROR {
+      background: rgba(238, 29, 54, 0.1);
+      color: var(--accent-red);
+      border: 1px solid rgba(238, 29, 54, 0.3);
+    }
+
+    .status-tag.SKIPPED_DEDUP {
+      background: rgba(59, 137, 255, 0.1);
+      color: var(--accent-blue-deep);
+      border: 1px solid rgba(59, 137, 255, 0.3);
+    }
+
+    .status-tag.INFO {
+      background: var(--canvas-soft);
+      color: var(--body-mid);
+      border: 1px solid var(--hairline);
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-md);
+      padding: 16px 20px;
+      box-shadow: var(--shadow-layered-sm);
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--ink);
+      font-family: 'Inconsolata', monospace;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(8, 8, 8, 0.6);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-md);
+      width: 100%;
+      max-width: 620px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-modal);
+    }
+
+    .modal-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--hairline);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: -0.2px;
+    }
+
+    .modal-body {
+      padding: 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--hairline);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      background: var(--canvas-soft);
+      border-radius: 0 0 var(--rounded-md) var(--rounded-md);
+    }
+
+    .json-code {
+      background: #0f141c;
+      padding: 14px;
+      border-radius: var(--rounded-sm);
+      font-family: 'Inconsolata', monospace;
+      font-size: 12.5px;
+      color: #79c0ff;
+      overflow-x: auto;
+      max-height: 400px;
+      line-height: 1.4;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--primary);
+      color: var(--on-primary);
+      border-radius: var(--rounded-sm);
+      padding: 12px 18px;
+      box-shadow: var(--shadow-modal);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 1000;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast.error {
+      background: var(--accent-red);
+    }
+
+    .dialog-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--canvas);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-sm);
+      margin-bottom: 8px;
+      transition: all 0.15s ease;
+    }
+
+    .dialog-item:hover {
+      border-color: #bbb;
+      background: var(--canvas-soft);
+    }
+
+    .auth-step { display: none; }
+    .auth-step.active { display: block; }
+    
+    .auth-box {
+      background: var(--canvas-soft);
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-sm);
+      padding: 18px;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand-group">
+        <div class="brand-mark">WF</div>
+        <div class="brand-info">
+          <span class="eyebrow">Enterprise Telethon Bridge (SQLite)</span>
+          <h1>Telegram Monitor</h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div id="statusBadge" class="status-pill">
+          <span class="status-dot"></span>
+          <span id="statusUser">Подключение...</span>
+        </div>
+        <button id="openSettingsModalBtn" class="btn btn-secondary btn-sm">⚙️ MTProto & Вход</button>
+        <a href="/docs" target="_blank" class="btn btn-secondary btn-sm">API Docs</a>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" onclick="switchTab('feed')">
+        📰 Сообщения
+        <span id="tabMessagesCount" class="tab-badge">0</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('channels')">
+        📡 Каналы
+        <span id="tabChannelsCount" class="tab-badge">0</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('integration')">
+        🔗 Интеграция (n8n)
+      </button>
+      <button class="tab-btn" onclick="switchTab('logs')">
+        📋 Логи
+        <span id="tabLogsCount" class="tab-badge">0</span>
+      </button>
+    </div>
+
+    <!-- ==================== TAB 1: FEED / MESSAGES ==================== -->
+    <div id="tab-feed" class="tab-pane active">
+      <div class="table-container">
+        <div class="table-toolbar">
+          <div class="toolbar-filters" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; max-width: none; flex: 1;">
+            <div class="search-input" style="min-width: 200px; flex: 1.5;">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="tableSearch" placeholder="Поиск по тексту...">
+            </div>
+            <select id="filterChatSelect" style="width: 170px; background: var(--canvas-soft);">
+              <option value="ALL">Все каналы</option>
+            </select>
+            <input type="number" id="filterMinViews" placeholder="👁️ Просмотры от..." min="0" style="width: 140px; background: var(--canvas-soft);">
+            <input type="number" id="filterMinReactions" placeholder="❤️ Реакции от..." min="0" style="width: 130px; background: var(--canvas-soft);">
+            <select id="sortMessagesSelect" style="width: 175px; background: var(--canvas-soft);">
+              <option value="date_desc">📅 Сначала новые</option>
+              <option value="views_desc">👁️ Больше просмотров</option>
+              <option value="reactions_desc">❤️ Больше реакций</option>
+              <option value="date_asc">📅 Сначала старые</option>
+            </select>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="refreshAllBtn" class="btn btn-secondary btn-sm">🔄 Обновить</button>
+            <button id="viewJsonBtn" class="btn btn-secondary btn-sm">📄 JSON</button>
+            <button id="sendTableToN8nBtn" class="btn btn-primary btn-sm">📤 В n8n</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 60px;">ID</th>
+                <th style="width: 140px;">Дата</th>
+                <th style="width: 170px;">Канал</th>
+                <th>Текст сообщения</th>
+                <th style="width: 110px;">Метрики</th>
+                <th style="width: 110px;">Пост</th>
+              </tr>
+            </thead>
+            <tbody id="messagesTableBody">
+              <tr>
+                <td colspan="6" style="text-align: center; padding: 48px; color: var(--mute);">
+                  Загрузка сообщений из активных каналов...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 2: CHANNELS ==================== -->
+    <div id="tab-channels" class="tab-pane">
+      
+      <!-- Collapsible Add Channel Drawer -->
+      <div id="addChannelDrawer" class="card" style="border-left: 4px solid var(--primary); margin-bottom: 24px;">
+        <div class="card-header">
+          <div>
+            <span class="eyebrow">Новый источник</span>
+            <div class="card-title">Добавить канал или чат в мониторинг</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="openDialogsModalBtn" class="btn btn-secondary btn-sm">📂 Из диалогов</button>
+            <button id="closeAddChannelBtn" class="btn btn-secondary btn-sm">✕ Закрыть</button>
+          </div>
+        </div>
+        <form id="addMonitorForm">
+          <div class="form-group">
+            <label for="chatTarget">Канал или чат (@username, ссылка t.me/... или числовой ID):</label>
+            <input type="text" id="chatTarget" placeholder="https://t.me/theyseeku или @theyseeku" required spellcheck="false">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="intervalMin">Интервал опроса:</label>
+              <select id="intervalMin">
+                <option value="15">Каждые 15 минут</option>
+                <option value="30">Каждые 30 минут</option>
+                <option value="60" selected>Каждый 1 час</option>
+                <option value="120">Каждые 2 часа</option>
+                <option value="360">Каждые 6 часов</option>
+                <option value="1440">Раз в сутки (24 ч)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="msgLimit">Лимит постов за опрос:</label>
+              <input type="number" id="msgLimit" value="20" min="1" max="100">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">+ Добавить канал в мониторинг</button>
+        </form>
+      </div>
+
+      <!-- Channels List Section Header with Action Buttons -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <span class="eyebrow">Список каналов (SQLite)</span>
+          <h2 style="font-size: 16px; font-weight: 600; color: var(--ink);">Отслеживаемые источники (<span id="monitorsCount">0</span>)</h2>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button id="toggleAddChannelBtn" class="btn btn-primary btn-sm">➕ Добавить канал</button>
+          <button id="refreshMonitorsBtn" class="btn btn-secondary btn-sm">🔄 Обновить статус</button>
+        </div>
+      </div>
+
+      <!-- Full-Width Horizontal Channels List -->
+      <div id="monitorsList" class="channels-list">
+        <div style="text-align: center; color: var(--mute); padding: 36px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-md);">Загрузка списка каналов...</div>
+      </div>
+
+    </div>
+
+    <!-- ==================== TAB 3: INTEGRATION ==================== -->
+    <div id="tab-integration" class="tab-pane">
+      <div class="card" style="max-width: 800px; margin: 0 auto 24px auto;">
+        <div class="card-header">
+          <div>
+            <span class="eyebrow">Оркестрация</span>
+            <div class="card-title">n8n Webhook Bridge</div>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="webhookUrl">Webhook URL (n8n Webhook Node):</label>
+          <input type="text" id="webhookUrl" placeholder="https://piramiza.com/webhook/..." spellcheck="false">
+          <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
+            💡 Для боевого запуска используйте Production URL (после активации переключателя Active в n8n).
+          </p>
+        </div>
+
+        <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; padding: 14px; background: var(--canvas-soft); border-radius: var(--rounded-sm); border: 1px solid var(--hairline);">
+          <div>
+            <div style="font-size: 13.5px; font-weight: 500; color: var(--ink);">Автоматическая отправка по расписанию</div>
+            <div style="font-size: 11.5px; color: var(--body-mid);">При каждом плановом опросе отправлять в n8n только новые уникальные сообщения</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="autoWebhook" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button id="saveWebhookBtn" class="btn btn-primary" style="flex: 1;">💾 Сохранить настройки Webhook</button>
+          <button id="testWebhookBtn" class="btn btn-secondary">⚡ Тестовый пуш в n8n</button>
+        </div>
+      </div>
+
+      <div class="card" style="max-width: 800px; margin: 0 auto;">
+        <span class="eyebrow">Схема данных</span>
+        <div class="card-title" style="margin-bottom: 10px;">Пример JSON-пакета, отправляемого в n8n</div>
+        <pre class="json-code">{
+  "source": "telethon_monitor",
+  "event": "telegram_messages_batch",
+  "timestamp": "2026-08-29T15:20:00Z",
+  "chat_id": 1143063102,
+  "chat_title": "Finder.work: работа и вакансии",
+  "chat_username": "theyseeku",
+  "messages_count": 1,
+  "messages": [
+    {
+      "id": 38115,
+      "date": "2026-08-29T12:00:00+00:00",
+      "sender": "Finder.work",
+      "sender_id": -1001143063102,
+      "is_outgoing": false,
+      "text": "Текст вакансии или сообщения...",
+      "has_media": false,
+      "views": 320,
+      "forwards": 2,
+      "post_url": "https://t.me/theyseeku/38115"
+    }
+  ]
+}</pre>
+      </div>
+    </div>
+
+    <!-- ==================== TAB 4: LOGS ==================== -->
+    <div id="tab-logs" class="tab-pane">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="eyebrow">Всего записей в SQLite</span>
+          <div id="statTotalLogs" class="stat-value">0</div>
+        </div>
+        <div class="stat-card">
+          <span class="eyebrow">Уникальных постов в БД</span>
+          <div id="statSentMessagesDb" class="stat-value">0</div>
+        </div>
+        <div class="stat-card">
+          <span class="eyebrow">Статус БД</span>
+          <div class="stat-value" style="font-size: 16px; color: #008715; display: flex; align-items: center; gap: 6px; height: 36px;">
+            <span class="status-dot"></span> SQLite Active
+          </div>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <div class="table-toolbar">
+          <div class="toolbar-filters">
+            <label style="margin: 0; font-size: 13px; font-weight: 500;">Статус:</label>
+            <select id="filterLogStatus" style="width: 180px; background: var(--canvas-soft);">
+              <option value="ALL">Все события</option>
+              <option value="SUCCESS">Только SUCCESS</option>
+              <option value="ERROR">Только ERROR</option>
+              <option value="SKIPPED_DEDUP">Только SKIPPED (Дубли)</option>
+              <option value="INFO">Только INFO</option>
+            </select>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="refreshLogsBtn" class="btn btn-secondary btn-sm">🔄 Обновить логи</button>
+            <button id="clearLogsBtn" class="btn btn-danger btn-sm">🗑️ Очистить журнал</button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 140px;">Время</th>
+                <th style="width: 130px;">Событие</th>
+                <th style="width: 170px;">Канал</th>
+                <th style="width: 120px;">Статус</th>
+                <th>Детали события</th>
+              </tr>
+            </thead>
+            <tbody id="logsTableBody">
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 48px; color: var(--mute);">
+                  Загрузка журнала логов из SQLite...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal: Edit Monitor (Интервал и Лимиты) -->
+  <div id="editMonitorModal" class="modal-overlay">
+    <div class="modal" style="max-width: 480px;">
+      <div class="modal-header">
+        <div>
+          <span class="eyebrow">Параметры источника</span>
+          <h3 id="editModalTitle">Редактирование канала</h3>
+        </div>
+        <button id="closeEditModalBtn" class="btn btn-secondary btn-sm">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editMonitorId">
+        <div class="form-group">
+          <label for="editIntervalMin">Интервал авто-опроса (Cron):</label>
+          <select id="editIntervalMin">
+            <option value="15">Каждые 15 минут</option>
+            <option value="30">Каждые 30 минут</option>
+            <option value="60">Каждый 1 час</option>
+            <option value="120">Каждые 2 часа</option>
+            <option value="360">Каждые 6 часов</option>
+            <option value="1440">Раз в сутки (24 ч)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="editMsgLimit">Лимит постов за один опрос (1 - 100):</label>
+          <input type="number" id="editMsgLimit" min="1" max="100">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelEditBtn" class="btn btn-secondary btn-sm">Отмена</button>
+        <button id="saveEditBtn" class="btn btn-primary btn-sm">💾 Сохранить изменения</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Settings & MTProto Auth -->
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <span class="eyebrow">Конфигурация</span>
+          <h3>Настройки MTProto & Авторизация Telegram</h3>
+        </div>
+        <button id="closeSettingsModal" class="btn btn-secondary btn-sm">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom: 24px;">
+          <span class="eyebrow">1. Ключи приложения (my.telegram.org)</span>
+          <div class="form-row" style="margin-top: 8px;">
+            <div class="form-group">
+              <label for="settingsApiId">API ID:</label>
+              <input type="text" id="settingsApiId" placeholder="37356882">
+            </div>
+            <div class="form-group">
+              <label for="settingsApiHash">API HASH:</label>
+              <input type="text" id="settingsApiHash" placeholder="56433eca3bccdaec9c5504bbb592b119">
+            </div>
+          </div>
+          <button id="saveApiKeysBtn" class="btn btn-secondary btn-sm">💾 Сохранить в .env</button>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--hairline); margin: 20px 0;">
+
+        <div>
+          <span class="eyebrow">2. Авторизация аккаунта Telegram</span>
+          
+          <div id="authStatusBox" class="auth-box" style="display: none; border-left: 3px solid var(--accent-green); background: #f6fdf8;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="font-weight: 600; color: #008715; font-size: 14px;">✅ Аккаунт авторизован</div>
+                <div id="authUserDetails" style="font-size: 12.5px; color: var(--body-mid); margin-top: 4px;"></div>
+              </div>
+              <button id="logoutBtn" class="btn btn-danger btn-sm">Выйти</button>
+            </div>
+          </div>
+
+          <div id="authWizardBox" class="auth-box">
+            <div id="stepPhone" class="auth-step active">
+              <div class="form-group">
+                <label for="authPhone">Номер телефона аккаунта:</label>
+                <input type="text" id="authPhone" placeholder="+79255223653">
+              </div>
+              <button id="sendCodeBtn" class="btn btn-primary btn-block">Получить код в Telegram</button>
+            </div>
+
+            <div id="stepCode" class="auth-step">
+              <div style="font-size: 12.5px; color: var(--accent-blue-deep); margin-bottom: 12px;">
+                📩 Код подтверждения отправлен в приложение Telegram на номер <b id="phoneDisplay"></b>
+              </div>
+              <div class="form-group">
+                <label for="authCode">Код из Telegram:</label>
+                <input type="text" id="authCode" placeholder="97519" maxlength="8">
+              </div>
+              <button id="submitCodeBtn" class="btn btn-primary btn-block">Подтвердить вход</button>
+              <button id="backToPhoneBtn" class="btn btn-secondary btn-sm btn-block" style="margin-top: 8px;">← Изменить номер</button>
+            </div>
+
+            <div id="step2fa" class="auth-step">
+              <div style="font-size: 12.5px; color: var(--accent-orange); margin-bottom: 12px;">
+                🔐 Включена двухфакторная аутентификация (2FA). Введите ваш облачный пароль:
+              </div>
+              <div class="form-group">
+                <label for="auth2faPassword">Пароль 2FA:</label>
+                <input type="password" id="auth2faPassword" placeholder="Ваш пароль">
+              </div>
+              <button id="submit2faBtn" class="btn btn-primary btn-block">Войти с 2FA паролем</button>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Dialogs Picker -->
+  <div id="dialogsModal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <span class="eyebrow">Telegram Channels</span>
+          <h3>Ваши диалоги и каналы</h3>
+        </div>
+        <button id="closeDialogsModal" class="btn btn-secondary btn-sm">✕</button>
+      </div>
+      <div id="dialogsModalBody" class="modal-body">
+        <div style="text-align: center; padding: 24px; color: var(--mute);">Загрузка диалогов...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: JSON Viewer -->
+  <div id="jsonModal" class="modal-overlay">
+    <div class="modal" style="max-width: 780px;">
+      <div class="modal-header">
+        <div>
+          <span class="eyebrow">Payload Inspector</span>
+          <h3>JSON Массив (Формат для n8n)</h3>
+        </div>
+        <button id="closeJsonModal" class="btn btn-secondary btn-sm">✕</button>
+      </div>
+      <div class="modal-body">
+        <pre id="jsonViewerCode" class="json-code"></pre>
+      </div>
+      <div class="modal-footer">
+        <button id="copyJsonBtn" class="btn btn-secondary btn-sm">📋 Скопировать JSON</button>
+        <button id="downloadJsonBtn" class="btn btn-primary btn-sm">⬇️ Скачать файл</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast">
+    <span id="toastMsg">Уведомление</span>
+  </div>
+
+  <script>
+    let currentMonitors = [];
+    let currentMessages = [];
+    let currentLogs = [];
+    let currentPhone = '';
+    let currentPhoneCodeHash = '';
+
+    const statusBadge = document.getElementById('statusBadge');
+    const statusUser = document.getElementById('statusUser');
+    const monitorsList = document.getElementById('monitorsList');
+    const monitorsCount = document.getElementById('monitorsCount');
+    const tabMessagesCount = document.getElementById('tabMessagesCount');
+    const tabChannelsCount = document.getElementById('tabChannelsCount');
+    const tabLogsCount = document.getElementById('tabLogsCount');
+    const statTotalLogs = document.getElementById('statTotalLogs');
+    const statSentMessagesDb = document.getElementById('statSentMessagesDb');
+    
+    // Add Channel Drawer Elements
+    const addChannelDrawer = document.getElementById('addChannelDrawer');
+    const toggleAddChannelBtn = document.getElementById('toggleAddChannelBtn');
+    const closeAddChannelBtn = document.getElementById('closeAddChannelBtn');
+    const addMonitorForm = document.getElementById('addMonitorForm');
+
+    // Edit Channel Modal Elements
+    const editMonitorModal = document.getElementById('editMonitorModal');
+    const editModalTitle = document.getElementById('editModalTitle');
+    const editMonitorId = document.getElementById('editMonitorId');
+    const editIntervalMin = document.getElementById('editIntervalMin');
+    const editMsgLimit = document.getElementById('editMsgLimit');
+    const closeEditModalBtn = document.getElementById('closeEditModalBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const saveEditBtn = document.getElementById('saveEditBtn');
+
+    const webhookUrlInput = document.getElementById('webhookUrl');
+    const autoWebhookInput = document.getElementById('autoWebhook');
+    const saveWebhookBtn = document.getElementById('saveWebhookBtn');
+    const testWebhookBtn = document.getElementById('testWebhookBtn');
+    const messagesTableBody = document.getElementById('messagesTableBody');
+    const logsTableBody = document.getElementById('logsTableBody');
+    const filterChatSelect = document.getElementById('filterChatSelect');
+    const filterLogStatus = document.getElementById('filterLogStatus');
+    const tableSearch = document.getElementById('tableSearch');
+    const viewJsonBtn = document.getElementById('viewJsonBtn');
+    const refreshAllBtn = document.getElementById('refreshAllBtn');
+    const refreshLogsBtn = document.getElementById('refreshLogsBtn');
+    const clearLogsBtn = document.getElementById('clearLogsBtn');
+    const jsonModal = document.getElementById('jsonModal');
+    const jsonViewerCode = document.getElementById('jsonViewerCode');
+    const dialogsModal = document.getElementById('dialogsModal');
+    const dialogsModalBody = document.getElementById('dialogsModalBody');
+    
+    const settingsModal = document.getElementById('settingsModal');
+    const openSettingsModalBtn = document.getElementById('openSettingsModalBtn');
+    const closeSettingsModal = document.getElementById('closeSettingsModal');
+    const settingsApiId = document.getElementById('settingsApiId');
+    const settingsApiHash = document.getElementById('settingsApiHash');
+    const saveApiKeysBtn = document.getElementById('saveApiKeysBtn');
+    const authStatusBox = document.getElementById('authStatusBox');
+    const authUserDetails = document.getElementById('authUserDetails');
+    const authWizardBox = document.getElementById('authWizardBox');
+    const stepPhone = document.getElementById('stepPhone');
+    const stepCode = document.getElementById('stepCode');
+    const step2fa = document.getElementById('step2fa');
+    const authPhone = document.getElementById('authPhone');
+    const authCode = document.getElementById('authCode');
+    const auth2faPassword = document.getElementById('auth2faPassword');
+    const sendCodeBtn = document.getElementById('sendCodeBtn');
+    const submitCodeBtn = document.getElementById('submitCodeBtn');
+    const submit2faBtn = document.getElementById('submit2faBtn');
+    const backToPhoneBtn = document.getElementById('backToPhoneBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const phoneDisplay = document.getElementById('phoneDisplay');
+
+    // Toggle Add Channel Drawer
+    toggleAddChannelBtn.addEventListener('click', () => {
+      const isOpen = addChannelDrawer.classList.toggle('open');
+      toggleAddChannelBtn.textContent = isOpen ? '✕ Закрыть форму' : '➕ Добавить канал';
+      toggleAddChannelBtn.classList.toggle('btn-secondary', isOpen);
+      toggleAddChannelBtn.classList.toggle('btn-primary', !isOpen);
+      if (isOpen) {
+        document.getElementById('chatTarget').focus();
+      }
+    });
+
+    closeAddChannelBtn.addEventListener('click', () => {
+      addChannelDrawer.classList.remove('open');
+      toggleAddChannelBtn.textContent = '➕ Добавить канал';
+      toggleAddChannelBtn.className = 'btn btn-primary btn-sm';
+    });
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+
+      const selectedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick').includes(tabId));
+      if (selectedBtn) selectedBtn.classList.add('active');
+
+      const targetPane = document.getElementById(`tab-${tabId}`);
+      if (targetPane) targetPane.classList.add('active');
+
+      if (tabId === 'logs') {
+        loadLogs();
+      }
+    }
+
+    function showToast(msg, isError = false) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      toast.className = `toast show ${isError ? 'error' : ''}`;
+      toastMsg.textContent = msg;
+      setTimeout(() => { toast.className = 'toast'; }, 3500);
+    }
+
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        if (data.authorized && data.user) {
+          statusUser.textContent = `${data.user.first_name} (@${data.user.username || 'id' + data.user.id})`;
+          statusBadge.classList.remove('offline');
+        } else {
+          statusUser.textContent = 'Требуется авторизация';
+          statusBadge.classList.add('offline');
+        }
+      } catch (e) {
+        statusUser.textContent = 'Offline';
+        statusBadge.classList.add('offline');
+      }
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        const data = await res.json();
+        settingsApiId.value = data.api_id || '';
+        settingsApiHash.value = data.api_hash || '';
+
+        if (data.is_authorized && data.user) {
+          authStatusBox.style.display = 'block';
+          authWizardBox.style.display = 'none';
+          authUserDetails.textContent = `${data.user.first_name} ${data.user.last_name || ''} (@${data.user.username || 'нет юзернейма'}) • ID: ${data.user.id}`;
+        } else {
+          authStatusBox.style.display = 'none';
+          authWizardBox.style.display = 'block';
+          setAuthStep(1);
+        }
+      } catch (e) {
+        showToast('Ошибка загрузки настроек', true);
+      }
+    }
+
+    function setAuthStep(step) {
+      stepPhone.classList.toggle('active', step === 1);
+      stepCode.classList.toggle('active', step === 2);
+      step2fa.classList.toggle('active', step === 3);
+    }
+
+    saveApiKeysBtn.addEventListener('click', async () => {
+      const apiId = settingsApiId.value.trim();
+      const apiHash = settingsApiHash.value.trim();
+      if (!apiId || !apiHash) {
+        showToast('Заполните API ID и API HASH', true);
+        return;
+      }
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_id: apiId, api_hash: apiHash })
+        });
+        if (res.ok) {
+          showToast('Ключи сохранены в .env');
+          checkHealth();
+          loadSettings();
+        }
+      } catch (e) {
+        showToast('Ошибка сохранения ключей', true);
+      }
+    });
+
+    sendCodeBtn.addEventListener('click', async () => {
+      const phone = authPhone.value.trim();
+      if (!phone) {
+        showToast('Введите номер телефона', true);
+        return;
+      }
+      currentPhone = phone;
+      sendCodeBtn.disabled = true;
+      sendCodeBtn.textContent = 'Отправка...';
+
+      try {
+        const res = await fetch('/api/auth/send-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: phone })
+        });
+        const data = await res.json();
+        sendCodeBtn.disabled = false;
+        sendCodeBtn.textContent = 'Получить код в Telegram';
+
+        if (res.ok && data.status === 'code_sent') {
+          currentPhoneCodeHash = data.phone_code_hash;
+          phoneDisplay.textContent = phone;
+          setAuthStep(2);
+          showToast(data.message);
+        } else {
+          showToast(data.detail || 'Ошибка отправки кода', true);
+        }
+      } catch (e) {
+        sendCodeBtn.disabled = false;
+        sendCodeBtn.textContent = 'Получить код в Telegram';
+        showToast('Ошибка отправки кода', true);
+      }
+    });
+
+    submitCodeBtn.addEventListener('click', async () => {
+      const code = authCode.value.trim();
+      if (!code) {
+        showToast('Введите код', true);
+        return;
+      }
+      submitCodeBtn.disabled = true;
+      submitCodeBtn.textContent = 'Проверка...';
+
+      try {
+        const res = await fetch('/api/auth/sign-in', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: currentPhone,
+            code: code,
+            phone_code_hash: currentPhoneCodeHash
+          })
+        });
+        const data = await res.json();
+        submitCodeBtn.disabled = false;
+        submitCodeBtn.textContent = 'Подтвердить вход';
+
+        if (data.status === '2fa_required') {
+          setAuthStep(3);
+          showToast(data.message);
+        } else if (data.status === 'authorized') {
+          showToast(data.message);
+          checkHealth();
+          loadSettings();
+        } else {
+          showToast(data.detail || 'Неверный код', true);
+        }
+      } catch (e) {
+        submitCodeBtn.disabled = false;
+        submitCodeBtn.textContent = 'Подтвердить вход';
+        showToast('Ошибка проверки кода', true);
+      }
+    });
+
+    submit2faBtn.addEventListener('click', async () => {
+      const pwd = auth2faPassword.value.trim();
+      if (!pwd) {
+        showToast('Введите пароль 2FA', true);
+        return;
+      }
+      submit2faBtn.disabled = true;
+      submit2faBtn.textContent = 'Проверка 2FA...';
+
+      try {
+        const res = await fetch('/api/auth/sign-in', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: currentPhone,
+            code: authCode.value.trim(),
+            phone_code_hash: currentPhoneCodeHash,
+            password: pwd
+          })
+        });
+        const data = await res.json();
+        submit2faBtn.disabled = false;
+        submit2faBtn.textContent = 'Войти с 2FA паролем';
+
+        if (data.status === 'authorized') {
+          showToast(data.message);
+          checkHealth();
+          loadSettings();
+        } else {
+          showToast(data.detail || 'Неверный пароль 2FA', true);
+        }
+      } catch (e) {
+        submit2faBtn.disabled = false;
+        submit2faBtn.textContent = 'Войти с 2FA паролем';
+        showToast('Ошибка проверки 2FA пароля', true);
+      }
+    });
+
+    backToPhoneBtn.addEventListener('click', () => setAuthStep(1));
+
+    logoutBtn.addEventListener('click', async () => {
+      if (!confirm('Выйти из Telegram-аккаунта и сбросить сессию?')) return;
+      try {
+        const res = await fetch('/api/auth/logout', { method: 'POST' });
+        if (res.ok) {
+          showToast('Сессия сброшена');
+          checkHealth();
+          loadSettings();
+        }
+      } catch (e) {
+        showToast('Ошибка при выходе', true);
+      }
+    });
+
+    openSettingsModalBtn.addEventListener('click', () => {
+      settingsModal.classList.add('active');
+      loadSettings();
+    });
+    closeSettingsModal.addEventListener('click', () => settingsModal.classList.remove('active'));
+
+    // Load Monitors from SQLite
+    async function loadConfig() {
+      try {
+        const res = await fetch('/api/monitors');
+        const data = await res.json();
+        webhookUrlInput.value = data.webhook_url || '';
+        autoWebhookInput.checked = data.auto_webhook_enabled ?? true;
+        currentMonitors = data.monitors || [];
+        renderMonitors();
+      } catch (e) {
+        showToast('Ошибка загрузки конфигурации', true);
+      }
+    }
+
+    // Форматирование времени следующей отправки (last_checked + interval)
+    function formatNextRun(m) {
+      if (!m.is_active) return '<span style="color: var(--mute);">На паузе</span>';
+      if (!m.last_checked && !m.next_run) return '<span style="color: var(--accent-blue-deep);">При первом запуске</span>';
+      
+      try {
+        const nextDate = m.next_run ? new Date(m.next_run) : new Date(new Date(m.last_checked).getTime() + (m.interval_minutes || 60) * 60000);
+        const now = new Date();
+        const diffMs = nextDate.getTime() - now.getTime();
+        const timeFormatted = nextDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        if (diffMs <= 0) {
+          return `<b style="color: #008715;">Сейчас</b> (${timeFormatted})`;
+        }
+        
+        const diffMins = Math.round(diffMs / 60000);
+        if (diffMins < 60) {
+          return `<b>${timeFormatted}</b> (через ${diffMins} мин)`;
+        } else {
+          const hours = Math.floor(diffMins / 60);
+          const remainingMins = diffMins % 60;
+          return `<b>${timeFormatted}</b> (через ${hours}ч ${remainingMins}м)`;
+        }
+      } catch (e) {
+        return '—';
+      }
+    }
+
+    // Render Full-Width Horizontal Channels List
+    function renderMonitors() {
+      monitorsCount.textContent = currentMonitors.length;
+      tabChannelsCount.textContent = currentMonitors.length;
+
+      if (currentMonitors.length === 0) {
+        monitorsList.innerHTML = `
+          <div style="text-align: center; color: var(--mute); padding: 40px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-md);">
+            Нет добавленных каналов. Нажмите <b>«➕ Добавить канал»</b> выше, чтобы настроить первый источник!
+          </div>
+        `;
+        return;
+      }
+
+      monitorsList.innerHTML = currentMonitors.map(m => `
+        <div class="monitor-row-card ${m.is_active ? '' : 'inactive'}" id="monitor-${m.id}">
+          
+          <!-- Column 1: Titles -->
+          <div class="channel-main-info">
+            <div class="channel-title" title="${m.chat_title}">
+              ${m.chat_title}
+            </div>
+            <div class="channel-target">
+              ${m.chat_username ? '@' + m.chat_username : 'ID: ' + m.chat_id}
+            </div>
+          </div>
+
+          <!-- Column 2: Badges & Metrics -->
+          <div class="channel-meta-group">
+            <div class="dedup-badge" title="Отправлено сообщений с дедубликацией">
+              🛡️ Отправлено в n8n: <b>${m.sent_count || 0}</b> (Last ID: ${m.last_sent_message_id || 0})
+            </div>
+            <span class="meta-tag">⏱️ Каждые ${m.interval_minutes} мин</span>
+            <span class="meta-tag">📊 Лимит: ${m.limit}</span>
+            <span class="meta-tag" title="Время последней проверки">🕒 Проверен: ${m.last_checked ? new Date(m.last_checked).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Еще нет'}</span>
+            <span class="meta-tag" style="background: rgba(0, 215, 34, 0.08); border-color: rgba(0, 215, 34, 0.3); color: #008715; font-weight: 500;" title="Расчетное время следующей отправки (последний запуск + интервал)">
+              ⏳ След. отправка: ${formatNextRun(m)}
+            </span>
+          </div>
+
+          <!-- Column 3: Actions & Toggle -->
+          <div class="channel-actions-group">
+            <label class="switch" title="Включить / Приостановить мониторинг">
+              <input type="checkbox" ${m.is_active ? 'checked' : ''} onchange="toggleMonitor('${m.id}', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <button class="btn btn-primary btn-sm" onclick="runMonitor('${m.id}')">⚡ Запустить</button>
+            <button class="btn btn-secondary btn-sm" onclick="openEditModal('${m.id}')" title="Изменить интервал и лимиты">✏️ Редактировать</button>
+            <button class="btn btn-secondary btn-sm" onclick="resetDedup('${m.id}')" title="Сбросить историю дубликатов">🔄 Сброс дублей</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteMonitor('${m.id}')">Удалить</button>
+          </div>
+
+        </div>
+      `).join('');
+
+      filterChatSelect.innerHTML = '<option value="ALL">Все каналы</option>' + 
+        currentMonitors.map(m => `<option value="${m.chat_id}">${m.chat_title}</option>`).join('');
+    }
+
+    // Modal Edit Functions
+    function openEditModal(id) {
+      const m = currentMonitors.find(item => item.id === id);
+      if (!m) return;
+
+      editMonitorId.value = m.id;
+      editModalTitle.textContent = `Редактирование: ${m.chat_title}`;
+      editIntervalMin.value = String(m.interval_minutes || 60);
+      editMsgLimit.value = m.limit || 20;
+
+      editMonitorModal.classList.add('active');
+    }
+
+    function closeEditModal() {
+      editMonitorModal.classList.remove('active');
+    }
+
+    closeEditModalBtn.addEventListener('click', closeEditModal);
+    cancelEditBtn.addEventListener('click', closeEditModal);
+
+    saveEditBtn.addEventListener('click', async () => {
+      const id = editMonitorId.value;
+      const interval = parseInt(editIntervalMin.value);
+      const limit = parseInt(editMsgLimit.value);
+
+      if (!limit || limit < 1 || limit > 100) {
+        showToast('Лимит должен быть от 1 до 100', true);
+        return;
+      }
+
+      saveEditBtn.disabled = true;
+      saveEditBtn.textContent = 'Сохранение...';
+
+      try {
+        const res = await fetch(`/api/monitors/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            interval_minutes: interval,
+            limit: limit
+          })
+        });
+
+        saveEditBtn.disabled = false;
+        saveEditBtn.textContent = '💾 Сохранить изменения';
+
+        if (res.ok) {
+          showToast('Параметры источника успешно обновлены!');
+          closeEditModal();
+          loadConfig();
+        } else {
+          showToast('Ошибка сохранения параметров', true);
+        }
+      } catch (e) {
+        saveEditBtn.disabled = false;
+        saveEditBtn.textContent = '💾 Сохранить изменения';
+        showToast('Ошибка: ' + e.message, true);
+      }
+    });
+
+    async function toggleMonitor(id, isActive) {
+      try {
+        const res = await fetch(`/api/monitors/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: isActive })
+        });
+        if (res.ok) {
+          showToast(isActive ? 'Мониторинг активен' : 'Мониторинг на паузе');
+          loadConfig();
+        }
+      } catch (e) {
+        showToast('Ошибка обновления статуса', true);
+      }
+    }
+
+    async function resetDedup(id) {
+      if (!confirm('Сбросить историю отправленных ID для этого канала в SQLite?')) return;
+      try {
+        const res = await fetch(`/api/monitors/${id}/reset-dedup`, { method: 'POST' });
+        if (res.ok) {
+          showToast('История дедубликации сброшена в SQLite!');
+          loadConfig();
+        }
+      } catch (e) {
+        showToast('Ошибка сброса истории', true);
+      }
+    }
+
+    async function deleteMonitor(id) {
+      if (!confirm('Удалить этот канал из мониторинга?')) return;
+      try {
+        const res = await fetch(`/api/monitors/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Канал удален');
+          loadConfig();
+        }
+      } catch (e) {
+        showToast('Ошибка удаления', true);
+      }
+    }
+
+    async function runMonitor(id) {
+      const card = document.getElementById(`monitor-${id}`);
+      if (card) card.style.opacity = '0.5';
+      showToast('Загрузка сообщений из Telegram...');
+
+      try {
+        const res = await fetch(`/api/monitors/${id}/run`, { method: 'POST' });
+        const data = await res.json();
+        if (card) card.style.opacity = '1';
+
+        if (data.messages) {
+          if (data.new_messages_count > 0 && data.sent_to_webhook) {
+            showToast(`✅ Отправлено ${data.new_messages_count} новых постов в n8n (${data.duplicates_filtered} дублей отфильтровано)`);
+          } else if (data.duplicates_filtered > 0 && data.new_messages_count === 0) {
+            showToast(`ℹ️ Новых постов нет (все ${data.total_fetched} сообщений уже отправлялись)`);
+          } else {
+            showToast(`Извлечено ${data.messages.length} сообщений`);
+          }
+
+          const newFormatted = data.messages.map(msg => ({
+            ...msg,
+            chat_title: data.chat_title,
+            chat_username: data.chat_username,
+            chat_id: data.chat_id
+          }));
+
+          const existingIds = new Set(currentMessages.map(m => `${m.chat_id}_${m.id}`));
+          newFormatted.forEach(msg => {
+            if (!existingIds.has(`${msg.chat_id}_${msg.id}`)) {
+              currentMessages.unshift(msg);
+            }
+          });
+
+          renderTable();
+          loadConfig();
+        }
+      } catch (e) {
+        if (card) card.style.opacity = '1';
+        showToast('Ошибка: ' + e.message, true);
+      }
+    }
+
+    refreshAllBtn.addEventListener('click', async () => {
+      if (currentMonitors.length === 0) {
+        showToast('Список каналов пуст', true);
+        return;
+      }
+      showToast('Обновление всех активных каналов...');
+      for (const m of currentMonitors) {
+        if (m.is_active) {
+          await runMonitor(m.id);
+        }
+      }
+    });
+
+    addMonitorForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const target = document.getElementById('chatTarget').value.trim();
+      const interval = parseInt(document.getElementById('intervalMin').value);
+      const limit = parseInt(document.getElementById('msgLimit').value);
+
+      if (!target) return;
+      showToast('Подключение к каналу...');
+
+      try {
+        const res = await fetch('/api/monitors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_target: target,
+            interval_minutes: interval,
+            limit: limit
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Не удалось добавить');
+        }
+
+        const data = await res.json();
+        showToast(`Канал "${data.chat_title}" добавлен в SQLite!`);
+        document.getElementById('chatTarget').value = '';
+        addChannelDrawer.classList.remove('open');
+        toggleAddChannelBtn.textContent = '➕ Добавить канал';
+        toggleAddChannelBtn.className = 'btn btn-primary btn-sm';
+        loadConfig();
+        runMonitor(data.id);
+      } catch (e) {
+        showToast(e.message, true);
+      }
+    });
+
+    saveWebhookBtn.addEventListener('click', async () => {
+      const url = webhookUrlInput.value.trim();
+      const auto = autoWebhookInput.checked;
+      try {
+        const res = await fetch('/api/webhook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ webhook_url: url, auto_webhook_enabled: auto })
+        });
+        if (res.ok) showToast('Настройки Webhook сохранены в SQLite');
+      } catch (e) {
+        showToast('Ошибка сохранения', true);
+      }
+    });
+
+    testWebhookBtn.addEventListener('click', async () => {
+      showToast('Отправка тестового запроса в n8n...');
+      try {
+        const res = await fetch('/api/webhook/test', { method: 'POST' });
+        if (res.ok) {
+          showToast('✅ Тестовый вебхук успешно принят n8n!');
+        } else {
+          const err = await res.json();
+          showToast('Ошибка n8n: ' + (err.detail || 'Проверьте статус воркфлоу'), true);
+        }
+      } catch (e) {
+        showToast('Не удалось связаться с n8n', true);
+      }
+    });
+
+    const filterMinViews = document.getElementById('filterMinViews');
+    const filterMinReactions = document.getElementById('filterMinReactions');
+    const sortMessagesSelect = document.getElementById('sortMessagesSelect');
+
+    function getFilteredMessages() {
+      const query = tableSearch.value.toLowerCase();
+      const filterChat = filterChatSelect.value;
+      const minViews = parseInt(filterMinViews.value) || 0;
+      const minReactions = parseInt(filterMinReactions.value) || 0;
+      const sortBy = sortMessagesSelect.value;
+
+      let filtered = currentMessages.filter(msg => {
+        const text = (msg.text || '').trim();
+        // Фильтрация сообщений без текста / пустых медиа
+        if (!text || text === '📎 [Медиа/Вложение]') return false;
+        
+        const matchText = text.toLowerCase().includes(query) || (msg.sender || '').toLowerCase().includes(query);
+        const matchChat = filterChat === 'ALL' || String(msg.chat_id) === String(filterChat);
+        const matchViews = (msg.views || 0) >= minViews;
+        const matchReactions = (msg.reactions_count || 0) >= minReactions;
+
+        return matchText && matchChat && matchViews && matchReactions;
+      });
+
+      filtered.sort((a, b) => {
+        if (sortBy === 'views_desc') return (b.views || 0) - (a.views || 0);
+        if (sortBy === 'reactions_desc') return (b.reactions_count || 0) - (a.reactions_count || 0);
+        if (sortBy === 'date_asc') return new Date(a.date) - new Date(b.date);
+        return new Date(b.date) - new Date(a.date);
+      });
+
+      return filtered;
+    }
+
+    function renderTable() {
+      const filtered = getFilteredMessages();
+      tabMessagesCount.textContent = filtered.length;
+
+      if (filtered.length === 0) {
+        messagesTableBody.innerHTML = `
+          <tr>
+            <td colspan="6" style="text-align: center; padding: 48px; color: var(--mute);">
+              Сообщения по заданным фильтрам не найдены.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      messagesTableBody.innerHTML = filtered.map(msg => `
+        <tr>
+          <td><span class="badge-metric">${msg.id}</span></td>
+          <td style="color: var(--body-mid); font-size: 12px; font-family: 'Inconsolata', monospace;">
+            ${new Date(msg.date).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
+          </td>
+          <td>
+            <div style="font-weight: 600; color: var(--ink);">${msg.chat_title || 'Канал'}</div>
+            <div style="font-size: 11px; color: var(--body-mid);">${msg.sender || ''}</div>
+          </td>
+          <td class="msg-text-cell">
+            <div class="msg-text" id="msg-text-${msg.chat_id}-${msg.id}">${escapeHtml(msg.text)}</div>
+            ${msg.text && msg.text.length > 140 ? `<button class="expand-btn" onclick="toggleExpand('${msg.chat_id}-${msg.id}')">Развернуть / Свернуть</button>` : ''}
+          </td>
+          <td>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              ${msg.views !== null && msg.views !== undefined ? `<span class="badge-metric" title="Просмотры">👁️ ${msg.views}</span>` : ''}
+              ${msg.reactions_count ? `<span class="badge-metric" style="color: #ed52cb; background: rgba(237, 82, 203, 0.08); border-color: rgba(237, 82, 203, 0.25);" title="Всего реакций: ${msg.reactions_count}${msg.reactions && msg.reactions.length ? ' (' + msg.reactions.map(r => (r.emoji || '👍') + ' ' + r.count).join(', ') + ')' : ''}">❤️ ${msg.reactions_count}</span>` : ''}
+              ${msg.forwards ? `<span class="badge-metric" title="Пересылки">↗️ ${msg.forwards}</span>` : ''}
+              ${msg.has_media ? `<span class="badge-media">📎 Медиа</span>` : ''}
+            </div>
+          </td>
+          <td>
+            ${msg.post_url ? `
+              <a href="${msg.post_url}" target="_blank" class="post-link-btn">
+                🔗 Открыть
+              </a>
+            ` : '<span style="color: var(--mute);">-</span>'}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function toggleExpand(key) {
+      const el = document.getElementById(`msg-text-${key}`);
+      if (el) el.classList.toggle('expanded');
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    tableSearch.addEventListener('input', renderTable);
+    filterChatSelect.addEventListener('change', renderTable);
+    filterMinViews.addEventListener('input', renderTable);
+    filterMinReactions.addEventListener('input', renderTable);
+    sortMessagesSelect.addEventListener('change', renderTable);
+
+    document.getElementById('sendTableToN8nBtn').addEventListener('click', async () => {
+      const filtered = getFilteredMessages();
+
+      if (filtered.length === 0) {
+        showToast('Нет сообщений для отправки!', true);
+        return;
+      }
+
+      // Группируем сообщения по уникальным каналам (chat_id)
+      const groupedByChat = {};
+      filtered.forEach(msg => {
+        const cId = msg.chat_id || 'unknown';
+        if (!groupedByChat[cId]) {
+          groupedByChat[cId] = {
+            chat_id: msg.chat_id,
+            chat_title: msg.chat_title,
+            chat_username: msg.chat_username,
+            messages: []
+          };
+        }
+        groupedByChat[cId].messages.push(msg);
+      });
+
+      const chatEntries = Object.values(groupedByChat);
+      showToast(`Отправка ${chatEntries.length} отдельн. вебхуков по каждому каналу в n8n...`);
+
+      let successCount = 0;
+      for (const entry of chatEntries) {
+        try {
+          const res = await fetch('/api/webhook/send-payload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source: "telethon_monitor",
+              event: "telegram_messages_batch",
+              timestamp: new Date().toISOString(),
+              chat_id: entry.chat_id,
+              chat_title: entry.chat_title,
+              chat_username: entry.chat_username,
+              messages_count: entry.messages.length,
+              messages: entry.messages
+            })
+          });
+          if (res.ok) successCount++;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (successCount === chatEntries.length) {
+        showToast(`✅ Отправлено ${successCount} отдельных вебхуков по каналам в n8n!`);
+      } else {
+        showToast(`Отправлено ${successCount} из ${chatEntries.length} вебхуков`, true);
+      }
+    });
+
+    viewJsonBtn.addEventListener('click', () => {
+      const payload = {
+        chat_title: currentMessages[0]?.chat_title || "Текущая выборка",
+        messages_count: currentMessages.length,
+        messages: currentMessages
+      };
+      jsonViewerCode.textContent = JSON.stringify(payload, null, 2);
+      jsonModal.classList.add('active');
+    });
+
+    document.getElementById('closeJsonModal').addEventListener('click', () => jsonModal.classList.remove('active'));
+    document.getElementById('copyJsonBtn').addEventListener('click', () => {
+      navigator.clipboard.writeText(jsonViewerCode.textContent);
+      showToast('JSON скопирован в буфер обмена!');
+    });
+    document.getElementById('downloadJsonBtn').addEventListener('click', () => {
+      const blob = new Blob([jsonViewerCode.textContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `telegram_export_${Date.now()}.json`;
+      a.click();
+    });
+
+    // Logs logic
+    async function loadLogs() {
+      const status = filterLogStatus.value;
+      try {
+        const res = await fetch(`/api/logs?limit=150&status=${status}`);
+        const data = await res.json();
+        currentLogs = data.logs || [];
+        tabLogsCount.textContent = data.total || 0;
+        statTotalLogs.textContent = data.total || 0;
+        statSentMessagesDb.textContent = data.total_sent_messages_db || 0;
+        renderLogs();
+      } catch (e) {
+        showToast('Ошибка загрузки логов', true);
+      }
+    }
+
+    function renderLogs() {
+      if (currentLogs.length === 0) {
+        logsTableBody.innerHTML = `
+          <tr>
+            <td colspan="5" style="text-align: center; padding: 48px; color: var(--mute);">
+              Записи в журнале логов отсутствуют.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      logsTableBody.innerHTML = currentLogs.map(log => `
+        <tr>
+          <td style="color: var(--body-mid); font-size: 12px; font-family: 'Inconsolata', monospace; white-space: nowrap;">
+            ${new Date(log.timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'})}
+          </td>
+          <td>
+            <span class="meta-tag" style="font-family: 'Inconsolata', monospace; font-size: 11px;">${log.event_type}</span>
+          </td>
+          <td>
+            <div style="font-weight: 500; color: var(--ink);">${log.chat_title || '—'}</div>
+          </td>
+          <td>
+            <span class="status-tag ${log.status}">${log.status}</span>
+          </td>
+          <td style="font-size: 12.5px; color: var(--body); word-break: break-word;">
+            ${escapeHtml(log.details || '')}
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    filterLogStatus.addEventListener('change', loadLogs);
+    refreshLogsBtn.addEventListener('click', loadLogs);
+    clearLogsBtn.addEventListener('click', async () => {
+      if (!confirm('Очистить весь журнал логов в SQLite?')) return;
+      try {
+        const res = await fetch('/api/logs', { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Журнал логов очищен');
+          loadLogs();
+        }
+      } catch (e) {
+        showToast('Ошибка очистки логов', true);
+      }
+    });
+
+    // Dialogs Modal
+    document.getElementById('openDialogsModalBtn').addEventListener('click', async () => {
+      dialogsModal.classList.add('active');
+      dialogsModalBody.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--mute);">Загрузка диалогов...</div>';
+      try {
+        const res = await fetch('/dialogs?limit=30');
+        const data = await res.json();
+        if (data.dialogs) {
+          dialogsModalBody.innerHTML = data.dialogs.map(d => `
+            <div class="dialog-item">
+              <div>
+                <div style="font-weight: 600; color: var(--ink);">${d.name}</div>
+                <div style="font-size: 11px; color: var(--body-mid);">
+                  ${d.username ? '@' + d.username : 'ID: ' + d.id} • Тип: ${d.type}
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="selectDialog('${d.username ? '@' + d.username : d.id}')">+ Выбрать</button>
+            </div>
+          `).join('');
+        }
+      } catch (e) {
+        dialogsModalBody.innerHTML = '<div style="color: var(--accent-red); padding: 20px;">Ошибка загрузки диалогов</div>';
+      }
+    });
+
+    function selectDialog(target) {
+      document.getElementById('chatTarget').value = target;
+      dialogsModal.classList.remove('active');
+      showToast(`Выбран: ${target}`);
+      addChannelDrawer.classList.add('open');
+      toggleAddChannelBtn.textContent = '✕ Закрыть форму';
+      toggleAddChannelBtn.className = 'btn btn-secondary btn-sm';
+    }
+
+    document.getElementById('closeDialogsModal').addEventListener('click', () => dialogsModal.classList.remove('active'));
+
+    checkHealth();
+    loadConfig();
+    loadLogs();
+
+    // Auto-load all active channels on start
+    setTimeout(async () => {
+      if (currentMonitors.length > 0) {
+        for (const m of currentMonitors) {
+          if (m.is_active) {
+            await runMonitor(m.id);
+          }
+        }
+      }
+    }, 800);
+
+    // Периодический пересчет таймеров обратного отсчета
+    setInterval(() => {
+      if (currentMonitors.length > 0) {
+        renderMonitors();
+      }
+    }, 30000);
+  </script>
+</body>
+</html>
