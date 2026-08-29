@@ -1126,7 +1126,16 @@
       <div class="card" style="max-width: 800px; margin: 0 auto 24px auto;">
         <div class="card-header">
           <div class="card-title">n8n Webhook</div>
-          <button id="openJsonExampleModalBtn" class="btn btn-secondary btn-sm" type="button">📋 Пример JSON-пакета</button>
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <button id="openJsonExampleModalBtn" class="btn btn-secondary btn-sm" type="button">📋 Пример JSON</button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 12px; color: var(--body-mid);">Webhook:</span>
+              <label class="switch" title="Включить / Выключить отправку сообщений в n8n">
+                <input type="checkbox" id="autoWebhook" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
         </div>
         
         <div class="form-group">
@@ -1137,18 +1146,7 @@
           </p>
         </div>
 
-        <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; padding: 14px; background: var(--canvas-soft); border-radius: var(--rounded-sm); border: 1px solid var(--hairline);">
-          <div>
-            <div style="font-size: 13.5px; font-weight: 500; color: var(--ink);">Автоматическая отправка по расписанию</div>
-            <div style="font-size: 11.5px; color: var(--body-mid);">Отправлять в n8n только новые уникальные сообщения при каждом плановом опросе</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="autoWebhook" checked>
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <div style="display: flex; gap: 10px; margin-top: 20px;">
+        <div style="display: flex; gap: 10px; margin-top: 16px;">
           <button id="saveWebhookBtn" class="btn btn-primary" style="flex: 1;">Сохранить настройки Webhook</button>
           <button id="testWebhookBtn" class="btn btn-secondary">Отправить тест</button>
         </div>
@@ -2182,6 +2180,23 @@
       }
     });
 
+    autoWebhookInput.addEventListener('change', async () => {
+      const url = webhookUrlInput.value.trim();
+      const auto = autoWebhookInput.checked;
+      try {
+        const res = await fetch('/api/webhook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ webhook_url: url, auto_webhook_enabled: auto })
+        });
+        if (res.ok) {
+          showToast(`Отправка в n8n Webhook: ${auto ? 'Включена' : 'Отключена'}`);
+        }
+      } catch (e) {
+        showToast('Ошибка сохранения', true);
+      }
+    });
+
     saveWebhookBtn.addEventListener('click', async () => {
       const url = webhookUrlInput.value.trim();
       const auto = autoWebhookInput.checked;
@@ -2643,13 +2658,34 @@
       }
     }
 
-    saveOpenRouterBtn.addEventListener('click', async () => {
-      saveOpenRouterBtn.disabled = true;
-      saveOpenRouterBtn.textContent = '💾 Сохранение...';
+    openrouterEnabled.addEventListener('change', async () => {
       try {
         const payload = {
           base_url: openrouterBaseUrl.value.trim() || 'https://openrouter.ai/api/v1',
-          model: openrouterModel.value.trim() || 'google/gemini-2.0-flash-001',
+          model: openrouterModel.value.trim() || 'deepseek/deepseek-chat',
+          api_key: openrouterApiKey.value.trim(),
+          is_enabled: openrouterEnabled.checked
+        };
+        const res = await fetch('/api/openrouter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showToast(`AI Обработка: ${openrouterEnabled.checked ? 'Включена' : 'Отключена'}`);
+        }
+      } catch (e) {
+        showToast('Ошибка сохранения', true);
+      }
+    });
+
+    saveOpenRouterBtn.addEventListener('click', async () => {
+      saveOpenRouterBtn.disabled = true;
+      saveOpenRouterBtn.textContent = 'Сохранение...';
+      try {
+        const payload = {
+          base_url: openrouterBaseUrl.value.trim() || 'https://openrouter.ai/api/v1',
+          model: openrouterModel.value.trim() || 'deepseek/deepseek-chat',
           api_key: openrouterApiKey.value.trim(),
           is_enabled: openrouterEnabled.checked
         };
@@ -2659,10 +2695,10 @@
           body: JSON.stringify(payload)
         });
         saveOpenRouterBtn.disabled = false;
-        saveOpenRouterBtn.textContent = '💾 Сохранить настройки OpenRouter';
+        saveOpenRouterBtn.textContent = 'Сохранить настройки OpenRouter';
 
         if (res.ok) {
-          showToast('✅ Настройки OpenRouter сохранены в SQLite (таблица integrations_config)!');
+          showToast('Настройки OpenRouter сохранены в SQLite');
           loadOpenRouterConfig();
         } else {
           const err = await res.json();
@@ -2670,14 +2706,14 @@
         }
       } catch (e) {
         saveOpenRouterBtn.disabled = false;
-        saveOpenRouterBtn.textContent = '💾 Сохранить настройки OpenRouter';
+        saveOpenRouterBtn.textContent = 'Сохранить настройки OpenRouter';
         showToast('Ошибка: ' + e.message, true);
       }
     });
 
     testOpenRouterBtn.addEventListener('click', async () => {
       testOpenRouterBtn.disabled = true;
-      testOpenRouterBtn.textContent = '⏳ Тестирование LLM...';
+      testOpenRouterBtn.textContent = 'Тестирование LLM...';
       openrouterTestResultBox.style.display = 'none';
 
       try {
@@ -2690,10 +2726,10 @@
         });
         const data = await res.json();
         testOpenRouterBtn.disabled = false;
-        testOpenRouterBtn.textContent = '⚡ Проверить подключение к LLM';
+        testOpenRouterBtn.textContent = 'Тест OpenRouter';
 
         if (res.ok && data.status === 'success') {
-          showToast(`✅ Тест успешен (${data.model})!`);
+          showToast(`Тест успешен (${data.model})!`);
           openrouterTestResultText.textContent = data.response;
           openrouterTestResultBox.style.display = 'block';
         } else {
@@ -2701,7 +2737,7 @@
         }
       } catch (e) {
         testOpenRouterBtn.disabled = false;
-        testOpenRouterBtn.textContent = '⚡ Проверить подключение к LLM';
+        testOpenRouterBtn.textContent = 'Тест OpenRouter';
         showToast('Ошибка сети: ' + e.message, true);
       }
     });
@@ -2736,9 +2772,29 @@
       }
     }
 
+    tgForwardEnabled.addEventListener('change', async () => {
+      try {
+        const payload = {
+          bot_token: tgBotToken.value.trim(),
+          sender_id: tgSenderId.value.trim(),
+          is_enabled: tgForwardEnabled.checked
+        };
+        const res = await fetch('/api/telegram-forward', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showToast(`Пересылка в Telegram: ${tgForwardEnabled.checked ? 'Включена' : 'Отключена'}`);
+        }
+      } catch (e) {
+        showToast('Ошибка сохранения', true);
+      }
+    });
+
     saveTgForwardBtn.addEventListener('click', async () => {
       saveTgForwardBtn.disabled = true;
-      saveTgForwardBtn.textContent = '💾 Сохранение...';
+      saveTgForwardBtn.textContent = 'Сохранение...';
       try {
         const payload = {
           bot_token: tgBotToken.value.trim(),
@@ -2751,10 +2807,10 @@
           body: JSON.stringify(payload)
         });
         saveTgForwardBtn.disabled = false;
-        saveTgForwardBtn.textContent = '💾 Сохранить настройки Telegram-бота';
+        saveTgForwardBtn.textContent = 'Сохранить настройки бота';
 
         if (res.ok) {
-          showToast('✅ Настройки Telegram-бота сохранены в SQLite (таблица integrations_config)!');
+          showToast('Настройки Telegram-бота сохранены в SQLite');
           loadTgForwardConfig();
         } else {
           const err = await res.json();
@@ -2762,7 +2818,7 @@
         }
       } catch (e) {
         saveTgForwardBtn.disabled = false;
-        saveTgForwardBtn.textContent = '💾 Сохранить настройки Telegram-бота';
+        saveTgForwardBtn.textContent = 'Сохранить настройки бота';
         showToast('Ошибка: ' + e.message, true);
       }
     });

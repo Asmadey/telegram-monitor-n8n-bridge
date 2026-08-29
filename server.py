@@ -460,40 +460,25 @@ async def background_monitor_worker():
                         raw_messages = res.get("messages", [])
                         new_messages = filter_and_save_new_messages(monitor["chat_id"], raw_messages, mark_sent=True)
 
-                        if webhook_url and auto_webhook:
-                            if new_messages:
-                                print(f"📤 [Scheduler] Отправка {len(new_messages)} новых постов в n8n из '{monitor.get('chat_title')}'")
-                                payload_to_send = {
-                                    **res,
-                                    "messages_count": len(new_messages),
-                                    "messages": new_messages
-                                }
-                                try:
-                                    await send_to_n8n_webhook(webhook_url, payload_to_send, monitor.get("prompt"))
-                                    add_log(
-                                        event_type="WEBHOOK_SENT",
-                                        details=f"Отправлено {len(new_messages)} новых сообщений в n8n",
-                                        status="SUCCESS",
-                                        chat_title=monitor.get("chat_title"),
-                                        chat_id=monitor.get("chat_id"),
-                                        messages_count=len(new_messages)
-                                    )
-                                except Exception as we:
-                                    add_log(
-                                        event_type="WEBHOOK_ERROR",
-                                        details=f"Ошибка отправки в n8n: {str(we)}",
-                                        status="ERROR",
-                                        chat_title=monitor.get("chat_title"),
-                                        chat_id=monitor.get("chat_id")
-                                    )
-                            else:
-                                add_log(
-                                    event_type="SCHEDULER_POLL",
-                                    details=f"Опрос завершен. Все {len(raw_messages)} сообщений уже были отправлены ранее (0 новых).",
-                                    status="SKIPPED_DEDUP",
-                                    chat_title=monitor.get("chat_title"),
-                                    chat_id=monitor.get("chat_id")
-                                )
+                        if new_messages:
+                            print(f"📤 [Scheduler] Обработка и доставка {len(new_messages)} новых постов из '{monitor.get('chat_title')}'")
+                            payload_to_send = {
+                                **res,
+                                "messages_count": len(new_messages),
+                                "messages": new_messages
+                            }
+                            try:
+                                await process_and_dispatch_messages(payload_to_send, monitor.get("prompt"))
+                            except Exception as de:
+                                print(f"⚠️ Ошибка обработки диспетчером: {de}")
+                        else:
+                            add_log(
+                                event_type="SCHEDULER_POLL",
+                                details=f"Опрос завершен. Все {len(raw_messages)} сообщений уже были отправлены ранее (0 новых).",
+                                status="SKIPPED_DEDUP",
+                                chat_title=monitor.get("chat_title"),
+                                chat_id=monitor.get("chat_id")
+                            )
 
                     except Exception as e:
                         print(f"⚠️ [Scheduler Error] {monitor.get('chat_target')}: {e}")
@@ -768,10 +753,21 @@ async def send_telegram_bot_message(text: str, custom_chat_id: Optional[str] = N
         add_log("TG_BOT_ERROR", f"Ошибка отправки через Telegram Bot API: {str(e)}", "ERROR")
         return False
 
-async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel_prompt: Optional[str] = None) -> Dict[str, Any]:
-    # Если включен OpenRouter и есть сообщения, генерируем ai_analysis по компактному батчу (ID, пост, ссылка)
-    if "messages" in payload and payload["messages"]:
-        ai_res = await process_messages_batch_with_llm(payload["messages"], channel_prompt)
+async def process_and_dispatch_messages(payload: Dict[str, Any], channel_prompt: Optional[str] = None, force_n8n: bool = False) -> Dict[str, Any]:
+    """
+    Универсальный диспетчер обработки и доставки сообщений:
+    1. AI-обработка (если включен OpenRouter)
+    2. Прямая пересылка в Telegram-канал ботом (если включен Telegram Forwarding)
+    3. Отправка в n8n Webhook (если включен auto_webhook_enabled или force_n8n)
+    """
+    messages = payload.get("messages", [])
+    if not messages:
+        return {"status": "no_messages"}
+
+    # 1. Если включен OpenRouter — генерируем ai_analysis
+    openrouter_on = str(get_setting("openrouter_enabled", "0")) in ("1", "True", "true")
+    if openrouter_on:
+        ai_res = await process_messages_batch_with_llm(messages, channel_prompt)
         if ai_res:
             payload["ai_analysis"] = ai_res
             add_log(
@@ -782,25 +778,24 @@ async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel
                 chat_id=payload.get("chat_id")
             )
 
-    # Если включена прямая пересылка в Telegram-канал через Bot API
-    if str(get_setting("telegram_forward_enabled", "0")) in ("1", "True", "true") and "messages" in payload and payload["messages"]:
+    # 2. Если включена прямая пересылка в Telegram-канал через Bot API
+    tg_on = str(get_setting("telegram_forward_enabled", "0")) in ("1", "True", "true")
+    if tg_on:
         try:
             chat_title = payload.get("chat_title", "Источник")
             ai_summary = payload.get("ai_analysis")
             
             if ai_summary:
-                # Если сгенерирован готовый AI HTML (по промпту), отправляем его напрямую
                 text_to_send = ai_summary
             else:
-                msg_lines = [f"📢 <b>Новые посты: {chat_title}</b> ({len(payload['messages'])} шт.)\n"]
-                for m in payload["messages"][:5]:
+                msg_lines = [f"📢 <b>Новые посты: {chat_title}</b> ({len(messages)} шт.)\n"]
+                for m in messages[:5]:
                     m_text = (m.get("text") or "")[:250]
                     m_url = m.get("post_url", "")
                     link_html = f" — <a href='{m_url}'>🔗 Источник</a>" if m_url else ""
                     msg_lines.append(f"• {m_text}{link_html}\n")
                 text_to_send = "\n".join(msg_lines)
 
-            # Отправка через Bot API (с поддержкой разбиения длинных сообщений > 4000 симв.)
             chunks = [text_to_send[i:i+3900] for i in range(0, len(text_to_send), 3900)]
             sent_all = True
             for chunk in chunks:
@@ -818,28 +813,48 @@ async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel
         except Exception as fe:
             print(f"⚠️ Ошибка фоновой пересылки ботом: {fe}")
 
-    async with httpx.AsyncClient(timeout=25.0) as http_client:
-        data_to_send = {
-            "source": "telethon_monitor",
-            "event": "telegram_messages_batch",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            **payload
-        }
-        resp = await http_client.post(webhook_url, json=data_to_send)
-        resp.raise_for_status()
-        add_log(
-            event_type="WEBHOOK_SENT",
-            details=f"Отправлен вебхук в n8n ({len(payload.get('messages', []))} постов, AI analysis: {'Да' if 'ai_analysis' in payload else 'Нет'})",
-            status="SUCCESS",
-            chat_title=payload.get("chat_title"),
-            chat_id=payload.get("chat_id"),
-            messages_count=len(payload.get("messages", []))
-        )
-        return {
-            "status": "success",
-            "status_code": resp.status_code,
-            "response_text": resp.text[:200]
-        }
+    # 3. Отправка в n8n Webhook
+    webhook_url = get_setting("webhook_url", "").strip()
+    auto_webhook_on = str(get_setting("auto_webhook_enabled", "1")) in ("1", "True", "true")
+    
+    if (auto_webhook_on or force_n8n) and webhook_url:
+        try:
+            async with httpx.AsyncClient(timeout=25.0) as http_client:
+                data_to_send = {
+                    "source": "telethon_monitor",
+                    "event": "telegram_messages_batch",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    **payload
+                }
+                resp = await http_client.post(webhook_url, json=data_to_send)
+                resp.raise_for_status()
+                add_log(
+                    event_type="WEBHOOK_SENT",
+                    details=f"Отправлен вебхук в n8n ({len(messages)} постов, AI analysis: {'Да' if 'ai_analysis' in payload else 'Нет'})",
+                    status="SUCCESS",
+                    chat_title=payload.get("chat_title"),
+                    chat_id=payload.get("chat_id"),
+                    messages_count=len(messages)
+                )
+                return {
+                    "status": "success",
+                    "status_code": resp.status_code,
+                    "response_text": resp.text[:200]
+                }
+        except Exception as we:
+            add_log(
+                event_type="WEBHOOK_ERROR",
+                details=f"Ошибка отправки вебхука в n8n: {str(we)}",
+                status="ERROR",
+                chat_title=payload.get("chat_title"),
+                chat_id=payload.get("chat_id")
+            )
+            return {"status": "error", "error": str(we)}
+
+    return {"status": "dispatched"}
+
+async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel_prompt: Optional[str] = None) -> Dict[str, Any]:
+    return await process_and_dispatch_messages(payload, channel_prompt, force_n8n=True)
 
 # ==================== Pydantic Схемы ====================
 
@@ -1299,17 +1314,17 @@ async def run_monitor_now(
         auto_webhook = get_setting("auto_webhook_enabled", "1") == "1"
         sent_to_webhook = False
 
-        if webhook_url and auto_webhook and new_messages:
+        if new_messages:
             payload_to_send = {
                 **res,
                 "messages_count": len(new_messages),
                 "messages": new_messages
             }
-            background_tasks.add_task(send_to_n8n_webhook, webhook_url, payload_to_send, monitor.get("prompt"))
+            background_tasks.add_task(process_and_dispatch_messages, payload_to_send, monitor.get("prompt"))
             sent_to_webhook = True
             add_log(
                 event_type="MANUAL_PUSH",
-                details=f"Ручной запуск: отправлено {len(new_messages)} новых постов в n8n",
+                details=f"Ручной запуск: обработано и отправлено {len(new_messages)} новых постов (Webhook: {'Вкл' if auto_webhook and webhook_url else 'Выкл'})",
                 status="SUCCESS",
                 chat_title=monitor.get("chat_title"),
                 chat_id=monitor.get("chat_id"),
