@@ -1100,8 +1100,8 @@
           </div>
           <div class="form-group">
             <label for="channelPrompt">🤖 Кастомный промпт LLM для этого источника (опционально):</label>
-            <textarea id="channelPrompt" rows="2" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 10px; font-family: inherit; font-size: 13px; resize: vertical;" placeholder="Индивидуальная инструкция для нейросети по обработке постов (ID, пост, ссылка)"></textarea>
-            <p style="font-size: 11px; color: var(--body-mid); margin-top: 4px;">
+            <textarea id="channelPrompt" rows="6" style="width: 100%; min-height: 160px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: 'Inconsolata', monospace; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="Индивидуальная инструкция для нейросети по обработке постов (ID, пост, ссылка)"></textarea>
+            <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
               В модель передаются 3 атрибута: <code>{ "post": [ { "ID": "...", "пост": "...", "ссылка": "..." } ] }</code>
             </p>
           </div>
@@ -1361,7 +1361,7 @@
 
   <!-- Modal: Edit Monitor (Интервал и Лимиты) -->
   <div id="editMonitorModal" class="modal-overlay">
-    <div class="modal" style="max-width: 480px;">
+    <div class="modal" style="max-width: 680px; width: 92%;">
       <div class="modal-header">
         <div>
           <span class="eyebrow">Параметры источника</span>
@@ -1371,25 +1371,27 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="editMonitorId">
-        <div class="form-group">
-          <label for="editIntervalMin">Интервал авто-опроса (Cron):</label>
-          <select id="editIntervalMin">
-            <option value="15">Каждые 15 минут</option>
-            <option value="30">Каждые 30 минут</option>
-            <option value="60">Каждый 1 час</option>
-            <option value="120">Каждые 2 часа</option>
-            <option value="360">Каждые 6 часов</option>
-            <option value="1440">Раз в сутки (24 ч)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="editMsgLimit">Лимит постов за один опрос (1 - 100):</label>
-          <input type="number" id="editMsgLimit" min="1" max="100">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label for="editIntervalMin">Интервал авто-опроса (Cron):</label>
+            <select id="editIntervalMin">
+              <option value="15">Каждые 15 минут</option>
+              <option value="30">Каждые 30 минут</option>
+              <option value="60">Каждый 1 час</option>
+              <option value="120">Каждые 2 часа</option>
+              <option value="360">Каждые 6 часов</option>
+              <option value="1440">Раз в сутки (24 ч)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="editMsgLimit">Лимит постов за один опрос (1 - 100):</label>
+            <input type="number" id="editMsgLimit" min="1" max="100">
+          </div>
         </div>
         <div class="form-group">
           <label for="editMonitorPrompt">🤖 Кастомный промпт LLM для этого канала:</label>
-          <textarea id="editMonitorPrompt" rows="3" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 10px; font-family: inherit; font-size: 13px; resize: vertical;" placeholder="Инструкция для LLM по обработке массива постов (ID, пост, ссылка). Если пусто — используется системный промпт OpenRouter."></textarea>
-          <p style="font-size: 11px; color: var(--body-mid); margin-top: 4px;">
+          <textarea id="editMonitorPrompt" rows="10" style="width: 100%; min-height: 240px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: 'Inconsolata', monospace; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="Инструкция для LLM по обработке массива постов (ID, пост, ссылка). Если пусто — используется системный промпт OpenRouter."></textarea>
+          <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
             В модель передаются 3 атрибута: <code>{ "post": [ { "ID": "...", "пост": "...", "ссылка": "..." } ] }</code>
           </p>
         </div>
