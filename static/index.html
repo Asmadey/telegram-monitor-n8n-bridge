@@ -1293,7 +1293,10 @@
               <option value="INFO">Только INFO</option>
             </select>
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="openCleanupModalBtn" class="btn btn-secondary btn-sm" type="button" title="Настроить автоматическую очистку старых записей">
+              🧹 Автоочистка: <span id="cleanupStatusLabel" style="font-weight: 600; color: var(--body-mid); margin-left: 3px;">Выкл</span>
+            </button>
             <button id="refreshLogsBtn" class="btn btn-secondary btn-sm">Обновить логи</button>
             <button id="clearLogsBtn" class="btn btn-danger btn-sm">Очистить журнал</button>
           </div>
@@ -1525,6 +1528,54 @@
       <div class="modal-footer">
         <button id="copyJsonExampleBtn" class="btn btn-secondary btn-sm">📋 Скопировать JSON</button>
         <button id="closeJsonExampleBtn2" class="btn btn-primary btn-sm">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Database Auto-Cleanup Settings -->
+  <div id="cleanupModal" class="modal-overlay">
+    <div class="modal" style="max-width: 520px; width: 92%;">
+      <div class="modal-header">
+        <h3 style="font-size: 16px; font-weight: 600; color: var(--ink); margin: 0;">Автоматическая очистка базы</h3>
+        <button id="closeCleanupModalBtn" class="btn btn-secondary btn-sm" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; padding: 14px; background: var(--canvas-soft); border-radius: var(--rounded-sm); border: 1px solid var(--hairline); margin-bottom: 16px;">
+          <div>
+            <div style="font-size: 13.5px; font-weight: 600; color: var(--ink);">Фоновая автоочистка</div>
+            <div style="font-size: 11.5px; color: var(--body-mid);">Ежедневно удалять устаревшие логи и историю сообщений</div>
+          </div>
+          <label class="switch" title="Включить / Выключить автоочистку базы">
+            <input type="checkbox" id="cleanupEnabledInput">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label for="cleanupDaysSelect">Удалять записи старше:</label>
+          <select id="cleanupDaysSelect" style="background: var(--canvas-soft);">
+            <option value="7">7 дней (1 неделя)</option>
+            <option value="14">14 дней (2 недели)</option>
+            <option value="30" selected>30 дней (1 месяц — рекомендовано)</option>
+            <option value="60">60 дней (2 месяца)</option>
+            <option value="90">90 дней (3 месяца)</option>
+            <option value="180">180 дней (полгода)</option>
+          </select>
+          <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 6px; line-height: 1.5;">
+            Фоновая задача раз в сутки удаляет старые логи и записи сообщений старше указанного срока. Текущие каналы и настройки не затрагиваются.
+          </p>
+        </div>
+
+        <div id="cleanupLastRunBox" style="font-size: 11.5px; color: var(--body-mid); padding: 8px 12px; background: var(--canvas-soft); border-radius: var(--rounded-xs); border: 1px solid var(--hairline); margin-top: 10px;">
+          Последняя очистка: <span id="cleanupLastRunDate" style="font-weight: 500; color: var(--ink);">еще не выполнялась</span>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <button id="runCleanupNowBtn" class="btn btn-secondary btn-sm" type="button">⚡ Очистить сейчас</button>
+        <div style="display: flex; gap: 8px;">
+          <button id="closeCleanupModalBtn2" class="btn btn-secondary btn-sm" type="button">Закрыть</button>
+          <button id="saveCleanupConfigBtn" class="btn btn-primary btn-sm" type="button">Сохранить</button>
+        </div>
       </div>
     </div>
   </div>
@@ -3098,6 +3149,133 @@
       });
     }
 
+    // ==================== AUTO-CLEANUP LOGIC ====================
+    const cleanupModal = document.getElementById('cleanupModal');
+    const openCleanupModalBtn = document.getElementById('openCleanupModalBtn');
+    const closeCleanupModalBtn = document.getElementById('closeCleanupModalBtn');
+    const closeCleanupModalBtn2 = document.getElementById('closeCleanupModalBtn2');
+    const cleanupEnabledInput = document.getElementById('cleanupEnabledInput');
+    const cleanupDaysSelect = document.getElementById('cleanupDaysSelect');
+    const cleanupStatusLabel = document.getElementById('cleanupStatusLabel');
+    const cleanupLastRunDate = document.getElementById('cleanupLastRunDate');
+    const saveCleanupConfigBtn = document.getElementById('saveCleanupConfigBtn');
+    const runCleanupNowBtn = document.getElementById('runCleanupNowBtn');
+
+    async function loadCleanupConfig() {
+      try {
+        const res = await fetch('/api/cleanup');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cleanupEnabledInput) cleanupEnabledInput.checked = Boolean(data.enabled);
+        if (cleanupDaysSelect) cleanupDaysSelect.value = String(data.days || 30);
+        
+        if (cleanupStatusLabel) {
+          if (data.enabled) {
+            cleanupStatusLabel.textContent = `Вкл (${data.days} дн.)`;
+            cleanupStatusLabel.style.color = '#008715';
+          } else {
+            cleanupStatusLabel.textContent = 'Выкл';
+            cleanupStatusLabel.style.color = 'var(--body-mid)';
+          }
+        }
+
+        if (cleanupLastRunDate) {
+          if (data.last_run) {
+            cleanupLastRunDate.textContent = new Date(data.last_run).toLocaleString([], {
+              month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+          } else {
+            cleanupLastRunDate.textContent = 'еще не выполнялась';
+          }
+        }
+      } catch (e) {
+        console.error('Error loading cleanup config:', e);
+      }
+    }
+
+    if (openCleanupModalBtn) {
+      openCleanupModalBtn.addEventListener('click', () => {
+        loadCleanupConfig();
+        openModalAnimated(cleanupModal);
+      });
+    }
+
+    if (closeCleanupModalBtn) closeCleanupModalBtn.addEventListener('click', () => closeModalAnimated(cleanupModal));
+    if (closeCleanupModalBtn2) closeCleanupModalBtn2.addEventListener('click', () => closeModalAnimated(cleanupModal));
+
+    if (cleanupEnabledInput) {
+      cleanupEnabledInput.addEventListener('change', async () => {
+        const enabled = cleanupEnabledInput.checked;
+        const days = parseInt(cleanupDaysSelect.value) || 30;
+        try {
+          const res = await fetch('/api/cleanup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled, days: days })
+          });
+          if (res.ok) {
+            showToast(`Автоочистка базы: ${enabled ? `Включена (${days} дн.)` : 'Выключена'}`);
+            loadCleanupConfig();
+          }
+        } catch (e) {
+          showToast('Ошибка сохранения настроек очистки', true);
+        }
+      });
+    }
+
+    if (saveCleanupConfigBtn) {
+      saveCleanupConfigBtn.addEventListener('click', async () => {
+        const enabled = cleanupEnabledInput.checked;
+        const days = parseInt(cleanupDaysSelect.value) || 30;
+        saveCleanupConfigBtn.disabled = true;
+        saveCleanupConfigBtn.textContent = 'Сохранение...';
+        try {
+          const res = await fetch('/api/cleanup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled, days: days })
+          });
+          saveCleanupConfigBtn.disabled = false;
+          saveCleanupConfigBtn.textContent = 'Сохранить';
+          if (res.ok) {
+            showToast('Настройки автоочистки базы сохранены!');
+            closeModalAnimated(cleanupModal);
+            loadCleanupConfig();
+          } else {
+            showToast('Ошибка сохранения настроек', true);
+          }
+        } catch (e) {
+          saveCleanupConfigBtn.disabled = false;
+          saveCleanupConfigBtn.textContent = 'Сохранить';
+          showToast('Ошибка: ' + e.message, true);
+        }
+      });
+    }
+
+    if (runCleanupNowBtn) {
+      runCleanupNowBtn.addEventListener('click', async () => {
+        runCleanupNowBtn.disabled = true;
+        runCleanupNowBtn.textContent = 'Очистка...';
+        try {
+          const res = await fetch('/api/cleanup/run-now', { method: 'POST' });
+          const data = await res.json();
+          runCleanupNowBtn.disabled = false;
+          runCleanupNowBtn.textContent = '⚡ Очистить сейчас';
+          if (res.ok) {
+            showToast(`✅ Удалено ${data.deleted_logs || 0} логов и ${data.deleted_messages || 0} записей сообщений`);
+            loadLogs();
+            loadCleanupConfig();
+          } else {
+            showToast('Ошибка выполнения очистки', true);
+          }
+        } catch (e) {
+          runCleanupNowBtn.disabled = false;
+          runCleanupNowBtn.textContent = '⚡ Очистить сейчас';
+          showToast('Ошибка сети: ' + e.message, true);
+        }
+      });
+    }
+
     async function loadSavedMessages() {
       try {
         const res = await fetch('/api/messages?limit=100');
@@ -3114,6 +3292,7 @@
     checkHealth();
     loadConfig();
     loadLogs();
+    loadCleanupConfig();
     loadSavedMessages();
     loadOpenRouterConfig();
     loadTgForwardConfig();

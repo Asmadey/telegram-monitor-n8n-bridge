@@ -429,6 +429,34 @@ def get_sent_ids_count(chat_id: int) -> int:
     conn.close()
     return row["cnt"] if row else 0
 
+def run_database_cleanup(days: int = 30) -> Dict[str, int]:
+    """Удаляет устаревшие логи и записи сообщений старше X дней"""
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # 1. Удаляем устаревшие логи
+    cur.execute("DELETE FROM logs WHERE timestamp < ?", (cutoff_date,))
+    deleted_logs = cur.rowcount
+    
+    # 2. Удаляем устаревшие записи истории сообщений
+    cur.execute("DELETE FROM sent_messages WHERE date < ? OR sent_at < ?", (cutoff_date, cutoff_date))
+    deleted_messages = cur.rowcount
+    
+    conn.commit()
+    conn.close()
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    set_setting("auto_cleanup_last_run", now_iso)
+    
+    if deleted_logs > 0 or deleted_messages > 0:
+        add_log(
+            event_type="AUTO_CLEANUP",
+            details=f"Автоочистка базы (> {days} дн.): удалено {deleted_logs} логов и {deleted_messages} записей истории",
+            status="SUCCESS"
+        )
+    return {"deleted_logs": deleted_logs, "deleted_messages": deleted_messages}
+
 # ==================== Фоновый планировщик ====================
 
 scheduler_running = True
@@ -437,6 +465,30 @@ async def background_monitor_worker():
     while scheduler_running:
         try:
             await asyncio.sleep(30)
+            now = datetime.now(timezone.utc)
+
+            # Фоновая ежедневная автоочистка базы (если включена)
+            auto_clean_on = str(get_setting("auto_cleanup_enabled", "0")) in ("1", "True", "true")
+            if auto_clean_on:
+                last_clean_str = get_setting("auto_cleanup_last_run", "")
+                should_clean = False
+                if not last_clean_str:
+                    should_clean = True
+                else:
+                    try:
+                        last_clean_dt = datetime.fromisoformat(last_clean_str)
+                        if (now - last_clean_dt).total_seconds() >= 86400: # раз в сутки
+                            should_clean = True
+                    except Exception:
+                        should_clean = True
+
+                if should_clean:
+                    try:
+                        clean_days = int(get_setting("auto_cleanup_days", "30"))
+                    except ValueError:
+                        clean_days = 30
+                    run_database_cleanup(clean_days)
+
             if client is None or not client.is_connected():
                 continue
             if not await client.is_user_authorized():
@@ -915,6 +967,10 @@ class MonitorUpdateRequest(BaseModel):
 class WebhookConfigRequest(BaseModel):
     webhook_url: str
     auto_webhook_enabled: bool = True
+
+class CleanupConfigRequest(BaseModel):
+    enabled: bool = True
+    days: int = 30
 
 class DirectReadRequest(BaseModel):
     chat: str
@@ -1692,6 +1748,38 @@ async def clear_system_logs():
     conn.close()
     add_log("SYSTEM", "Журнал логов очищен пользователем", "INFO")
     return {"status": "cleared", "message": "Логи успешно очищены"}
+
+# --- API Автоочистки базы ---
+
+@app.get("/api/cleanup")
+async def get_cleanup_config():
+    enabled = str(get_setting("auto_cleanup_enabled", "0")) in ("1", "True", "true")
+    try:
+        days = int(get_setting("auto_cleanup_days", "30"))
+    except ValueError:
+        days = 30
+    last_run = get_setting("auto_cleanup_last_run", "")
+    return {
+        "enabled": enabled,
+        "days": days,
+        "last_run": last_run
+    }
+
+@app.post("/api/cleanup")
+async def save_cleanup_config(req: CleanupConfigRequest):
+    set_setting("auto_cleanup_enabled", "1" if req.enabled else "0")
+    set_setting("auto_cleanup_days", str(req.days))
+    add_log("SETTINGS", f"Настройки автоочистки базы: {'Вкл' if req.enabled else 'Выкл'}, срок хранения {req.days} дн.", "SUCCESS")
+    return {"status": "saved", "config": req}
+
+@app.post("/api/cleanup/run-now")
+async def run_cleanup_now_endpoint():
+    try:
+        days = int(get_setting("auto_cleanup_days", "30"))
+    except ValueError:
+        days = 30
+    res = run_database_cleanup(days)
+    return {"status": "success", **res}
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/feed", response_class=HTMLResponse)
