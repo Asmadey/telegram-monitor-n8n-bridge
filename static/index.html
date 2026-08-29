@@ -1134,9 +1134,8 @@
           </p>
         </div>
 
-        <div class="form-group">
-          <label for="openrouterSystemPrompt">Системный промпт (Инструкция для LLM):</label>
-          <textarea id="openrouterSystemPrompt" rows="3" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 10px; font-family: inherit; font-size: 13px; resize: vertical;" placeholder="Выдели ключевую суть сообщения, ключевые технологии, условия и теги. Будь краток."></textarea>
+        <div style="font-size: 12px; color: var(--body-mid); background: var(--canvas-soft); padding: 10px 14px; border-radius: var(--rounded-xs); border: 1px solid var(--hairline); margin-bottom: 16px; line-height: 1.5;">
+          💡 <b>Индивидуальные промпты:</b> Промпт для обработки постов задается индивидуально для каждого канала во вкладке <b>«📡 Каналы»</b> (в параметрах источника при добавлении или редактировании).
         </div>
 
         <div id="openrouterTestResultBox" style="display: none; padding: 12px; background: var(--canvas-soft); border: 1px solid var(--hairline); border-radius: var(--rounded-sm); margin-bottom: 16px;">
@@ -2316,7 +2315,6 @@
     const openrouterModel = document.getElementById('openrouterModel');
     const openrouterApiKey = document.getElementById('openrouterApiKey');
     const toggleApiKeyVisibility = document.getElementById('toggleApiKeyVisibility');
-    const openrouterSystemPrompt = document.getElementById('openrouterSystemPrompt');
     const openrouterEnabled = document.getElementById('openrouterEnabled');
     const saveOpenRouterBtn = document.getElementById('saveOpenRouterBtn');
     const testOpenRouterBtn = document.getElementById('testOpenRouterBtn');
@@ -2334,7 +2332,6 @@
         const data = await res.json();
         openrouterBaseUrl.value = data.base_url || 'https://openrouter.ai/api/v1';
         openrouterModel.value = data.model || 'google/gemini-2.0-flash-001';
-        openrouterSystemPrompt.value = data.system_prompt || '';
         openrouterEnabled.checked = Boolean(data.is_enabled);
         if (data.has_key) {
           openrouterApiKey.placeholder = `Ключ сохранен (${data.api_key_masked})`;
@@ -2352,7 +2349,6 @@
           base_url: openrouterBaseUrl.value.trim() || 'https://openrouter.ai/api/v1',
           model: openrouterModel.value.trim() || 'google/gemini-2.0-flash-001',
           api_key: openrouterApiKey.value.trim(),
-          system_prompt: openrouterSystemPrompt.value.trim(),
           is_enabled: openrouterEnabled.checked
         };
         const res = await fetch('/api/openrouter', {

@@ -724,7 +724,7 @@ class OpenRouterConfigRequest(BaseModel):
     base_url: str = "https://openrouter.ai/api/v1"
     api_key: str
     model: str = "google/gemini-2.0-flash-001"
-    system_prompt: Optional[str] = "Выдели ключевую суть сообщения, ключевые технологии, условия и теги. Будь краток."
+    system_prompt: Optional[str] = None
     is_enabled: bool = False
 
 class OpenRouterTestRequest(BaseModel):
