@@ -1191,9 +1191,12 @@
               <button type="button" id="refreshModelsBtn" class="btn btn-secondary btn-sm" style="padding: 1px 7px; font-size: 11px; height: 22px;" title="Загрузить все доступные модели с OpenRouter">🔄 Обновить</button>
             </div>
             <div style="position: relative;">
-              <input type="text" id="openrouterModel" placeholder="Введите или выберите модель (например: claude, gemini, gpt, deepseek)..." value="google/gemini-2.0-flash-001" spellcheck="false" autocomplete="off" style="width: 100%; padding-right: 32px; font-family: 'Inconsolata', monospace; font-size: 13px;">
+              <input type="text" id="openrouterModel" list="openrouterModelsList" placeholder="Введите 'deepseek', 'claude', 'gemini' для фильтрации..." value="google/gemini-2.0-flash-001" spellcheck="false" autocomplete="off" style="width: 100%; padding-right: 32px; font-family: 'Inconsolata', monospace; font-size: 13px;">
               <span id="modelDropdownTrigger" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--body-mid); font-size: 11px; user-select: none;" title="Показать все модели">▼</span>
             </div>
+
+            <!-- Native Datalist Fallback -->
+            <datalist id="openrouterModelsList"></datalist>
 
             <!-- Autocomplete Dropdown List -->
             <div id="openrouterModelsDropdown" class="autocomplete-dropdown"></div>
@@ -2421,8 +2424,34 @@
     const openrouterTestResultBox = document.getElementById('openrouterTestResultBox');
     const openrouterTestResultText = document.getElementById('openrouterTestResultText');
 
-    let allOpenRouterModels = [];
+    let allOpenRouterModels = [
+      { id: "deepseek/deepseek-chat", name: "DeepSeek: DeepSeek V3 (Chat)" },
+      { id: "deepseek/deepseek-r1", name: "DeepSeek: DeepSeek R1 (Reasoning)" },
+      { id: "deepseek/deepseek-r1-distill-llama-70b", name: "DeepSeek: R1 Distill Llama 70B" },
+      { id: "deepseek/deepseek-r1-distill-qwen-32b", name: "DeepSeek: R1 Distill Qwen 32B" },
+      { id: "deepseek/deepseek-coder", name: "DeepSeek: DeepSeek Coder" },
+      { id: "google/gemini-2.0-flash-001", name: "Google: Gemini 2.0 Flash" },
+      { id: "google/gemini-2.5-pro", name: "Google: Gemini 2.5 Pro" },
+      { id: "google/gemini-flash-1.5", name: "Google: Gemini 1.5 Flash" },
+      { id: "anthropic/claude-3.5-sonnet", name: "Anthropic: Claude 3.5 Sonnet" },
+      { id: "anthropic/claude-3.5-haiku", name: "Anthropic: Claude 3.5 Haiku" },
+      { id: "openai/gpt-4o", name: "OpenAI: GPT-4o" },
+      { id: "openai/gpt-4o-mini", name: "OpenAI: GPT-4o Mini" },
+      { id: "openai/o3-mini", name: "OpenAI: o3-mini" },
+      { id: "meta-llama/llama-3.3-70b-instruct", name: "Meta: Llama 3.3 70B Instruct" },
+      { id: "meta-llama/llama-3.1-405b-instruct", name: "Meta: Llama 3.1 405B Instruct" },
+      { id: "qwen/qwen-2.5-72b-instruct", name: "Qwen: Qwen 2.5 72B Instruct" },
+      { id: "mistralai/mistral-large-2411", name: "Mistral: Mistral Large 2411" },
+      { id: "x-ai/grok-2-1212", name: "xAI: Grok 2" }
+    ];
     let highlightedModelIndex = -1;
+
+    function populateDatalist(models) {
+      const dl = document.getElementById('openrouterModelsList');
+      if (!dl) return;
+      dl.innerHTML = models.map(m => `<option value="${m.id}">${escapeHtml(m.name || m.id)}</option>`).join('');
+    }
+    populateDatalist(allOpenRouterModels);
 
     toggleApiKeyVisibility.addEventListener('click', () => {
       openrouterApiKey.type = openrouterApiKey.type === 'password' ? 'text' : 'password';
@@ -2444,6 +2473,13 @@
       openrouterModelsDropdown.style.display = 'block';
     }
 
+    function highlightText(text, query) {
+      if (!query) return escapeHtml(text);
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`(${escapedQuery})`, 'gi');
+      return escapeHtml(text).replace(regex, '<span style="background: #fff3a8; color: #78350f; font-weight: 700; border-radius: 2px; padding: 0 2px;">$1</span>');
+    }
+
     function renderModelsDropdown(query = '') {
       const q = query.trim().toLowerCase();
       let filtered = allOpenRouterModels;
@@ -2458,7 +2494,7 @@
         openrouterModelsDropdown.innerHTML = `
           <div style="padding: 14px; text-align: center; color: var(--mute); font-size: 12.5px;">
             Модели по запросу <b>"${escapeHtml(query)}"</b> не найдены в каталоге.<br>
-            <span style="font-size: 11px; color: var(--body-mid);">Вы можете оставить введенный ID как есть.</span>
+            <span style="font-size: 11px; color: var(--body-mid);">Вы можете использовать введенный ID модели.</span>
           </div>
         `;
         showModelsDropdown();
@@ -2466,10 +2502,10 @@
       }
 
       const groups = {
+        'DeepSeek': [],
         'Google (Gemini)': [],
         'Anthropic (Claude)': [],
         'OpenAI (ChatGPT)': [],
-        'DeepSeek': [],
         'Meta (Llama)': [],
         'Qwen': [],
         'Mistral': [],
@@ -2479,10 +2515,10 @@
 
       filtered.forEach(m => {
         const id = m.id.toLowerCase();
-        if (id.startsWith('google/')) groups['Google (Gemini)'].push(m);
+        if (id.startsWith('deepseek/')) groups['DeepSeek'].push(m);
+        else if (id.startsWith('google/')) groups['Google (Gemini)'].push(m);
         else if (id.startsWith('anthropic/')) groups['Anthropic (Claude)'].push(m);
         else if (id.startsWith('openai/')) groups['OpenAI (ChatGPT)'].push(m);
-        else if (id.startsWith('deepseek/')) groups['DeepSeek'].push(m);
         else if (id.startsWith('meta-llama/')) groups['Meta (Llama)'].push(m);
         else if (id.startsWith('qwen/')) groups['Qwen'].push(m);
         else if (id.startsWith('mistralai/')) groups['Mistral'].push(m);
@@ -2490,7 +2526,7 @@
         else groups['Другие модели'].push(m);
       });
 
-      let html = '';
+      let html = `<div style="padding: 6px 12px; font-size: 11px; color: #5533ff; background: #f5f3ff; border-bottom: 1px solid var(--hairline); font-weight: 600;">Найдено моделей: ${filtered.length} ${q ? `по запросу "${escapeHtml(q)}"` : ''}</div>`;
       for (const [groupName, groupModels] of Object.entries(groups)) {
         if (groupModels.length > 0) {
           html += `<div class="autocomplete-group-header">🌟 ${groupName} (${groupModels.length})</div>`;
@@ -2499,8 +2535,8 @@
             return `
               <div class="autocomplete-item ${isCurrent ? 'selected' : ''}" data-model-id="${m.id}" onclick="selectModelItem('${m.id}')">
                 <div>
-                  <div class="autocomplete-item-name">${escapeHtml(m.name || m.id)}</div>
-                  <div class="autocomplete-item-id">${escapeHtml(m.id)}</div>
+                  <div class="autocomplete-item-name">${highlightText(m.name || m.id, q)}</div>
+                  <div class="autocomplete-item-id">${highlightText(m.id, q)}</div>
                 </div>
                 ${isCurrent ? '<span style="font-size: 12px; color: #5533ff; font-weight: 700;">✓</span>' : ''}
               </div>
@@ -2591,7 +2627,10 @@
 
         const res = await fetch('/api/openrouter/models');
         const data = await res.json();
-        allOpenRouterModels = data.models || [];
+        if (data.models && data.models.length > 0) {
+          allOpenRouterModels = data.models;
+          populateDatalist(allOpenRouterModels);
+        }
 
         refreshModelsBtn.disabled = false;
         refreshModelsBtn.textContent = '🔄 Обновить';
