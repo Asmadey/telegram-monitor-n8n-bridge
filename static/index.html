@@ -1078,6 +1078,71 @@
         </div>
       </div>
 
+      <!-- ==================== OPENROUTER AI CARD ==================== -->
+      <div class="card" style="max-width: 800px; margin: 0 auto 24px auto;">
+        <div class="card-header">
+          <div>
+            <span class="eyebrow">Искусственный Интеллект</span>
+            <div class="card-title">🤖 OpenRouter AI Processing</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 12px; color: var(--body-mid);">AI Обработка:</span>
+            <label class="switch" title="Включить автоматическую AI-обработку сообщений перед отправкой в n8n">
+              <input type="checkbox" id="openrouterEnabled">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label for="openrouterBaseUrl">Base URL (OpenRouter API):</label>
+            <input type="text" id="openrouterBaseUrl" placeholder="https://openrouter.ai/api/v1" value="https://openrouter.ai/api/v1" spellcheck="false">
+          </div>
+
+          <div class="form-group">
+            <label for="openrouterModel">Модель (Model):</label>
+            <input type="text" id="openrouterModel" list="openrouterModelsList" placeholder="google/gemini-2.0-flash-001" value="google/gemini-2.0-flash-001" spellcheck="false">
+            <datalist id="openrouterModelsList">
+              <option value="google/gemini-2.0-flash-001">Google Gemini 2.0 Flash</option>
+              <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+              <option value="openai/gpt-4o">GPT-4o</option>
+              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+              <option value="deepseek/deepseek-chat">DeepSeek V3 (Chat)</option>
+              <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+              <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B</option>
+              <option value="mistralai/mistral-large-2411">Mistral Large</option>
+            </datalist>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="openrouterApiKey">API Ключ от OpenRouter (sk-or-v1-...):</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="password" id="openrouterApiKey" placeholder="sk-or-v1-..." style="flex: 1;" spellcheck="false">
+            <button type="button" id="toggleApiKeyVisibility" class="btn btn-secondary btn-sm" style="padding: 0 12px;" title="Показать/скрыть ключ">👁️</button>
+          </div>
+          <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
+            Ключ хранится в SQLite базе данных. Получить ключ можно на <a href="https://openrouter.ai/keys" target="_blank" style="color: var(--accent-blue-deep); text-decoration: underline;">openrouter.ai/keys</a>.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <label for="openrouterSystemPrompt">Системный промпт (Инструкция для LLM):</label>
+          <textarea id="openrouterSystemPrompt" rows="3" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 10px; font-family: inherit; font-size: 13px; resize: vertical;" placeholder="Выдели ключевую суть сообщения, ключевые технологии, условия и теги. Будь краток."></textarea>
+        </div>
+
+        <div id="openrouterTestResultBox" style="display: none; padding: 12px; background: var(--canvas-soft); border: 1px solid var(--hairline); border-radius: var(--rounded-sm); margin-bottom: 16px;">
+          <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: #008715; margin-bottom: 4px;">Ответ модели OpenRouter:</div>
+          <div id="openrouterTestResultText" style="font-size: 13px; color: var(--ink); white-space: pre-wrap; line-height: 1.5;"></div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+          <button id="saveOpenRouterBtn" class="btn btn-primary" style="flex: 1;">💾 Сохранить настройки OpenRouter</button>
+          <button id="testOpenRouterBtn" class="btn btn-secondary">⚡ Проверить подключение к LLM</button>
+        </div>
+      </div>
+
       <div class="card" style="max-width: 800px; margin: 0 auto;">
         <span class="eyebrow">Схема данных</span>
         <div class="card-title" style="margin-bottom: 10px;">Пример JSON-пакета, отправляемого в n8n</div>
@@ -1442,6 +1507,9 @@
         loadLogs();
       } else if (tabId === 'channels') {
         loadConfig();
+      } else if (tabId === 'integration') {
+        loadConfig();
+        loadOpenRouterConfig();
       }
     }
 
@@ -2179,6 +2247,104 @@
       a.click();
     });
 
+    // ==================== OPENROUTER AI JS LOGIC ====================
+    const openrouterBaseUrl = document.getElementById('openrouterBaseUrl');
+    const openrouterModel = document.getElementById('openrouterModel');
+    const openrouterApiKey = document.getElementById('openrouterApiKey');
+    const toggleApiKeyVisibility = document.getElementById('toggleApiKeyVisibility');
+    const openrouterSystemPrompt = document.getElementById('openrouterSystemPrompt');
+    const openrouterEnabled = document.getElementById('openrouterEnabled');
+    const saveOpenRouterBtn = document.getElementById('saveOpenRouterBtn');
+    const testOpenRouterBtn = document.getElementById('testOpenRouterBtn');
+    const openrouterTestResultBox = document.getElementById('openrouterTestResultBox');
+    const openrouterTestResultText = document.getElementById('openrouterTestResultText');
+
+    toggleApiKeyVisibility.addEventListener('click', () => {
+      openrouterApiKey.type = openrouterApiKey.type === 'password' ? 'text' : 'password';
+      toggleApiKeyVisibility.textContent = openrouterApiKey.type === 'password' ? '👁️' : '🙈';
+    });
+
+    async function loadOpenRouterConfig() {
+      try {
+        const res = await fetch('/api/openrouter');
+        const data = await res.json();
+        openrouterBaseUrl.value = data.base_url || 'https://openrouter.ai/api/v1';
+        openrouterModel.value = data.model || 'google/gemini-2.0-flash-001';
+        openrouterSystemPrompt.value = data.system_prompt || '';
+        openrouterEnabled.checked = Boolean(data.is_enabled);
+        if (data.has_key) {
+          openrouterApiKey.placeholder = `Ключ сохранен (${data.api_key_masked})`;
+        }
+      } catch (e) {
+        console.error('Error loading OpenRouter config:', e);
+      }
+    }
+
+    saveOpenRouterBtn.addEventListener('click', async () => {
+      saveOpenRouterBtn.disabled = true;
+      saveOpenRouterBtn.textContent = '💾 Сохранение...';
+      try {
+        const payload = {
+          base_url: openrouterBaseUrl.value.trim() || 'https://openrouter.ai/api/v1',
+          model: openrouterModel.value.trim() || 'google/gemini-2.0-flash-001',
+          api_key: openrouterApiKey.value.trim(),
+          system_prompt: openrouterSystemPrompt.value.trim(),
+          is_enabled: openrouterEnabled.checked
+        };
+        const res = await fetch('/api/openrouter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        saveOpenRouterBtn.disabled = false;
+        saveOpenRouterBtn.textContent = '💾 Сохранить настройки OpenRouter';
+
+        if (res.ok) {
+          showToast('✅ Настройки OpenRouter успешно сохранены!');
+          openrouterApiKey.value = '';
+          loadOpenRouterConfig();
+        } else {
+          const err = await res.json();
+          showToast(err.detail || 'Ошибка сохранения', true);
+        }
+      } catch (e) {
+        saveOpenRouterBtn.disabled = false;
+        saveOpenRouterBtn.textContent = '💾 Сохранить настройки OpenRouter';
+        showToast('Ошибка: ' + e.message, true);
+      }
+    });
+
+    testOpenRouterBtn.addEventListener('click', async () => {
+      testOpenRouterBtn.disabled = true;
+      testOpenRouterBtn.textContent = '⏳ Тестирование LLM...';
+      openrouterTestResultBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/openrouter/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sample_text: "Требуется Senior AI/Python разработчик для создания Telegram-мониторов и Webhook-интеграций. Зарплата: $5000/мес."
+          })
+        });
+        const data = await res.json();
+        testOpenRouterBtn.disabled = false;
+        testOpenRouterBtn.textContent = '⚡ Проверить подключение к LLM';
+
+        if (res.ok && data.status === 'success') {
+          showToast(`✅ Тест успешен (${data.model})!`);
+          openrouterTestResultText.textContent = data.response;
+          openrouterTestResultBox.style.display = 'block';
+        } else {
+          showToast(data.detail || 'Ошибка тестирования OpenRouter', true);
+        }
+      } catch (e) {
+        testOpenRouterBtn.disabled = false;
+        testOpenRouterBtn.textContent = '⚡ Проверить подключение к LLM';
+        showToast('Ошибка сети: ' + e.message, true);
+      }
+    });
+
     // Logs logic
     async function loadLogs() {
       const status = filterLogStatus.value;
@@ -2296,6 +2462,7 @@
     loadConfig();
     loadLogs();
     loadSavedMessages();
+    loadOpenRouterConfig();
     initTabFromUrl();
 
     // Периодический пересчет таймеров обратного отсчета (каждые 15 секунд)

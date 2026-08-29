@@ -503,8 +503,65 @@ async def fetch_chat_messages(target: str, limit: int = 20, offset_hours: Option
         "messages": messages
     }
 
+async def call_openrouter(text: str, custom_prompt: Optional[str] = None) -> Optional[str]:
+    api_key = get_setting("openrouter_api_key", "").strip()
+    if not api_key:
+        return None
+    base_url = get_setting("openrouter_base_url", "https://openrouter.ai/api/v1").rstrip("/")
+    model = get_setting("openrouter_model", "google/gemini-2.0-flash-001").strip()
+    system_prompt = custom_prompt or get_setting(
+        "openrouter_system_prompt",
+        "Выдели ключевую суть сообщения, ключевые технологии, условия и теги. Будь краток."
+    )
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://telegram-monitor.local",
+        "X-Title": "Telegram MTProto Monitor"
+    }
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text}
+        ]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=35.0) as http_client:
+            url = f"{base_url}/chat/completions"
+            resp = await http_client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            choices = data.get("choices", [])
+            if choices and len(choices) > 0:
+                return choices[0].get("message", {}).get("content", "").strip()
+    except Exception as e:
+        print(f"⚠️ Ошибка OpenRouter API: {e}")
+        add_log("OPENROUTER_ERROR", f"Ошибка генерации ответа OpenRouter: {str(e)}", "ERROR")
+    return None
+
+async def enrich_messages_with_ai(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    is_enabled = get_setting("openrouter_enabled", "0") == "1"
+    api_key = get_setting("openrouter_api_key", "").strip()
+    if not is_enabled or not api_key:
+        return messages
+
+    for msg in messages:
+        text = msg.get("text", "")
+        if text and len(text) > 10 and not msg.get("ai_analysis"):
+            ai_res = await call_openrouter(text)
+            if ai_res:
+                msg["ai_analysis"] = ai_res
+    return messages
+
 async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    async with httpx.AsyncClient(timeout=15.0) as http_client:
+    # Если включен OpenRouter, обогащаем сообщения AI-выжимкой
+    if "messages" in payload and payload["messages"]:
+        payload["messages"] = await enrich_messages_with_ai(payload["messages"])
+
+    async with httpx.AsyncClient(timeout=20.0) as http_client:
         data_to_send = {
             "source": "telethon_monitor",
             "event": "telegram_messages_batch",
@@ -556,6 +613,16 @@ class DirectReadRequest(BaseModel):
     chat: str
     limit: int = 20
     offset_hours: Optional[int] = None
+
+class OpenRouterConfigRequest(BaseModel):
+    base_url: str = "https://openrouter.ai/api/v1"
+    api_key: str
+    model: str = "google/gemini-2.0-flash-001"
+    system_prompt: Optional[str] = "Выдели ключевую суть сообщения, ключевые технологии, условия и теги. Будь краток."
+    is_enabled: bool = False
+
+class OpenRouterTestRequest(BaseModel):
+    sample_text: Optional[str] = "Требуется Senior Python разработчик с опытом FastAPI и Telegram API. Зарплата от $4000."
 
 # ==================== API Эндпоинты ====================
 
@@ -1077,6 +1144,52 @@ async def send_custom_payload(payload: Dict[str, Any]):
             chat_id=chat_id
         )
         raise HTTPException(status_code=500, detail=f"Ошибка отправки: {str(e)}")
+
+# --- OpenRouter AI Настройки ---
+
+@app.get("/api/openrouter")
+async def get_openrouter_config():
+    api_key = get_setting("openrouter_api_key", "")
+    masked_key = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else ("******" if api_key else "")
+    return {
+        "base_url": get_setting("openrouter_base_url", "https://openrouter.ai/api/v1"),
+        "api_key_masked": masked_key,
+        "has_key": bool(api_key),
+        "model": get_setting("openrouter_model", "google/gemini-2.0-flash-001"),
+        "system_prompt": get_setting("openrouter_system_prompt", "Выдели ключевую суть сообщения, ключевые технологии, условия и теги. Будь краток."),
+        "is_enabled": get_setting("openrouter_enabled", "0") == "1"
+    }
+
+@app.post("/api/openrouter")
+async def save_openrouter_config(req: OpenRouterConfigRequest):
+    set_setting("openrouter_base_url", req.base_url.strip() or "https://openrouter.ai/api/v1")
+    if req.api_key and req.api_key != "******" and "..." not in req.api_key:
+        set_setting("openrouter_api_key", req.api_key.strip())
+    set_setting("openrouter_model", req.model.strip() or "google/gemini-2.0-flash-001")
+    set_setting("openrouter_system_prompt", req.system_prompt.strip() if req.system_prompt else "")
+    set_setting("openrouter_enabled", "1" if req.is_enabled else "0")
+
+    add_log("SETTINGS", f"Сохранены настройки OpenRouter (Модель: {req.model}, Активен: {req.is_enabled})", "SUCCESS")
+    return {"status": "saved"}
+
+@app.post("/api/openrouter/test")
+async def test_openrouter(req: Optional[OpenRouterTestRequest] = None):
+    api_key = get_setting("openrouter_api_key", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API ключ OpenRouter не указан. Сохраните ключ перед тестом.")
+
+    test_prompt = req.sample_text if req and req.sample_text else "Тестовое сообщение: требуется Senior Python разработчик с опытом FastAPI и Telegram API. Зарплата от $4000."
+    res = await call_openrouter(test_prompt)
+    if not res:
+        raise HTTPException(status_code=500, detail="OpenRouter не вернул ответ. Проверьте API ключ, баланс или название модели.")
+
+    add_log("OPENROUTER_TEST", f"Успешный тест OpenRouter ({get_setting('openrouter_model')})", "SUCCESS")
+    return {
+        "status": "success",
+        "model": get_setting("openrouter_model"),
+        "input": test_prompt,
+        "response": res
+    }
 
 # --- API Логов (SQLite) ---
 
