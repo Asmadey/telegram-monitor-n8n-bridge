@@ -106,6 +106,24 @@ def init_db():
         value TEXT
     );
     """)
+
+    # Отдельная таблица конфигурации интеграций (Telegram Bot, OpenRouter AI, Webhook)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS integrations_config (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        telegram_bot_token TEXT DEFAULT '',
+        telegram_sender_id TEXT DEFAULT '',
+        telegram_forward_enabled INTEGER DEFAULT 0,
+        openrouter_api_key TEXT DEFAULT '',
+        openrouter_base_url TEXT DEFAULT 'https://openrouter.ai/api/v1',
+        openrouter_model TEXT DEFAULT 'google/gemini-2.0-flash-001',
+        openrouter_enabled INTEGER DEFAULT 0,
+        webhook_url TEXT DEFAULT '',
+        auto_webhook_enabled INTEGER DEFAULT 1,
+        updated_at TEXT
+    );
+    """)
+    cur.execute("INSERT OR IGNORE INTO integrations_config (id) VALUES (1)")
     conn.commit()
 
     # Миграция колонок (если база уже создана)
@@ -120,6 +138,38 @@ def init_db():
         conn.commit()
     except Exception:
         pass
+
+    # Миграция из settings в integrations_config (если настройки были сохранены ранее в settings)
+    try:
+        cur.execute("SELECT key, value FROM settings")
+        old_settings = dict(cur.fetchall())
+        if old_settings:
+            cur.execute("""
+            UPDATE integrations_config SET
+                telegram_bot_token = COALESCE(NULLIF(?, ''), telegram_bot_token),
+                telegram_sender_id = COALESCE(NULLIF(?, ''), telegram_sender_id),
+                telegram_forward_enabled = COALESCE(?, telegram_forward_enabled),
+                openrouter_api_key = COALESCE(NULLIF(?, ''), openrouter_api_key),
+                openrouter_base_url = COALESCE(NULLIF(?, ''), openrouter_base_url),
+                openrouter_model = COALESCE(NULLIF(?, ''), openrouter_model),
+                openrouter_enabled = COALESCE(?, openrouter_enabled),
+                webhook_url = COALESCE(NULLIF(?, ''), webhook_url),
+                auto_webhook_enabled = COALESCE(?, auto_webhook_enabled)
+            WHERE id = 1
+            """, (
+                old_settings.get("telegram_bot_token", ""),
+                old_settings.get("telegram_forward_chat_id", ""),
+                int(old_settings["telegram_forward_enabled"]) if "telegram_forward_enabled" in old_settings else None,
+                old_settings.get("openrouter_api_key", ""),
+                old_settings.get("openrouter_base_url", ""),
+                old_settings.get("openrouter_model", ""),
+                int(old_settings["openrouter_enabled"]) if "openrouter_enabled" in old_settings else None,
+                old_settings.get("webhook_url", ""),
+                int(old_settings["auto_webhook_enabled"]) if "auto_webhook_enabled" in old_settings else None
+            ))
+            conn.commit()
+    except Exception as e:
+        print(f"⚠️ Ошибка миграции в integrations_config: {e}")
 
     # Миграция из monitors.json, если он еще существует
     if MONITORS_OLD_FILE.exists():
@@ -161,7 +211,63 @@ def init_db():
 
     conn.close()
 
+def get_integrations_config() -> dict:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM integrations_config WHERE id = 1")
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    return {
+        "id": 1,
+        "telegram_bot_token": "",
+        "telegram_sender_id": "",
+        "telegram_forward_enabled": 0,
+        "openrouter_api_key": "",
+        "openrouter_base_url": "https://openrouter.ai/api/v1",
+        "openrouter_model": "google/gemini-2.0-flash-001",
+        "openrouter_enabled": 0,
+        "webhook_url": "",
+        "auto_webhook_enabled": 1
+    }
+
+def update_integrations_config(data: dict):
+    conn = get_db()
+    cur = conn.cursor()
+    fields = []
+    values = []
+    for k, v in data.items():
+        fields.append(f"{k} = ?")
+        values.append(v)
+    fields.append("updated_at = ?")
+    values.append(datetime.now(timezone.utc).isoformat())
+    values.append(1)
+    query = f"UPDATE integrations_config SET {', '.join(fields)} WHERE id = ?"
+    cur.execute(query, tuple(values))
+    conn.commit()
+    conn.close()
+
 def get_setting(key: str, default: str = "") -> str:
+    # Проверяем в integrations_config
+    key_mapping = {
+        "webhook_url": "webhook_url",
+        "auto_webhook_enabled": "auto_webhook_enabled",
+        "telegram_bot_token": "telegram_bot_token",
+        "telegram_forward_chat_id": "telegram_sender_id",
+        "telegram_forward_enabled": "telegram_forward_enabled",
+        "openrouter_api_key": "openrouter_api_key",
+        "openrouter_base_url": "openrouter_base_url",
+        "openrouter_model": "openrouter_model",
+        "openrouter_enabled": "openrouter_enabled"
+    }
+    if key in key_mapping:
+        col = key_mapping[key]
+        cfg = get_integrations_config()
+        val = cfg.get(col)
+        if val is not None and val != "":
+            return str(val)
+            
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT value FROM settings WHERE key = ?", (key,))
@@ -175,6 +281,22 @@ def set_setting(key: str, value: str):
     cur.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
     conn.commit()
     conn.close()
+
+    # Дублируем в integrations_config
+    key_mapping = {
+        "webhook_url": "webhook_url",
+        "auto_webhook_enabled": "auto_webhook_enabled",
+        "telegram_bot_token": "telegram_bot_token",
+        "telegram_forward_chat_id": "telegram_sender_id",
+        "telegram_forward_enabled": "telegram_forward_enabled",
+        "openrouter_api_key": "openrouter_api_key",
+        "openrouter_base_url": "openrouter_base_url",
+        "openrouter_model": "openrouter_model",
+        "openrouter_enabled": "openrouter_enabled"
+    }
+    if key in key_mapping:
+        col = key_mapping[key]
+        update_integrations_config({col: value})
 
 def add_log(event_type: str, details: str, status: str = "INFO", chat_title: Optional[str] = None, chat_id: Optional[int] = None, messages_count: int = 0):
     conn = get_db()
@@ -1275,32 +1397,35 @@ async def send_custom_payload(payload: Dict[str, Any]):
 
 @app.get("/api/openrouter")
 async def get_openrouter_config():
-    api_key = get_setting("openrouter_api_key", "")
-    masked_key = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else ("******" if api_key else "")
+    cfg = get_integrations_config()
+    key = cfg.get("openrouter_api_key") or ""
+    masked_key = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else ("******" if key else "")
     return {
-        "base_url": get_setting("openrouter_base_url", "https://openrouter.ai/api/v1"),
+        "base_url": cfg.get("openrouter_base_url") or "https://openrouter.ai/api/v1",
+        "api_key": key,
         "api_key_masked": masked_key,
-        "has_key": bool(api_key),
-        "model": get_setting("openrouter_model", "google/gemini-2.0-flash-001"),
-        "system_prompt": get_setting("openrouter_system_prompt", "Выдели ключевую суть сообщения, ключевые технологии, условия и теги. Будь краток."),
-        "is_enabled": get_setting("openrouter_enabled", "0") == "1"
+        "has_key": bool(key),
+        "model": cfg.get("openrouter_model") or "google/gemini-2.0-flash-001",
+        "is_enabled": bool(cfg.get("openrouter_enabled", 0))
     }
 
 @app.post("/api/openrouter")
 async def save_openrouter_config(req: OpenRouterConfigRequest):
-    set_setting("openrouter_base_url", req.base_url.strip() or "https://openrouter.ai/api/v1")
-    if req.api_key and req.api_key != "******" and "..." not in req.api_key:
-        set_setting("openrouter_api_key", req.api_key.strip())
-    set_setting("openrouter_model", req.model.strip() or "google/gemini-2.0-flash-001")
-    set_setting("openrouter_system_prompt", req.system_prompt.strip() if req.system_prompt else "")
-    set_setting("openrouter_enabled", "1" if req.is_enabled else "0")
-
-    add_log("SETTINGS", f"Сохранены настройки OpenRouter (Модель: {req.model}, Активен: {req.is_enabled})", "SUCCESS")
+    data = {
+        "openrouter_base_url": req.base_url.strip() or "https://openrouter.ai/api/v1",
+        "openrouter_model": req.model.strip() or "google/gemini-2.0-flash-001",
+        "openrouter_enabled": 1 if req.is_enabled else 0
+    }
+    if req.api_key:
+        data["openrouter_api_key"] = req.api_key.strip()
+    update_integrations_config(data)
+    add_log("SETTINGS", f"Сохранены настройки OpenRouter в таблицу integrations_config (Модель: {req.model}, Активен: {req.is_enabled})", "SUCCESS")
     return {"status": "saved"}
 
 @app.post("/api/openrouter/test")
 async def test_openrouter(req: Optional[OpenRouterTestRequest] = None):
-    api_key = get_setting("openrouter_api_key", "").strip()
+    cfg = get_integrations_config()
+    api_key = cfg.get("openrouter_api_key") or ""
     if not api_key:
         raise HTTPException(status_code=400, detail="API ключ OpenRouter не указан. Сохраните ключ перед тестом.")
 
@@ -1309,10 +1434,10 @@ async def test_openrouter(req: Optional[OpenRouterTestRequest] = None):
     if not res:
         raise HTTPException(status_code=500, detail="OpenRouter не вернул ответ. Проверьте API ключ, баланс или название модели.")
 
-    add_log("OPENROUTER_TEST", f"Успешный тест OpenRouter ({get_setting('openrouter_model')})", "SUCCESS")
+    add_log("OPENROUTER_TEST", f"Успешный тест OpenRouter ({cfg.get('openrouter_model')})", "SUCCESS")
     return {
         "status": "success",
-        "model": get_setting("openrouter_model"),
+        "model": cfg.get("openrouter_model"),
         "input": test_prompt,
         "response": res
     }
@@ -1321,35 +1446,40 @@ async def test_openrouter(req: Optional[OpenRouterTestRequest] = None):
 
 @app.get("/api/telegram-forward")
 async def get_telegram_forward_config():
-    token = get_setting("telegram_bot_token", "")
+    cfg = get_integrations_config()
+    token = cfg.get("telegram_bot_token") or ""
     masked_token = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else ("******" if token else "")
     return {
+        "bot_token": token,
         "bot_token_masked": masked_token,
         "has_token": bool(token),
-        "sender_id": get_setting("telegram_forward_chat_id", ""),
-        "is_enabled": get_setting("telegram_forward_enabled", "0") == "1"
+        "sender_id": cfg.get("telegram_sender_id") or "",
+        "is_enabled": bool(cfg.get("telegram_forward_enabled", 0))
     }
 
 @app.post("/api/telegram-forward")
 async def save_telegram_forward_config(req: TelegramForwardConfigRequest):
-    if req.bot_token and req.bot_token != "******" and "..." not in req.bot_token:
-        set_setting("telegram_bot_token", req.bot_token.strip())
-    set_setting("telegram_forward_chat_id", req.sender_id.strip())
-    set_setting("telegram_forward_enabled", "1" if req.is_enabled else "0")
-
-    add_log("SETTINGS", f"Сохранены настройки Telegram-бота (ID получателя: {req.sender_id}, Активен: {req.is_enabled})", "SUCCESS")
+    data = {
+        "telegram_sender_id": req.sender_id.strip(),
+        "telegram_forward_enabled": 1 if req.is_enabled else 0
+    }
+    if req.bot_token:
+        data["telegram_bot_token"] = req.bot_token.strip()
+    update_integrations_config(data)
+    add_log("SETTINGS", f"Сохранены настройки Telegram-бота в таблицу integrations_config (ID: {req.sender_id}, Активен: {req.is_enabled})", "SUCCESS")
     return {"status": "saved"}
 
 @app.post("/api/telegram-forward/test")
 async def test_telegram_forward():
-    token = get_setting("telegram_bot_token", "").strip()
-    chat_id = get_setting("telegram_forward_chat_id", "").strip()
+    cfg = get_integrations_config()
+    token = cfg.get("telegram_bot_token") or ""
+    chat_id = cfg.get("telegram_sender_id") or ""
     if not token or not chat_id:
         raise HTTPException(status_code=400, detail="Telegram bot API токен или ID отправителя не настроены")
 
     test_text = (
         "🚀 <b>Тестовое уведомление из Telethon Monitor!</b>\n\n"
-        "Интеграция с Telegram-ботом работает корректно. Сюда будут поступать новые сообщения из отслеживаемых каналов."
+        "Интеграция с Telegram-ботом работает корректно. Данные надежно сохранены в таблице SQLite integrations_config."
     )
     ok = await send_telegram_bot_message(test_text, chat_id)
     if not ok:

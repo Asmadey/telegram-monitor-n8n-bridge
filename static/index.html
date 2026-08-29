@@ -2342,8 +2342,11 @@
         openrouterBaseUrl.value = data.base_url || 'https://openrouter.ai/api/v1';
         openrouterModel.value = data.model || 'google/gemini-2.0-flash-001';
         openrouterEnabled.checked = Boolean(data.is_enabled);
+        if (data.api_key) {
+          openrouterApiKey.value = data.api_key;
+        }
         if (data.has_key) {
-          openrouterApiKey.placeholder = `Ключ сохранен (${data.api_key_masked})`;
+          openrouterApiKey.placeholder = `Ключ: ${data.api_key_masked}`;
         }
       } catch (e) {
         console.error('Error loading OpenRouter config:', e);
@@ -2369,8 +2372,7 @@
         saveOpenRouterBtn.textContent = '💾 Сохранить настройки OpenRouter';
 
         if (res.ok) {
-          showToast('✅ Настройки OpenRouter успешно сохранены!');
-          openrouterApiKey.value = '';
+          showToast('✅ Настройки OpenRouter сохранены в SQLite (таблица integrations_config)!');
           loadOpenRouterConfig();
         } else {
           const err = await res.json();
@@ -2433,8 +2435,11 @@
         const data = await res.json();
         tgSenderId.value = data.sender_id || '';
         tgForwardEnabled.checked = Boolean(data.is_enabled);
+        if (data.bot_token) {
+          tgBotToken.value = data.bot_token;
+        }
         if (data.has_token) {
-          tgBotToken.placeholder = `Токен сохранен (${data.bot_token_masked})`;
+          tgBotToken.placeholder = `Токен: ${data.bot_token_masked}`;
         }
       } catch (e) {
         console.error('Error loading Telegram forward config:', e);
@@ -2459,8 +2464,7 @@
         saveTgForwardBtn.textContent = '💾 Сохранить настройки Telegram-бота';
 
         if (res.ok) {
-          showToast('✅ Настройки Telegram-бота сохранены!');
-          tgBotToken.value = '';
+          showToast('✅ Настройки Telegram-бота сохранены в SQLite (таблица integrations_config)!');
           loadTgForwardConfig();
         } else {
           const err = await res.json();
