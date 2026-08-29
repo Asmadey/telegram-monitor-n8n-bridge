@@ -115,7 +115,7 @@ Teleton/
 |---|---|---|
 | `id` | INTEGER PRIMARY KEY CHECK (id = 1) | Единственная строка конфигурации |
 | `openrouter_api_key` | TEXT | API ключ OpenRouter |
-| `openrouter_model` | TEXT | Имя модели (например `deepseek/deepseek-chat`) |
+| `openrouter_model` | TEXT | Имя модели (по умолчанию `deepseek/deepseek-v4-flash`) |
 | `openrouter_base_url` | TEXT | Base URL API (по умолчанию `https://openrouter.ai/api/v1`) |
 | `openrouter_enabled` | INTEGER | 1 = включен, 0 = выключен |
 | `tg_bot_token` | TEXT | Токен Telegram-бота из @BotFather |

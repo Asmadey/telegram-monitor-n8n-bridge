@@ -119,7 +119,7 @@ def init_db():
         telegram_forward_enabled INTEGER DEFAULT 0,
         openrouter_api_key TEXT DEFAULT '',
         openrouter_base_url TEXT DEFAULT 'https://openrouter.ai/api/v1',
-        openrouter_model TEXT DEFAULT 'deepseek/deepseek-chat',
+        openrouter_model TEXT DEFAULT 'deepseek/deepseek-v4-flash',
         openrouter_enabled INTEGER DEFAULT 0,
         webhook_url TEXT DEFAULT '',
         auto_webhook_enabled INTEGER DEFAULT 1,
@@ -218,8 +218,17 @@ def init_db():
 
     conn.close()
 
+def normalize_model_name(model_str: Optional[str]) -> str:
+    if not model_str:
+        return "deepseek/deepseek-v4-flash"
+    m = str(model_str).strip()
+    if "openrouter.ai/" in m:
+        m = m.split("openrouter.ai/")[-1]
+    return m.strip("/") or "deepseek/deepseek-v4-flash"
+
 def get_integrations_config() -> dict:
     conn = get_db()
+    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute("SELECT * FROM integrations_config WHERE id = 1")
     row = cur.fetchone()
@@ -233,7 +242,7 @@ def get_integrations_config() -> dict:
         "telegram_forward_enabled": 0,
         "openrouter_api_key": "",
         "openrouter_base_url": "https://openrouter.ai/api/v1",
-        "openrouter_model": "google/gemini-2.0-flash-001",
+        "openrouter_model": "deepseek/deepseek-v4-flash",
         "openrouter_enabled": 0,
         "webhook_url": "",
         "auto_webhook_enabled": 1
@@ -749,7 +758,7 @@ async def call_openrouter(text: str, custom_prompt: Optional[str] = None) -> Opt
     if not api_key:
         return None
     base_url = (get_setting("openrouter_base_url", "https://openrouter.ai/api/v1") or "").rstrip("/")
-    model = (get_setting("openrouter_model", "google/gemini-2.0-flash-001") or "").strip()
+    model = normalize_model_name(get_setting("openrouter_model", "deepseek/deepseek-v4-flash"))
     system_prompt = (custom_prompt or get_setting(
         "openrouter_system_prompt",
         "Выдели ключевую суть сообщения, ключевые технологии, условия и теги. Будь краток."
@@ -804,7 +813,7 @@ async def process_messages_batch_with_llm(messages: List[Dict[str, Any]], custom
         return None
 
     base_url = (get_setting("openrouter_base_url", "https://openrouter.ai/api/v1") or "").rstrip("/")
-    model = (get_setting("openrouter_model", "google/gemini-2.0-flash-001") or "").strip()
+    model = normalize_model_name(get_setting("openrouter_model", "deepseek/deepseek-v4-flash"))
     
     # Приоритет: промпт канала -> дефолт
     effective_prompt = (custom_prompt or "").strip()
@@ -1916,7 +1925,7 @@ async def reanalyze_feed_item(id: int):
         raise HTTPException(status_code=400, detail="API ключ OpenRouter не настроен во вкладке «Интеграция»")
 
     cfg = get_integrations_config()
-    model_name = cfg.get("openrouter_model", "deepseek/deepseek-chat")
+    model_name = normalize_model_name(cfg.get("openrouter_model", "deepseek/deepseek-v4-flash"))
 
     ai_res = await process_messages_batch_with_llm(messages, custom_prompt=channel_prompt)
     if not ai_res:
