@@ -1253,19 +1253,8 @@
 
     <!-- ==================== TAB 4: LOGS ==================== -->
     <div id="tab-logs" class="tab-pane">
-      <div class="section-header">
-        <div>
-          <span class="eyebrow">Аудит</span>
-          <h2 style="font-size: 16px; font-weight: 600; color: var(--ink);">Журнал событий (SQLite)</h2>
-        </div>
-        <div style="display: flex; gap: 8px;">
-          <button id="refreshLogsBtn" class="btn btn-secondary btn-sm">Обновить логи</button>
-          <button id="clearLogsBtn" class="btn btn-danger btn-sm">Очистить журнал</button>
-        </div>
-      </div>
-
       <div class="table-container">
-        <div class="table-toolbar">
+        <div class="table-toolbar" style="display: flex; justify-content: space-between; align-items: center;">
           <div class="toolbar-filters">
             <label style="margin: 0; font-size: 13px; font-weight: 500;">Статус:</label>
             <select id="filterLogStatus" style="width: 180px; background: var(--canvas-soft);">
@@ -1275,6 +1264,10 @@
               <option value="SKIPPED_DEDUP">Только SKIPPED (Дубли)</option>
               <option value="INFO">Только INFO</option>
             </select>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="refreshLogsBtn" class="btn btn-secondary btn-sm">Обновить логи</button>
+            <button id="clearLogsBtn" class="btn btn-danger btn-sm">Очистить журнал</button>
           </div>
         </div>
 
