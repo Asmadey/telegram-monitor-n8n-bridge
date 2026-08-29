@@ -1415,18 +1415,51 @@
       toggleAddChannelBtn.className = 'btn btn-primary btn-sm';
     });
 
-    function switchTab(tabId) {
+    const VALID_TABS = ['feed', 'channels', 'integration', 'logs'];
+
+    function switchTab(tabId, updateHash = true) {
+      if (!VALID_TABS.includes(tabId)) {
+        tabId = 'feed';
+      }
+
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
 
-      const selectedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick').includes(tabId));
+      const selectedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tabId));
       if (selectedBtn) selectedBtn.classList.add('active');
 
       const targetPane = document.getElementById(`tab-${tabId}`);
       if (targetPane) targetPane.classList.add('active');
 
+      if (updateHash) {
+        if (history.pushState) {
+          history.pushState(null, null, `#${tabId}`);
+        } else {
+          window.location.hash = tabId;
+        }
+      }
+
       if (tabId === 'logs') {
         loadLogs();
+      } else if (tabId === 'channels') {
+        loadConfig();
+      }
+    }
+
+    // Слушатель изменения слага (хэша) в URL / кнопок браузера Назад и Вперед
+    window.addEventListener('hashchange', () => {
+      const hash = window.location.hash.replace('#', '').trim();
+      if (hash) {
+        switchTab(hash, false);
+      }
+    });
+
+    function initTabFromUrl() {
+      const hash = window.location.hash.replace('#', '').trim();
+      if (hash && VALID_TABS.includes(hash)) {
+        switchTab(hash, false);
+      } else {
+        switchTab('feed', false);
       }
     }
 
@@ -2263,6 +2296,7 @@
     loadConfig();
     loadLogs();
     loadSavedMessages();
+    initTabFromUrl();
 
     // Периодический пересчет таймеров обратного отсчета (каждые 15 секунд)
     setInterval(() => {
