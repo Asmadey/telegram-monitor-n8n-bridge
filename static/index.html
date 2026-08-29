@@ -1150,6 +1150,48 @@
         </div>
       </div>
 
+      <!-- ==================== TELEGRAM BOT FORWARD CARD ==================== -->
+      <div class="card" style="max-width: 800px; margin: 0 auto 24px auto;">
+        <div class="card-header">
+          <div>
+            <span class="eyebrow">Прямая пересылка</span>
+            <div class="card-title">✈️ Отправка в Telegram-канал</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 12px; color: var(--body-mid);">Пересылка:</span>
+            <label class="switch" title="Включить авто-отправку постов ботом в целевой канал/чат">
+              <input type="checkbox" id="tgForwardEnabled">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="tgBotToken">Telegram bot API:</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="password" id="tgBotToken" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" style="flex: 1;" spellcheck="false">
+            <button type="button" id="toggleTgBotTokenVisibility" class="btn btn-secondary btn-sm" style="padding: 0 12px;" title="Показать/скрыть токен">👁️</button>
+          </div>
+          <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
+            Токен создается через <a href="https://t.me/BotFather" target="_blank" style="color: var(--accent-blue-deep); text-decoration: underline;">@BotFather</a> в Telegram.
+          </p>
+        </div>
+
+        <div class="form-group">
+          <label for="tgSenderId">ID отправителя:</label>
+          <input type="text" id="tgSenderId" placeholder="-1001234567890 или @channel_name" spellcheck="false">
+          <div style="font-size: 11.5px; color: var(--body-mid); margin-top: 6px; line-height: 1.5; background: var(--canvas-soft); padding: 8px 12px; border-radius: var(--rounded-xs); border: 1px solid var(--hairline);">
+            ℹ️ <b>Где его взять:</b> узнать ID можно с помощью ботов <a href="https://t.me/UsernameToId_roBot" target="_blank" style="color: var(--accent-blue-deep); font-weight: 500; text-decoration: underline;">@UsernameToId_roBot</a> или <a href="https://t.me/myidbot" target="_blank" style="color: var(--accent-blue-deep); font-weight: 500; text-decoration: underline;">@myidbot</a>.<br>
+            ⚠️ <i>Важно: Бот должен быть добавлен администратором с правом публикации сообщений в целевой канал/группу!</i>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 16px;">
+          <button id="saveTgForwardBtn" class="btn btn-primary" style="flex: 1;">💾 Сохранить настройки Telegram-бота</button>
+          <button id="testTgForwardBtn" class="btn btn-secondary">⚡ Отправить тестовое сообщение</button>
+        </div>
+      </div>
+
       <div class="card" style="max-width: 800px; margin: 0 auto;">
         <span class="eyebrow">Схема данных</span>
         <div class="card-title" style="margin-bottom: 10px;">Пример JSON-пакета, отправляемого в n8n</div>
@@ -1524,6 +1566,7 @@
       } else if (tabId === 'integration') {
         loadConfig();
         loadOpenRouterConfig();
+        loadTgForwardConfig();
       }
     }
 
@@ -2366,6 +2409,87 @@
       }
     });
 
+    // ==================== TELEGRAM BOT FORWARD JS LOGIC ====================
+    const tgBotToken = document.getElementById('tgBotToken');
+    const toggleTgBotTokenVisibility = document.getElementById('toggleTgBotTokenVisibility');
+    const tgSenderId = document.getElementById('tgSenderId');
+    const tgForwardEnabled = document.getElementById('tgForwardEnabled');
+    const saveTgForwardBtn = document.getElementById('saveTgForwardBtn');
+    const testTgForwardBtn = document.getElementById('testTgForwardBtn');
+
+    toggleTgBotTokenVisibility.addEventListener('click', () => {
+      tgBotToken.type = tgBotToken.type === 'password' ? 'text' : 'password';
+      toggleTgBotTokenVisibility.textContent = tgBotToken.type === 'password' ? '👁️' : '🙈';
+    });
+
+    async function loadTgForwardConfig() {
+      try {
+        const res = await fetch('/api/telegram-forward');
+        const data = await res.json();
+        tgSenderId.value = data.sender_id || '';
+        tgForwardEnabled.checked = Boolean(data.is_enabled);
+        if (data.has_token) {
+          tgBotToken.placeholder = `Токен сохранен (${data.bot_token_masked})`;
+        }
+      } catch (e) {
+        console.error('Error loading Telegram forward config:', e);
+      }
+    }
+
+    saveTgForwardBtn.addEventListener('click', async () => {
+      saveTgForwardBtn.disabled = true;
+      saveTgForwardBtn.textContent = '💾 Сохранение...';
+      try {
+        const payload = {
+          bot_token: tgBotToken.value.trim(),
+          sender_id: tgSenderId.value.trim(),
+          is_enabled: tgForwardEnabled.checked
+        };
+        const res = await fetch('/api/telegram-forward', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        saveTgForwardBtn.disabled = false;
+        saveTgForwardBtn.textContent = '💾 Сохранить настройки Telegram-бота';
+
+        if (res.ok) {
+          showToast('✅ Настройки Telegram-бота сохранены!');
+          tgBotToken.value = '';
+          loadTgForwardConfig();
+        } else {
+          const err = await res.json();
+          showToast(err.detail || 'Ошибка сохранения', true);
+        }
+      } catch (e) {
+        saveTgForwardBtn.disabled = false;
+        saveTgForwardBtn.textContent = '💾 Сохранить настройки Telegram-бота';
+        showToast('Ошибка: ' + e.message, true);
+      }
+    });
+
+    testTgForwardBtn.addEventListener('click', async () => {
+      testTgForwardBtn.disabled = true;
+      testTgForwardBtn.textContent = '⏳ Отправка...';
+
+      try {
+        const res = await fetch('/api/telegram-forward/test', { method: 'POST' });
+        const data = await res.json();
+        testTgForwardBtn.disabled = false;
+        testTgForwardBtn.textContent = '⚡ Отправить тестовое сообщение';
+
+        if (res.ok && data.status === 'success') {
+          showToast('✅ Тестовое сообщение успешно доставлено в Telegram!');
+        } else {
+          showToast(data.detail || 'Ошибка отправки тестового сообщения', true);
+        }
+      } catch (e) {
+        testTgForwardBtn.disabled = false;
+        testTgForwardBtn.textContent = '⚡ Отправить тестовое сообщение';
+        showToast('Ошибка: ' + e.message, true);
+      }
+    });
+
     // Logs logic
     async function loadLogs() {
       const status = filterLogStatus.value;
@@ -2484,6 +2608,7 @@
     loadLogs();
     loadSavedMessages();
     loadOpenRouterConfig();
+    loadTgForwardConfig();
     initTabFromUrl();
 
     // Периодический пересчет таймеров обратного отсчета (каждые 15 секунд)

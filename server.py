@@ -615,12 +615,55 @@ async def process_messages_batch_with_llm(messages: List[Dict[str, Any]], custom
         add_log("OPENROUTER_ERROR", f"Ошибка обработки батча сообщений через LLM: {str(e)}", "ERROR")
     return None
 
+async def send_telegram_bot_message(text: str, custom_chat_id: Optional[str] = None) -> bool:
+    token = get_setting("telegram_bot_token", "").strip()
+    chat_id = custom_chat_id or get_setting("telegram_forward_chat_id", "").strip()
+    if not token or not chat_id:
+        return False
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": False
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            resp = await http_client.post(url, json=payload)
+            resp.raise_for_status()
+            return True
+    except Exception as e:
+        print(f"⚠️ Ошибка отправки Telegram Bot: {e}")
+        add_log("TG_BOT_ERROR", f"Ошибка отправки через Telegram Bot API: {str(e)}", "ERROR")
+        return False
+
 async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel_prompt: Optional[str] = None) -> Dict[str, Any]:
     # Если включен OpenRouter и есть сообщения, генерируем ai_analysis по компактному батчу (ID, пост, ссылка)
     if "messages" in payload and payload["messages"]:
         ai_res = await process_messages_batch_with_llm(payload["messages"], channel_prompt)
         if ai_res:
             payload["ai_analysis"] = ai_res
+
+    # Если включена прямая пересылка в Telegram-канал через Bot API
+    if get_setting("telegram_forward_enabled", "0") == "1" and "messages" in payload and payload["messages"]:
+        try:
+            chat_title = payload.get("chat_title", "Источник")
+            ai_summary = payload.get("ai_analysis")
+            msg_lines = [f"📢 <b>Новые посты: {chat_title}</b> ({len(payload['messages'])} шт.)\n"]
+            if ai_summary:
+                msg_lines.append(f"🤖 <b>AI Анализ:</b>\n{ai_summary}\n")
+            for m in payload["messages"][:5]:
+                m_text = (m.get("text") or "")[:250]
+                m_url = m.get("post_url", "")
+                link_html = f" — <a href='{m_url}'>🔗 Источник</a>" if m_url else ""
+                msg_lines.append(f"• {m_text}{link_html}\n")
+            
+            full_msg = "\n".join(msg_lines)
+            await send_telegram_bot_message(full_msg)
+        except Exception as fe:
+            print(f"⚠️ Ошибка фоновой пересылки ботом: {fe}")
 
     async with httpx.AsyncClient(timeout=25.0) as http_client:
         data_to_send = {
@@ -686,6 +729,11 @@ class OpenRouterConfigRequest(BaseModel):
 
 class OpenRouterTestRequest(BaseModel):
     sample_text: Optional[str] = "Требуется Senior Python разработчик с опытом FastAPI и Telegram API. Зарплата от $4000."
+
+class TelegramForwardConfigRequest(BaseModel):
+    bot_token: str
+    sender_id: str
+    is_enabled: bool = False
 
 # ==================== API Эндпоинты ====================
 
@@ -1257,6 +1305,47 @@ async def test_openrouter(req: Optional[OpenRouterTestRequest] = None):
         "input": test_prompt,
         "response": res
     }
+
+# --- Telegram Bot Forwarding Настройки ---
+
+@app.get("/api/telegram-forward")
+async def get_telegram_forward_config():
+    token = get_setting("telegram_bot_token", "")
+    masked_token = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else ("******" if token else "")
+    return {
+        "bot_token_masked": masked_token,
+        "has_token": bool(token),
+        "sender_id": get_setting("telegram_forward_chat_id", ""),
+        "is_enabled": get_setting("telegram_forward_enabled", "0") == "1"
+    }
+
+@app.post("/api/telegram-forward")
+async def save_telegram_forward_config(req: TelegramForwardConfigRequest):
+    if req.bot_token and req.bot_token != "******" and "..." not in req.bot_token:
+        set_setting("telegram_bot_token", req.bot_token.strip())
+    set_setting("telegram_forward_chat_id", req.sender_id.strip())
+    set_setting("telegram_forward_enabled", "1" if req.is_enabled else "0")
+
+    add_log("SETTINGS", f"Сохранены настройки Telegram-бота (ID получателя: {req.sender_id}, Активен: {req.is_enabled})", "SUCCESS")
+    return {"status": "saved"}
+
+@app.post("/api/telegram-forward/test")
+async def test_telegram_forward():
+    token = get_setting("telegram_bot_token", "").strip()
+    chat_id = get_setting("telegram_forward_chat_id", "").strip()
+    if not token or not chat_id:
+        raise HTTPException(status_code=400, detail="Telegram bot API токен или ID отправителя не настроены")
+
+    test_text = (
+        "🚀 <b>Тестовое уведомление из Telethon Monitor!</b>\n\n"
+        "Интеграция с Telegram-ботом работает корректно. Сюда будут поступать новые сообщения из отслеживаемых каналов."
+    )
+    ok = await send_telegram_bot_message(test_text, chat_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Не удалось отправить сообщение. Проверьте правильность токена, ID и права бота в канале/группе.")
+
+    add_log("TG_BOT_TEST", f"Успешная тестовая отправка в канал/чат {chat_id}", "SUCCESS")
+    return {"status": "success", "message": f"Тестовое сообщение успешно доставлено в {chat_id}"}
 
 # --- API Логов (SQLite) ---
 
