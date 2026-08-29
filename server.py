@@ -1022,7 +1022,7 @@ class MonitorCreateRequest(BaseModel):
     chat_target: str
     interval_minutes: int = 60
     limit: int = 20
-    offset_hours: Optional[int] = 24
+    offset_hours: Optional[int] = None
     is_active: bool = True
     prompt: Optional[str] = None
 
