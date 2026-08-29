@@ -1395,6 +1395,73 @@ async def send_custom_payload(payload: Dict[str, Any]):
 
 # --- OpenRouter AI Настройки ---
 
+OPENROUTER_MODELS_CACHE = {
+    "models": [],
+    "fetched_at": None
+}
+
+@app.get("/api/openrouter/models")
+async def get_openrouter_models():
+    global OPENROUTER_MODELS_CACHE
+    now = datetime.now(timezone.utc)
+    
+    if OPENROUTER_MODELS_CACHE["models"] and OPENROUTER_MODELS_CACHE["fetched_at"]:
+        age = (now - OPENROUTER_MODELS_CACHE["fetched_at"]).total_seconds()
+        if age < 3600:
+            return {"models": OPENROUTER_MODELS_CACHE["models"]}
+
+    cfg = get_integrations_config()
+    base_url = (cfg.get("openrouter_base_url") or "https://openrouter.ai/api/v1").rstrip("/")
+    api_key = cfg.get("openrouter_api_key") or ""
+
+    headers = {
+        "HTTP-Referer": "https://telegram-monitor.local",
+        "X-Title": "Telegram MTProto Monitor"
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http_client:
+            resp = await http_client.get(f"{base_url}/models", headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get("data", [])
+                formatted = []
+                for m in raw_models:
+                    m_id = m.get("id")
+                    if m_id:
+                        formatted.append({
+                            "id": m_id,
+                            "name": m.get("name") or m_id,
+                            "context_length": m.get("context_length", 0)
+                        })
+                if formatted:
+                    OPENROUTER_MODELS_CACHE["models"] = formatted
+                    OPENROUTER_MODELS_CACHE["fetched_at"] = now
+                    return {"models": formatted}
+    except Exception as e:
+        print(f"⚠️ Ошибка загрузки списка моделей OpenRouter: {e}")
+
+    fallback = [
+        {"id": "google/gemini-2.0-flash-001", "name": "Google: Gemini 2.0 Flash"},
+        {"id": "google/gemini-2.5-pro", "name": "Google: Gemini 2.5 Pro"},
+        {"id": "google/gemini-flash-1.5", "name": "Google: Gemini 1.5 Flash"},
+        {"id": "anthropic/claude-3.5-sonnet", "name": "Anthropic: Claude 3.5 Sonnet"},
+        {"id": "anthropic/claude-3.5-haiku", "name": "Anthropic: Claude 3.5 Haiku"},
+        {"id": "openai/gpt-4o", "name": "OpenAI: GPT-4o"},
+        {"id": "openai/gpt-4o-mini", "name": "OpenAI: GPT-4o Mini"},
+        {"id": "openai/o3-mini", "name": "OpenAI: o3-mini"},
+        {"id": "deepseek/deepseek-chat", "name": "DeepSeek: DeepSeek V3 (Chat)"},
+        {"id": "deepseek/deepseek-r1", "name": "DeepSeek: DeepSeek R1 (Reasoning)"},
+        {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Meta: Llama 3.3 70B Instruct"},
+        {"id": "meta-llama/llama-3.1-405b-instruct", "name": "Meta: Llama 3.1 405B Instruct"},
+        {"id": "qwen/qwen-2.5-72b-instruct", "name": "Qwen: Qwen 2.5 72B Instruct"},
+        {"id": "mistralai/mistral-large-2411", "name": "Mistral: Mistral Large 2411"},
+        {"id": "x-ai/grok-2-1212", "name": "xAI: Grok 2"}
+    ]
+    return {"models": fallback}
+
 @app.get("/api/openrouter")
 async def get_openrouter_config():
     cfg = get_integrations_config()

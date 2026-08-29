@@ -1108,18 +1108,22 @@
           </div>
 
           <div class="form-group">
-            <label for="openrouterModel">Модель (Model):</label>
-            <input type="text" id="openrouterModel" list="openrouterModelsList" placeholder="google/gemini-2.0-flash-001" value="google/gemini-2.0-flash-001" spellcheck="false">
-            <datalist id="openrouterModelsList">
-              <option value="google/gemini-2.0-flash-001">Google Gemini 2.0 Flash</option>
-              <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-              <option value="openai/gpt-4o">GPT-4o</option>
-              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-              <option value="deepseek/deepseek-chat">DeepSeek V3 (Chat)</option>
-              <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
-              <option value="qwen/qwen-2.5-72b-instruct">Qwen 2.5 72B</option>
-              <option value="mistralai/mistral-large-2411">Mistral Large</option>
-            </datalist>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <label for="openrouterModelSelect" style="margin-bottom: 0;">Модель (Model):</label>
+              <button type="button" id="refreshModelsBtn" class="btn btn-secondary btn-sm" style="padding: 1px 7px; font-size: 11px; height: 22px;" title="Загрузить все доступные модели с OpenRouter">🔄 Загрузить список</button>
+            </div>
+            <select id="openrouterModelSelect" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 8px 10px; font-family: inherit; font-size: 13px; background: #fff; cursor: pointer;">
+              <option value="google/gemini-2.0-flash-001">Google: Gemini 2.0 Flash</option>
+              <option value="anthropic/claude-3.5-sonnet">Anthropic: Claude 3.5 Sonnet</option>
+              <option value="openai/gpt-4o">OpenAI: GPT-4o</option>
+              <option value="openai/gpt-4o-mini">OpenAI: GPT-4o Mini</option>
+              <option value="deepseek/deepseek-chat">DeepSeek: DeepSeek V3</option>
+              <option value="deepseek/deepseek-r1">DeepSeek: DeepSeek R1</option>
+              <option value="meta-llama/llama-3.3-70b-instruct">Meta: Llama 3.3 70B</option>
+              <option value="qwen/qwen-2.5-72b-instruct">Qwen: Qwen 2.5 72B</option>
+              <option value="mistralai/mistral-large-2411">Mistral: Mistral Large</option>
+            </select>
+            <input type="hidden" id="openrouterModel" value="google/gemini-2.0-flash-001">
           </div>
         </div>
 
@@ -2322,6 +2326,8 @@
     // ==================== OPENROUTER AI JS LOGIC ====================
     const openrouterBaseUrl = document.getElementById('openrouterBaseUrl');
     const openrouterModel = document.getElementById('openrouterModel');
+    const openrouterModelSelect = document.getElementById('openrouterModelSelect');
+    const refreshModelsBtn = document.getElementById('refreshModelsBtn');
     const openrouterApiKey = document.getElementById('openrouterApiKey');
     const toggleApiKeyVisibility = document.getElementById('toggleApiKeyVisibility');
     const openrouterEnabled = document.getElementById('openrouterEnabled');
@@ -2335,12 +2341,105 @@
       toggleApiKeyVisibility.textContent = openrouterApiKey.type === 'password' ? '👁️' : '🙈';
     });
 
+    openrouterModelSelect.addEventListener('change', () => {
+      openrouterModel.value = openrouterModelSelect.value;
+    });
+
+    async function loadOpenRouterModels(targetModel = '') {
+      try {
+        refreshModelsBtn.disabled = true;
+        refreshModelsBtn.textContent = '⏳...';
+
+        const res = await fetch('/api/openrouter/models');
+        const data = await res.json();
+        const models = data.models || [];
+
+        if (models.length > 0) {
+          const groups = {
+            'Google': [],
+            'Anthropic (Claude)': [],
+            'OpenAI (ChatGPT)': [],
+            'DeepSeek': [],
+            'Meta (Llama)': [],
+            'Qwen': [],
+            'Mistral': [],
+            'xAI (Grok)': [],
+            'Другие модели': []
+          };
+
+          models.forEach(m => {
+            const id = m.id.toLowerCase();
+            const label = m.name || m.id;
+            const opt = { id: m.id, label: label };
+
+            if (id.startsWith('google/')) {
+              groups['Google'].push(opt);
+            } else if (id.startsWith('anthropic/')) {
+              groups['Anthropic (Claude)'].push(opt);
+            } else if (id.startsWith('openai/')) {
+              groups['OpenAI (ChatGPT)'].push(opt);
+            } else if (id.startsWith('deepseek/')) {
+              groups['DeepSeek'].push(opt);
+            } else if (id.startsWith('meta-llama/')) {
+              groups['Meta (Llama)'].push(opt);
+            } else if (id.startsWith('qwen/')) {
+              groups['Qwen'].push(opt);
+            } else if (id.startsWith('mistralai/')) {
+              groups['Mistral'].push(opt);
+            } else if (id.startsWith('x-ai/')) {
+              groups['xAI (Grok)'].push(opt);
+            } else {
+              groups['Другие модели'].push(opt);
+            }
+          });
+
+          let html = '';
+          for (const [groupName, groupModels] of Object.entries(groups)) {
+            if (groupModels.length > 0) {
+              html += `<optgroup label="🌟 ${groupName}">`;
+              html += groupModels.map(gm => `<option value="${gm.id}">${gm.label} (${gm.id})</option>`).join('');
+              html += `</optgroup>`;
+            }
+          }
+
+          openrouterModelSelect.innerHTML = html;
+        }
+
+        const modelToSet = targetModel || openrouterModel.value || 'google/gemini-2.0-flash-001';
+        
+        // Если модели нет в списке, добавляем ее
+        if (!Array.from(openrouterModelSelect.options).some(o => o.value === modelToSet)) {
+          const customOpt = document.createElement('option');
+          customOpt.value = modelToSet;
+          customOpt.textContent = `🎯 ${modelToSet}`;
+          openrouterModelSelect.prepend(customOpt);
+        }
+
+        openrouterModelSelect.value = modelToSet;
+        openrouterModel.value = modelToSet;
+
+        refreshModelsBtn.disabled = false;
+        refreshModelsBtn.textContent = '🔄 Загрузить список';
+      } catch (e) {
+        console.error('Error fetching OpenRouter models:', e);
+        refreshModelsBtn.disabled = false;
+        refreshModelsBtn.textContent = '🔄 Загрузить список';
+      }
+    }
+
+    refreshModelsBtn.addEventListener('click', async () => {
+      showToast('Загрузка актуального каталога моделей с OpenRouter...');
+      await loadOpenRouterModels(openrouterModel.value);
+      showToast('✅ Список моделей успешно обновлен!');
+    });
+
     async function loadOpenRouterConfig() {
       try {
         const res = await fetch('/api/openrouter');
         const data = await res.json();
         openrouterBaseUrl.value = data.base_url || 'https://openrouter.ai/api/v1';
-        openrouterModel.value = data.model || 'google/gemini-2.0-flash-001';
+        const currentModel = data.model || 'google/gemini-2.0-flash-001';
+        openrouterModel.value = currentModel;
         openrouterEnabled.checked = Boolean(data.is_enabled);
         if (data.api_key) {
           openrouterApiKey.value = data.api_key;
@@ -2348,6 +2447,7 @@
         if (data.has_key) {
           openrouterApiKey.placeholder = `Ключ: ${data.api_key_masked}`;
         }
+        await loadOpenRouterModels(currentModel);
       } catch (e) {
         console.error('Error loading OpenRouter config:', e);
       }
