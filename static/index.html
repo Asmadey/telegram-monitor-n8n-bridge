@@ -1129,6 +1129,7 @@
             <span class="eyebrow">Оркестрация</span>
             <div class="card-title">n8n Webhook</div>
           </div>
+          <button id="openJsonExampleModalBtn" class="btn btn-secondary btn-sm" type="button">📋 Пример JSON-пакета</button>
         </div>
         
         <div class="form-group">
@@ -1258,37 +1259,6 @@
           <button id="saveTgForwardBtn" class="btn btn-primary" style="flex: 1;">Сохранить настройки бота</button>
           <button id="testTgForwardBtn" class="btn btn-secondary">Отправить тест</button>
         </div>
-      </div>
-
-      <div class="card" style="max-width: 800px; margin: 0 auto;">
-        <span class="eyebrow">Схема данных</span>
-        <div class="card-title" style="margin-bottom: 10px;">Пример JSON-пакета для n8n</div>
-        <pre class="json-code">{
-  "source": "telethon_monitor",
-  "event": "telegram_messages_batch",
-  "timestamp": "2026-08-29T15:20:00Z",
-  "chat_id": 1143063102,
-  "chat_title": "Finder.work: работа и вакансии",
-  "chat_username": "theyseeku",
-  "messages_count": 1,
-  "messages": [
-    {
-      "id": 38115,
-      "date": "2026-08-29T12:00:00+00:00",
-      "sender": "Finder.work",
-      "sender_id": -1001143063102,
-      "is_outgoing": false,
-      "text": "Текст вакансии или сообщения...",
-      "has_media": false,
-      "views": 1500,
-      "forwards": 10,
-      "reactions_count": 5,
-      "reactions": [ { "emoji": "🔥", "count": 5 } ],
-      "post_url": "https://t.me/theyseeku/38115"
-    }
-  ],
-  "ai_analysis": "📌 Результат обработки постов моделью DeepSeek..."
-}</pre>
       </div>
     </div>
 
@@ -1503,6 +1473,51 @@
       <div class="modal-footer">
         <button id="copyJsonBtn" class="btn btn-secondary btn-sm">📋 Скопировать JSON</button>
         <button id="downloadJsonBtn" class="btn btn-primary btn-sm">⬇️ Скачать файл</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: n8n JSON Example Popup -->
+  <div id="jsonExampleModal" class="modal-overlay">
+    <div class="modal" style="max-width: 760px; width: 92%;">
+      <div class="modal-header">
+        <div>
+          <span class="eyebrow">Схема данных n8n</span>
+          <h3 style="font-size: 16px; font-weight: 600; color: var(--ink);">Пример JSON-пакета для вебхука</h3>
+        </div>
+        <button id="closeJsonExampleModalBtn" class="btn btn-secondary btn-sm">✕</button>
+      </div>
+      <div class="modal-body">
+        <pre id="jsonExampleCode" class="json-code" style="max-height: 480px; overflow-y: auto;">{
+  "source": "telethon_monitor",
+  "event": "telegram_messages_batch",
+  "timestamp": "2026-08-29T15:20:00Z",
+  "chat_id": 1143063102,
+  "chat_title": "Finder.work: работа и вакансии",
+  "chat_username": "theyseeku",
+  "messages_count": 1,
+  "messages": [
+    {
+      "id": 38115,
+      "date": "2026-08-29T12:00:00+00:00",
+      "sender": "Finder.work",
+      "sender_id": -1001143063102,
+      "is_outgoing": false,
+      "text": "Текст вакансии или сообщения...",
+      "has_media": false,
+      "views": 1500,
+      "forwards": 10,
+      "reactions_count": 5,
+      "reactions": [ { "emoji": "🔥", "count": 5 } ],
+      "post_url": "https://t.me/theyseeku/38115"
+    }
+  ],
+  "ai_analysis": "📌 Результат обработки постов моделью DeepSeek..."
+}</pre>
+      </div>
+      <div class="modal-footer">
+        <button id="copyJsonExampleBtn" class="btn btn-secondary btn-sm">📋 Скопировать JSON</button>
+        <button id="closeJsonExampleBtn2" class="btn btn-primary btn-sm">Закрыть</button>
       </div>
     </div>
   </div>
@@ -2885,6 +2900,36 @@
     }
 
     document.getElementById('closeDialogsModal').addEventListener('click', () => dialogsModal.classList.remove('active'));
+
+    // JSON Example Modal Logic
+    const jsonExampleModal = document.getElementById('jsonExampleModal');
+    const openJsonExampleModalBtn = document.getElementById('openJsonExampleModalBtn');
+    const closeJsonExampleModalBtn = document.getElementById('closeJsonExampleModalBtn');
+    const closeJsonExampleBtn2 = document.getElementById('closeJsonExampleBtn2');
+    const copyJsonExampleBtn = document.getElementById('copyJsonExampleBtn');
+    const jsonExampleCode = document.getElementById('jsonExampleCode');
+
+    if (openJsonExampleModalBtn) {
+      openJsonExampleModalBtn.addEventListener('click', () => {
+        if (jsonExampleModal) jsonExampleModal.classList.add('active');
+      });
+    }
+    if (closeJsonExampleModalBtn) {
+      closeJsonExampleModalBtn.addEventListener('click', () => {
+        if (jsonExampleModal) jsonExampleModal.classList.remove('active');
+      });
+    }
+    if (closeJsonExampleBtn2) {
+      closeJsonExampleBtn2.addEventListener('click', () => {
+        if (jsonExampleModal) jsonExampleModal.classList.remove('active');
+      });
+    }
+    if (copyJsonExampleBtn && jsonExampleCode) {
+      copyJsonExampleBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(jsonExampleCode.innerText);
+        showToast('JSON скопирован в буфер обмена!');
+      });
+    }
 
     async function loadSavedMessages() {
       try {
