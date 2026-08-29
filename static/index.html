@@ -6,7 +6,7 @@
   <title>Telegram Monitor & n8n Bridge (SQLite Edition)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
       --primary: #080808;
@@ -23,7 +23,7 @@
       --canvas-alt: #f7f8f9;
       --canvas-soft: #f1f3f5;
       
-      /* Webflow 5-Stop Chromatic Category Accents */
+      /* Chromatic Category Accents */
       --accent-purple: #7a3dff;
       --accent-pink: #ed52cb;
       --accent-blue: #3b89ff;
@@ -39,18 +39,18 @@
       --rounded-md: 8px;
       --rounded-full: 9999px;
       
-      /* Webflow Layered Drop Shadows */
-      --shadow-layered-sm: 0 2px 5px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
-      --shadow-layered-md: 0 13px 13px rgba(0,0,0,0.04), 0 3px 7px rgba(0,0,0,0.06);
-      --shadow-layered-lg: 0 30px 18px rgba(0,0,0,0.04), 0 13px 13px rgba(0,0,0,0.06), 0 3px 7px rgba(0,0,0,0.08);
-      --shadow-modal: 0 40px 30px rgba(0,0,0,0.12), 0 15px 15px rgba(0,0,0,0.08), 0 4px 8px rgba(0,0,0,0.06);
+      /* Layered Drop Shadows */
+      --shadow-layered-sm: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-layered-md: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+      --shadow-layered-lg: 0 10px 15px -3px rgba(0,0,0,0.05), 0 4px 6px -2px rgba(0,0,0,0.025);
+      --shadow-modal: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      font-feature-settings: "ss01" on, "cv05" on;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
       background-color: var(--canvas-alt);
       color: var(--body);
       min-height: 100vh;
@@ -121,12 +121,10 @@
     }
 
     .eyebrow {
-      font-size: 11px;
+      font-size: 11.5px;
       font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
       color: var(--body-mid);
-      margin-bottom: 6px;
+      margin-bottom: 4px;
       display: block;
     }
 
@@ -764,8 +762,7 @@
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(8, 8, 8, 0.6);
-      backdrop-filter: blur(4px);
+      background: rgba(15, 23, 42, 0.55);
       display: none;
       align-items: center;
       justify-content: center;
@@ -1065,7 +1062,7 @@
     <div id="tab-channels" class="tab-pane">
       
       <!-- Collapsible Add Channel Drawer -->
-      <div id="addChannelDrawer" class="card" style="border-left: 4px solid var(--primary); margin-bottom: 24px;">
+      <div id="addChannelDrawer" class="card" style="margin-bottom: 24px;">
         <div class="card-header">
           <div>
             <span class="eyebrow">Новый источник</span>
