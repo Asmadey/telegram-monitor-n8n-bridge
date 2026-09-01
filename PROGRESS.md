@@ -5,6 +5,71 @@
 
 ---
 
+### 2026-09-01 — Фаза 1, задачи 1.1–1.5: контракты и реализация, ожидание установки зависимостей
+
+**Сделано:**
+- 1.1: `requirements.txt` дополнен пакетами Фазы 1 (sqlalchemy[asyncio],
+  asyncpg, aiosqlite, alembic, pydantic-settings, passlib, itsdangerous,
+  cryptography, slowapi), заведён `requirements-dev.txt`, красный тест
+  `tests/test_10_deps.py` — параметризованная проверка импортируемости.
+- 1.2: `app/config.py` — pydantic-settings, единственная точка чтения ENV,
+  `get_settings()` под `lru_cache`; `.env` читается, но никогда не пишется.
+  Из `server.py` удалены `update_env_file()`, `POST /api/settings` и
+  `SettingsUpdateRequest`. Фронтенд: поля ключей в модалке стали read-only,
+  кнопка «Сохранить в .env» и POST-флоу удалены. Красный тест
+  `tests/test_11_config.py` (4 контракта + проверка «.env не пишется»).
+- 1.3: `app/models/__init__.py` — 10 таблиц (users, sessions,
+  telegram_accounts, tg_auth_attempts, monitors, sent_messages, feed_items,
+  logs, integrations, jobs), у каждой тезисной таблицы `user_id` NOT NULL +
+  FK на users + индекс. `monitors.id` → BIGINT + отдельный `public_id`.
+  Красный тест `tests/test_12_models.py` (6 контрактов).
+- 1.4: Alembic на async-движке: `alembic.ini`, `alembic/env.py` (URL только из
+  `app.config`), начальная ревизия `0001_initial_schema.py` НАПИСАНА ВРУЧНУЮ
+  (классификатор Bash был недоступен для `alembic init`), сверен с моделями
+  построчно. Красный тест `tests/test_13_migrations.py`: без DDL в `app/`,
+  конфигурация привязана к `app.config`, поведенческая часть — честный skip
+  без живого Postgres.
+- 1.5: `scripts/migrate_sqlite_to_pg.py` — перенос 5 каналов / 192 сообщений /
+  8 записей ленты / 308 логов / 1 интеграции к пользователю из `--user-email`.
+  Идемпотентный (ON CONFLICT DO NOTHING по public_id / (user_id, chat_id,
+  message_id) / job_id / PK). Скрипт ОТКАЗЫВАЕТСЯ работать без
+  APP_ENCRYPTION_KEY: секреты integrations_config переносятся только
+  зашифрованными (шифрование из задачи 3.4 не подведено — перенос
+  открытым текстом «закрывает задачу, открывая доступ»). `photo_base64`
+  сознательно не переносится (задача 5.4). Тест `tests/test_14_data_migration.py`
+  поведенческий — skip без Postgres.
+
+**Подтверждено (прогоны):**
+- `pytest -q --ignore=test_10_deps --ignore=test_11_config --ignore=test_12_models`
+  (всё, что не требует ещё не установленных пакетов) → **13 passed, 3 skipped**
+  (skip — поведенческие части без живого Postgres).
+- `ast.parse` по всем затронутым py-файлам (server.py, app/config.py,
+  app/models, scripts/migrate_sqlite_to_pg.py, alembic/*) → OK.
+- grep: в `server.py` и `app/*.py` нет `update_env_file` и `open(ENV_FILE`.
+
+**Не подтверждено / заблокировано:**
+- `pip install -r requirements-dev.txt` — БЛОКИРОВАНО сбоем классификатора
+  Bash («glm-5.3:cloud is temporarily unavailable»): установка и git-коммиты
+  не проходят, read-only команды (grep, pytest, ast.parse) проходят.
+  Пока пакеты не стоят: `test_10_deps.py` красный по ImportError (это его
+  штатное красное состояние), `test_11_config.py` красный по
+  ModuleNotFoundError: pydantic_settings, `test_12_models.py` не собирается
+  (нет sqlalchemy).
+- Красный прогон test_12 (падение на assert «нет таблицы») зафиксирован не
+  вживую, а структурно: заглушка `Base` без таблиц гарантированно даёт
+  assert-падение; реализация написана до установки sqlalchemy из-за блока.
+- git init + первый коммит — не выполнены (та же блокировка).
+
+**Что не сработало:**
+- Правка server.py вторым Edit с перепутанными old/new переставила блоки:
+  две копии POST /api/settings и осиротевшее тело GET. Исправлено двумя
+  точечными правками + `ast.parse`. Урок: при удалении большого блока
+  сначала перечитай область, а не полагайся на контекст из прошлого Read.
+
+**Дальше:** повторить `pip install` (задача 1.1 — зелёный прогон), затем
+git init + коммиты по схеме «задача = коммит», затем задачи 2.x. 0.2 —
+операторский перевыпуск секретов, по-прежнему на стороне пользователя.
+
 ### 2026-09-01 — Фаза 0, задачи 0.1, 0.3, 0.4, 0.6 (частично), 0.7
 
 **Сделано:**
