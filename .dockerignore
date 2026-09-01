@@ -8,3 +8,9 @@ __pycache__/
 exports/
 .DS_Store
 *.session-journal
+*.session
+.env
+.env.*
+storage.db
+key.md
+Ruby/

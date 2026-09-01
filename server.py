@@ -1014,8 +1014,8 @@ async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel
 # ==================== Pydantic Схемы ====================
 
 class SettingsUpdateRequest(BaseModel):
-    api_id: str
-    api_hash: str
+    api_id: Optional[str] = None
+    api_hash: Optional[str] = None
     phone: Optional[str] = None
 
 class SendCodeRequest(BaseModel):
@@ -1111,9 +1111,12 @@ async def get_settings():
             "phone": getattr(me, "phone", "")
         }
     
+    # Сырой api_hash наружу не отдаётся: только маска и признак наличия.
+    masked_hash = f"{API_HASH[:4]}...{API_HASH[-4:]}" if len(API_HASH or "") > 8 else ("******" if API_HASH else "")
     return {
         "api_id": API_ID,
-        "api_hash": API_HASH,
+        "api_hash_masked": masked_hash,
+        "has_api_hash": bool(API_HASH),
         "is_authorized": is_auth,
         "user": user_info
     }
@@ -1121,7 +1124,13 @@ async def get_settings():
 @app.post("/api/settings")
 async def save_settings(req: SettingsUpdateRequest):
     global client
-    update_env_file(req.api_id, req.api_hash, req.phone)
+    # Пустое значение или маска не затирают сохранённый ключ
+    # (поле на фронте теперь пустое с плейсхолдером-маской).
+    new_id = (req.api_id or "").strip()
+    new_hash = (req.api_hash or "").strip()
+    if new_hash and not new_hash.startswith("******"):
+        update_env_file(new_id or API_ID, new_hash, req.phone)
+    add_log("SETTINGS", "Обновлены ключи MTProto API в .env", "SUCCESS")
     if client and client.is_connected():
         await client.disconnect()
     client = TelegramClient(str(SESSION_PATH), int(API_ID), API_HASH)
@@ -1692,7 +1701,6 @@ async def get_openrouter_config():
     masked_key = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else ("******" if key else "")
     return {
         "base_url": cfg.get("openrouter_base_url") or "https://openrouter.ai/api/v1",
-        "api_key": key,
         "api_key_masked": masked_key,
         "has_key": bool(key),
         "model": cfg.get("openrouter_model") or "deepseek/deepseek-chat",
@@ -1744,7 +1752,6 @@ async def get_telegram_forward_config():
     token = cfg.get("telegram_bot_token") or ""
     masked_token = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else ("******" if token else "")
     return {
-        "bot_token": token,
         "bot_token_masked": masked_token,
         "has_token": bool(token),
         "sender_id": cfg.get("telegram_sender_id") or "",

@@ -2213,7 +2213,7 @@
         const isActive = item.id === selectedFeedId;
         const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
         const avatarHtml = item.photo_base64 
-          ? `<img src="${item.photo_base64}" class="feed-avatar" alt="${escapeHtml(item.chat_title)}">`
+          ? `<img src="${esc(item.photo_base64)}" class="feed-avatar" alt="${esc(item.chat_title)}">`
           : `<div class="feed-avatar">${initial}</div>`;
         
         const rawMsgs = Array.isArray(item.messages) ? item.messages : [];
@@ -2261,7 +2261,7 @@
       const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
       if (feedDetailAvatar) {
         if (item.photo_base64) {
-          feedDetailAvatar.innerHTML = `<img src="${item.photo_base64}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+          feedDetailAvatar.innerHTML = `<img src="${esc(item.photo_base64)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
         } else {
           feedDetailAvatar.textContent = initial;
         }
@@ -2313,7 +2313,7 @@
                 ${m.reactions_count ? `<span class="badge-metric" style="color: #ed52cb;">❤️ ${m.reactions_count}</span>` : ''}
                 ${m.forwards ? `<span class="badge-metric">↗️ ${m.forwards}</span>` : ''}
                 ${m.has_media ? `<span class="badge-media">📎 Медиа</span>` : ''}
-                ${m.post_url ? `<a href="${m.post_url}" target="_blank" class="post-link-btn" style="margin-left: auto;">🔗 Открыть в TG</a>` : ''}
+                ${m.post_url ? `<a href="${esc(m.post_url)}" target="_blank" class="post-link-btn" style="margin-left: auto;">🔗 Открыть в TG</a>` : ''}
               </div>
             </div>
           `).join('');
@@ -2445,7 +2445,13 @@
         const res = await fetch('/api/settings');
         const data = await res.json();
         settingsApiId.value = data.api_id || '';
-        settingsApiHash.value = data.api_hash || '';
+        // Сырой api_hash больше не приходит с сервера: поле пустое,
+        // плейсхолдер показывает маску. Пустое поле не затирает ключ.
+        settingsApiHash.value = '';
+        settingsApiHash.dataset.hasKey = data.has_api_hash ? '1' : '0';
+        if (data.has_api_hash) {
+          settingsApiHash.placeholder = `API HASH: ${data.api_hash_masked}`;
+        }
 
         if (data.is_authorized && data.user) {
           authStatusBox.style.display = 'block';
@@ -2470,15 +2476,20 @@
     saveApiKeysBtn.addEventListener('click', async () => {
       const apiId = settingsApiId.value.trim();
       const apiHash = settingsApiHash.value.trim();
-      if (!apiId || !apiHash) {
-        showToast('Заполните API ID и API HASH', true);
+      if (!apiId) {
+        showToast('Заполните API ID', true);
+        return;
+      }
+      // Пустой hash допустим, только если ключ уже сохранён (поле с плейсхолдером-маской).
+      if (!apiHash && settingsApiHash.dataset.hasKey !== '1') {
+        showToast('Заполните API HASH', true);
         return;
       }
       try {
         const res = await fetch('/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_id: apiId, api_hash: apiHash })
+          body: JSON.stringify(apiHash ? { api_id: apiId, api_hash: apiHash } : { api_id: apiId })
         });
         if (res.ok) {
           showToast('Ключи сохранены в .env');
@@ -2701,11 +2712,11 @@
           
           <!-- Column 1: Channel Info -->
           <div class="channel-main-info">
-            <div class="channel-title" title="${m.chat_title}">
-              ${m.chat_title}
+            <div class="channel-title" title="${esc(m.chat_title)}">
+              ${esc(m.chat_title)}
             </div>
             <div class="channel-target">
-              ${m.chat_username ? '@' + m.chat_username : 'ID: ' + m.chat_id}
+              ${esc(m.chat_username ? '@' + m.chat_username : 'ID: ' + m.chat_id)}
             </div>
           </div>
 
@@ -2767,7 +2778,7 @@
       `).join('');
 
       filterChatSelect.innerHTML = '<option value="ALL">Все каналы</option>' + 
-        currentMonitors.map(m => `<option value="${m.chat_id}">${m.chat_title}</option>`).join('');
+        currentMonitors.map(m => `<option value="${m.chat_id}">${esc(m.chat_title)}</option>`).join('');
 
       if (window.gsap && currentMonitors.length > 0) {
         gsap.from(".channel-card", {
@@ -3102,14 +3113,14 @@
           <td>
             <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
               ${msg.views !== null && msg.views !== undefined ? `<span class="badge-metric" title="Просмотры">👁️ ${Number(msg.views).toLocaleString('ru-RU')}</span>` : ''}
-              ${hasReactions ? `<span class="badge-metric" style="color: #ed52cb; background: rgba(237, 82, 203, 0.08); border-color: rgba(237, 82, 203, 0.25);" title="${reactionsTitle}">❤️ ${totalReactions}</span>` : ''}
+              ${hasReactions ? `<span class="badge-metric" style="color: #ed52cb; background: rgba(237, 82, 203, 0.08); border-color: rgba(237, 82, 203, 0.25);" title="${esc(reactionsTitle)}">❤️ ${totalReactions}</span>` : ''}
               ${msg.forwards ? `<span class="badge-metric" title="Пересылки">↗️ ${Number(msg.forwards).toLocaleString('ru-RU')}</span>` : ''}
               ${msg.has_media ? `<span class="badge-media">📎 Медиа</span>` : ''}
             </div>
           </td>
           <td>
             ${msg.post_url ? `
-              <a href="${msg.post_url}" target="_blank" class="post-link-btn">
+              <a href="${esc(msg.post_url)}" target="_blank" class="post-link-btn">
                 🔗 Открыть
               </a>
             ` : '<span style="color: var(--mute);">-</span>'}
@@ -3129,6 +3140,12 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // Короткий алиас + экранирование кавычек: безопасен и в текстовом узле,
+    // и внутри атрибута (escapeHtml кавычки не экранирует).
+    function esc(text) {
+      return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function formatTelegramText(text) {
@@ -3347,11 +3364,15 @@
           html += `<div class="autocomplete-group-header">🌟 ${groupName} (${groupModels.length})</div>`;
           html += groupModels.map(m => {
             const isCurrent = (m.id === openrouterModel.value.trim());
+            // HTML строится в переменных: экранирование выполняется внутри
+            // highlightText (через escapeHtml), в разметку уходит готовый безопасный HTML.
+            const nameHtml = highlightText(m.name || m.id, q);
+            const idHtml = highlightText(m.id, q);
             return `
               <div class="autocomplete-item ${isCurrent ? 'selected' : ''}" data-model-id="${m.id}" onclick="selectModelItem('${m.id}')">
                 <div>
-                  <div class="autocomplete-item-name">${highlightText(m.name || m.id, q)}</div>
-                  <div class="autocomplete-item-id">${highlightText(m.id, q)}</div>
+                  <div class="autocomplete-item-name">${nameHtml}</div>
+                  <div class="autocomplete-item-id">${idHtml}</div>
                 </div>
                 ${isCurrent ? '<span style="font-size: 12px; color: #5533ff; font-weight: 700;">✓</span>' : ''}
               </div>
@@ -3480,9 +3501,9 @@
         const currentModel = data.model || 'deepseek/deepseek-v4-flash';
         openrouterModel.value = currentModel;
         openrouterEnabled.checked = Boolean(data.is_enabled);
-        if (data.api_key) {
-          openrouterApiKey.value = data.api_key;
-        }
+        // Сырой ключ больше не приходит с сервера: поле остаётся пустым,
+        // сохранение не затирает ключ (маска "******" игнорируется на бэкенде).
+        openrouterApiKey.value = '';
         if (data.has_key) {
           openrouterApiKey.placeholder = `Ключ: ${data.api_key_masked}`;
         }
@@ -3595,9 +3616,9 @@
         const data = await res.json();
         tgSenderId.value = data.sender_id || '';
         tgForwardEnabled.checked = Boolean(data.is_enabled);
-        if (data.bot_token) {
-          tgBotToken.value = data.bot_token;
-        }
+        // Сырой токен больше не приходит с сервера: поле остаётся пустым,
+        // сохранение не затирает токен (маска "******" игнорируется на бэкенде).
+        tgBotToken.value = '';
         if (data.has_token) {
           tgBotToken.placeholder = `Токен: ${data.bot_token_masked}`;
         }
@@ -3713,13 +3734,13 @@
             ${new Date(log.timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'})}
           </td>
           <td>
-            <span class="meta-tag" style="font-size: 11px;">${log.event_type}</span>
+            <span class="meta-tag" style="font-size: 11px;">${esc(log.event_type)}</span>
           </td>
           <td>
-            <div style="font-weight: 500; color: var(--ink);">${log.chat_title || '—'}</div>
+            <div style="font-weight: 500; color: var(--ink);">${esc(log.chat_title || '—')}</div>
           </td>
           <td>
-            <span class="status-tag ${log.status}">${log.status}</span>
+            <span class="status-tag ${esc(log.status)}">${esc(log.status)}</span>
           </td>
           <td style="font-size: 12.5px; color: var(--body); word-break: break-word;">
             ${escapeHtml(log.details || '')}
@@ -3754,12 +3775,12 @@
           dialogsModalBody.innerHTML = data.dialogs.map(d => `
             <div class="dialog-item">
               <div>
-                <div style="font-weight: 600; color: var(--ink);">${d.name}</div>
+                <div style="font-weight: 600; color: var(--ink);">${esc(d.name)}</div>
                 <div style="font-size: 11px; color: var(--body-mid);">
-                  ${d.username ? '@' + d.username : 'ID: ' + d.id} • Тип: ${d.type}
+                  ${esc(d.username ? '@' + d.username : 'ID: ' + d.id)} • Тип: ${esc(d.type)}
                 </div>
               </div>
-              <button class="btn btn-secondary btn-sm" onclick="selectDialog('${d.username ? '@' + d.username : d.id}')">+ Выбрать</button>
+              <button class="btn btn-secondary btn-sm" data-dialog-select="${esc(d.username ? '@' + d.username : String(d.id))}">+ Выбрать</button>
             </div>
           `).join('');
         }
@@ -3776,6 +3797,14 @@
       toggleAddChannelBtn.textContent = '✕ Закрыть форму';
       toggleAddChannelBtn.className = 'btn btn-secondary btn-sm';
     }
+
+    // Выбор диалога через data-атрибут и делегирование: значение пользователя
+    // не попадает в inline-JS (экранирование атрибута не защищает JS-строку
+    // внутри onclick — парсер HTML декодирует &amp;#39; обратно в кавычку).
+    dialogsModalBody.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-dialog-select]');
+      if (btn) selectDialog(btn.dataset.dialogSelect);
+    });
 
     document.getElementById('closeDialogsModal').addEventListener('click', () => closeModalAnimated(dialogsModal));
 
