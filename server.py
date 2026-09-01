@@ -340,23 +340,9 @@ def get_client() -> TelegramClient:
         client = TelegramClient(str(SESSION_PATH), int(API_ID), API_HASH)
     return client
 
-def update_env_file(api_id: str, api_hash: str, phone: Optional[str] = None):
-    global API_ID, API_HASH
-    API_ID = api_id.strip()
-    API_HASH = api_hash.strip()
-    
-    lines = [
-        f"TELEGRAM_API_ID={API_ID}\n",
-        f"TELEGRAM_API_HASH={API_HASH}\n"
-    ]
-    if phone:
-        lines.append(f"TELEGRAM_PHONE={phone.strip()}\n")
-    
-    with open(ENV_FILE, "w", encoding="utf-8") as f:
-        f.writelines(lines)
-    
-    os.environ["TELEGRAM_API_ID"] = API_ID
-    os.environ["TELEGRAM_API_HASH"] = API_HASH
+# Задача 1.2 (PLAN.md): функция перезаписи .env удалена. Она стирала файл
+# целиком, оставляя 2–3 строки, а на Railway настройка терялась при
+# каждом редеплое. Ключи MTProto читаются только из ENV (app/config.py).
 
 # ==================== Дедубликация сообщений в SQLite ====================
 
@@ -1013,10 +999,7 @@ async def send_to_n8n_webhook(webhook_url: str, payload: Dict[str, Any], channel
 
 # ==================== Pydantic Схемы ====================
 
-class SettingsUpdateRequest(BaseModel):
-    api_id: Optional[str] = None
-    api_hash: Optional[str] = None
-    phone: Optional[str] = None
+# Задача 1.2 (PLAN.md): SettingsUpdateRequest удалён вместе с POST /api/settings.
 
 class SendCodeRequest(BaseModel):
     phone: str
@@ -1121,27 +1104,8 @@ async def get_settings():
         "user": user_info
     }
 
-@app.post("/api/settings")
-async def save_settings(req: SettingsUpdateRequest):
-    global client
-    # Пустое значение или маска не затирают сохранённый ключ
-    # (поле на фронте теперь пустое с плейсхолдером-маской).
-    new_id = (req.api_id or "").strip()
-    new_hash = (req.api_hash or "").strip()
-    if new_hash and not new_hash.startswith("******"):
-        update_env_file(new_id or API_ID, new_hash, req.phone)
-    add_log("SETTINGS", "Обновлены ключи MTProto API в .env", "SUCCESS")
-    if client and client.is_connected():
-        await client.disconnect()
-    client = TelegramClient(str(SESSION_PATH), int(API_ID), API_HASH)
-    await client.connect()
-    is_auth = await client.is_user_authorized()
-    add_log("SETTINGS", "Обновлены ключи MTProto API в .env", "SUCCESS")
-    return {
-        "status": "saved",
-        "api_id": API_ID,
-        "is_authorized": is_auth
-    }
+# Задача 1.2 (PLAN.md): POST /api/settings удалён полностью.
+# Ключи MTProto задаются только переменными окружения; перезаписи .env из API нет.
 
 # --- Интерактивная веб-авторизация ---
 

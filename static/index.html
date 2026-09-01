@@ -1726,20 +1726,23 @@
       <div class="modal-body">
         <div style="margin-bottom: 24px;">
           <span class="eyebrow">1. Ключи приложения (my.telegram.org)</span>
+          <!-- Задача 1.2 (PLAN.md): ключи задаются только переменными окружения
+               (.env / Railway Variables). Из интерфейса они не сохраняются —
+               POST /api/settings удалён. Здесь только read-only просмотр. -->
           <div class="form-row" style="margin-top: 8px;">
             <div class="form-group">
               <label for="settingsApiId">API ID:</label>
-              <input type="text" id="settingsApiId" placeholder="37356882" spellcheck="false">
+              <input type="text" id="settingsApiId" readonly spellcheck="false" style="background: var(--hairline);">
             </div>
             <div class="form-group">
               <label for="settingsApiHash">API HASH:</label>
-              <div style="display: flex; gap: 8px;">
-                <input type="password" id="settingsApiHash" placeholder="56433eca3bccdaec9c5504bbb592b119" style="flex: 1;" spellcheck="false">
-                <button type="button" id="toggleApiHashVisibility" class="btn btn-secondary btn-sm" style="padding: 0 12px;" title="Показать/скрыть API HASH">👁️</button>
-              </div>
+              <input type="text" id="settingsApiHash" readonly spellcheck="false" style="background: var(--hairline);">
             </div>
           </div>
-          <button id="saveApiKeysBtn" class="btn btn-secondary btn-sm">💾 Сохранить в .env</button>
+          <div style="font-size: 12.5px; color: var(--body-mid); margin-top: 8px;">
+            Ключи задаются переменными окружения TELEGRAM_API_ID и TELEGRAM_API_HASH
+            (локально — в файле .env, на Railway — в Variables). Изменение требует перезапуска сервера.
+          </div>
         </div>
 
         <hr style="border: 0; border-top: 1px solid var(--hairline); margin: 20px 0;">
@@ -2008,13 +2011,7 @@
     const closeSettingsModal = document.getElementById('closeSettingsModal');
     const settingsApiId = document.getElementById('settingsApiId');
     const settingsApiHash = document.getElementById('settingsApiHash');
-    const toggleApiHashVisibility = document.getElementById('toggleApiHashVisibility');
-    const saveApiKeysBtn = document.getElementById('saveApiKeysBtn');
 
-    toggleApiHashVisibility.addEventListener('click', () => {
-      settingsApiHash.type = settingsApiHash.type === 'password' ? 'text' : 'password';
-      toggleApiHashVisibility.textContent = settingsApiHash.type === 'password' ? '👁️' : '🙈';
-    });
     const authStatusBox = document.getElementById('authStatusBox');
     const authUserDetails = document.getElementById('authUserDetails');
     const authWizardBox = document.getElementById('authWizardBox');
@@ -2445,13 +2442,11 @@
         const res = await fetch('/api/settings');
         const data = await res.json();
         settingsApiId.value = data.api_id || '';
-        // Сырой api_hash больше не приходит с сервера: поле пустое,
-        // плейсхолдер показывает маску. Пустое поле не затирает ключ.
-        settingsApiHash.value = '';
-        settingsApiHash.dataset.hasKey = data.has_api_hash ? '1' : '0';
-        if (data.has_api_hash) {
-          settingsApiHash.placeholder = `API HASH: ${data.api_hash_masked}`;
-        }
+        // Задача 1.2 (PLAN.md): сырой hash не приходит и не сохраняется из UI,
+        // показываем только маску (или предупреждение, если ключа нет).
+        settingsApiHash.value = data.has_api_hash
+          ? `API HASH: ${data.api_hash_masked}`
+          : 'не задан (TELEGRAM_API_HASH)';
 
         if (data.is_authorized && data.user) {
           authStatusBox.style.display = 'block';
@@ -2473,33 +2468,8 @@
       step2fa.classList.toggle('active', step === 3);
     }
 
-    saveApiKeysBtn.addEventListener('click', async () => {
-      const apiId = settingsApiId.value.trim();
-      const apiHash = settingsApiHash.value.trim();
-      if (!apiId) {
-        showToast('Заполните API ID', true);
-        return;
-      }
-      // Пустой hash допустим, только если ключ уже сохранён (поле с плейсхолдером-маской).
-      if (!apiHash && settingsApiHash.dataset.hasKey !== '1') {
-        showToast('Заполните API HASH', true);
-        return;
-      }
-      try {
-        const res = await fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(apiHash ? { api_id: apiId, api_hash: apiHash } : { api_id: apiId })
-        });
-        if (res.ok) {
-          showToast('Ключи сохранены в .env');
-          checkHealth();
-          loadSettings();
-        }
-      } catch (e) {
-        showToast('Ошибка сохранения ключей', true);
-      }
-    });
+    // Задача 1.2 (PLAN.md): кнопка «Сохранить в .env» и POST /api/settings
+    // удалены — ключи задаются только переменными окружения.
 
     sendCodeBtn.addEventListener('click', async () => {
       const phone = authPhone.value.trim();
