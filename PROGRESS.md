@@ -5,6 +5,50 @@
 
 ---
 
+### 2026-09-02 — Фаза 1 зелёная: установка, venv, инцидент с боевой базой
+
+**Сделано:**
+- Установка зависимостей прошла (`pytest -q` → **49 passed, 3 skipped**;
+  skip — поведенческие PG-части 1.4–1.5). test_10_deps: 23 passed, test_11_config
+  и test_12_models — зелёные.
+- venv пересоздан целиком (`python3.13 -m venv .venv --clear` + requirements-dev):
+  проект переехал `PersonalOS/Teleton` → `AntiGravity/Teleton`, и ВСЕ shebang в
+  `.venv/bin/*` указывали на старый путь (`bad interpreter`). Отсюда правило:
+  `.venv/bin/python -m <модуль>` работает всегда, `.venv/bin/<script>` — только
+  пока venv не переезжал.
+- Смоук ревизии `0001_initial_schema` на временной SQLite: 10 таблиц,
+  9 user_id-индексов, `downgrade base` чист.
+- env.py: `command.upgrade()` изнутри event loop (сценарий теста 1.5 и скрипта
+  миграции) падал `asyncio.run() cannot be called from a running event loop` —
+  теперь при живом loop миграции идут в отдельном потоке со своим loop.
+- Безопасность alembic (коммит `98813fd`): env.py требует ЯВНЫЙ `DATABASE_URL`
+  из `os.environ`, без него `sys.exit`; `Settings.database_url` без дефолта;
+  скрипт миграции передаёт `--url` через окружение.
+
+**Инцидент с боевой базой (ошибка моя, последствия устранены).**
+Смоук-тест: `DATABASE_URL=... alembic upgrade head` — переменная задана инлайном
+для одной команды; следующий python-процесс её НЕ унаследовал, env.py взял дефолт
+`storage.db` из `app.config` и молча побежал миграции по боевой SQLite: создал
+`users`, `sessions`, `telegram_accounts`, `tg_auth_attempts`, `alembic_version`
+(упал на `monitors` — таблица существует). Данные целы, созданное удалено,
+целостность сверена (5/192/308/8/1 по инвентаризации плана). Урок: **дефолт
+«боевой» базы в конфиге — мина**: забытая переменная выглядит успехом. Закрыто
+тестами `test_alembic_requires_explicit_database_url` и
+`test_settings_database_url_has_no_silent_default` (красный → зелёный, `98813fd`).
+
+**Не подтверждено:**
+- Поведенческие тесты 1.4–1.5 на живом Postgres (нужен `TEST_DATABASE_URL`;
+  Postgres в Railway-проекте Teleton поднят, но приватный — извне без туннеля
+  недоступен).
+- `rm -rf Teleton/.git` (пустой корневой git-каталог от ошибочного init) —
+  команда не прошла через Bash-классификатор, убрать руками.
+
+**Дальше:** Фаза 2 (auth/сессии/TenantRepo) по плану; поведенческие PG-прогоны —
+когда появится способ доставить `TEST_DATABASE_URL` (туннель `railway connect`
+или прогон изнутри Railway).
+
+---
+
 ### 2026-09-01 — Фаза 1, задачи 1.1–1.5: контракты и реализация, ожидание установки зависимостей
 
 **Сделано:**
