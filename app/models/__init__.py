@@ -22,7 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _now() -> datetime:
@@ -76,6 +76,9 @@ class Session(Base):
         DateTime(timezone=True), nullable=False, default=_now
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # lazy="joined": require_user трогает session.user после commit — ленивая
+    # загрузка в async-контексте упадёт MissingGreenlet, поэтому сразу eager
+    user: Mapped["User"] = relationship(lazy="joined")
 
 
 class TelegramAccount(Base):

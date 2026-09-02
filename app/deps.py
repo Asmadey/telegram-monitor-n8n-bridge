@@ -1,0 +1,21 @@
+"""Зависимости роутеров (задача 2.3): require_user, require_admin (позже).
+
+Порт before_action :require_authentication: зависимость вешается на роутер
+целиком, а не на каждый эндпоинт руками — забыть закрыть эндпоинт
+невозможно, можно только забыть открыть (это заметно сразу).
+"""
+from fastapi import Depends, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import get_db
+from app.models import User
+from app.security.sessions import SESSION_COOKIE, resolve_session
+
+
+async def require_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
+    """Аноним — 401 без объяснений: не раскрываем, чем именно не подошла cookie."""
+    raw = request.cookies.get(SESSION_COOKIE)
+    session = await resolve_session(db, raw) if raw else None
+    if session is None:
+        raise HTTPException(status_code=401, detail="Требуется вход")
+    return session.user
