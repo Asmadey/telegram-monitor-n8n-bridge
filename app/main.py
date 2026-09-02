@@ -14,6 +14,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api import admin, auth, public, telegram
+from app.security.crypto import validate_encryption_key
 from app.security.csrf import (
     CSRF_COOKIE,
     SAFE_METHODS,
@@ -21,6 +22,11 @@ from app.security.csrf import (
     verify_csrf,
 )
 from app.security.ratelimit import limiter
+
+# Стартовый барьер (задача 3.4): без валидного APP_ENCRYPTION_KEY приложение
+# не поднимается вовсе — иначе однажды прод заведётся с ключом «по умолчанию»,
+# и MTProto-сессии чужих аккаунтов окажутся под ним.
+validate_encryption_key()
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 

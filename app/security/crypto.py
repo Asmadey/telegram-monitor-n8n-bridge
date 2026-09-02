@@ -5,13 +5,35 @@
 не бывает, на сервере оседают MTProto-сессии чужих Telegram-аккаунтов,
 которые нельзя сбросить удалённо.
 
-Полнота контракта (отказ старта без ключа, шифрование ключей
-интеграций) — задача 3.4; здесь фундамент: encrypt/decrypt.
+validate_encryption_key вызывается при старте приложения (app/main.py):
+без явного отказа кто-нибудь однажды запустит прод с ключом по
+умолчанию (или «key») — и все сессии окажутся под ним.
 """
 
 from cryptography.fernet import Fernet
 
 from app.config import get_settings
+
+
+def validate_encryption_key() -> None:
+    """Отказ старта, если ключа нет или он невалиден (короткий/битый).
+
+    Вызывается при импорте app.main — приложение не поднимается вовсе.
+    """
+    key = get_settings().app_encryption_key
+    if not key:
+        raise RuntimeError(
+            "APP_ENCRYPTION_KEY не задан — приложение не стартует: "
+            "секреты тенантов (MTProto-сессии, ключи интеграций) "
+            "шифруются этим ключом"
+        )
+    try:
+        Fernet(key.encode())
+    except ValueError as e:
+        raise RuntimeError(
+            f"APP_ENCRYPTION_KEY невалиден (короткий/битый) — приложение "
+            f"не стартует: {e}"
+        ) from e
 
 
 def _fernet() -> Fernet:
