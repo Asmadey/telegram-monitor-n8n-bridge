@@ -26,8 +26,9 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql, sqlite
 
-from app.models import Integration, LLMUsage, LogEntry
+from app.models import Integration, LLMUsage
 from app.services.integrations import integration_secrets
+from app.services.journal import add_log
 
 MAX_REQUEST_CHARS = 48_000
 MONTHLY_TOKEN_LIMIT = 2_000_000
@@ -102,16 +103,12 @@ async def _add_tokens(db, user_id: int, tokens: int, *, now: datetime.datetime) 
 
 
 async def _log_limit(db, user_id: int, *, disabled: bool) -> None:
-    """Запись в журнал о лимите: без неё тенант не поймёт, почему AI молчит."""
+    """Запись в журнал о лимите: без неё тенант не поймёт, почему AI молчит.
+    Через add_log (4.6): единственная точка записи, redact внутри."""
     details = f"месячный лимит {MONTHLY_TOKEN_LIMIT} токенов превышен — " + (
         "AI отключён" if disabled else "запрос пропущен без обращения к API"
     )
-    db.add(
-        LogEntry(
-            user_id=user_id, event_type="LLM_LIMIT", status="ERROR", details=details
-        )
-    )
-    await db.commit()
+    await add_log(db, user_id, "LLM_LIMIT", details, status="ERROR")
     logger.warning("тенант %s: %s", user_id, details)
 
 
@@ -168,15 +165,15 @@ async def process_messages_batch_with_llm(
     try:
         analysis, tokens = await caller(payload)
     except Exception as e:  # noqa: BLE001 — падение API не роняет воркера
-        db.add(
-            LogEntry(
-                user_id=user_id,
-                event_type="OPENROUTER_ERROR",
-                status="ERROR",
-                details=f"Ошибка обработки батча через LLM: {e}",
-            )
+        # через add_log (4.6): текст исключения несёт заголовки с Bearer —
+        # redact затирает ДО записи
+        await add_log(
+            db,
+            user_id,
+            "OPENROUTER_ERROR",
+            f"Ошибка обработки батча через LLM: {e}",
+            status="ERROR",
         )
-        await db.commit()
         logger.exception("ошибка OpenRouter для тенанта %s", user_id)
         return None
 
