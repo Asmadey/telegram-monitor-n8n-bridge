@@ -5,6 +5,45 @@
 
 ---
 
+### 2026-09-02 — Задача 4.3: таблица jobs для ручного запуска
+
+**Сделано:** `app/services/jobs.py` — очередь на одной базе (аналог
+Solid Queue), без Redis. Таблица jobs уже была в моделях (1.3) и
+миграции 0001 — схема не менялась.
+- `enqueue_job` — pending-строка (kind, payload_json, user_id).
+- `claim_next_job` — атомарный захват ОДНИМ запросом: UPDATE с
+  подзапросом старейшей pending + RETURNING. Postgres — подзапрос с
+  FOR UPDATE SKIP LOCKED (буква плана); sqlite — без него (синтаксиса
+  нет), одновременность держит единственный писатель в моменте.
+- `requeue_hung_jobs` — running > 10 минут → pending (процесс умер
+  посреди); done/failed НЕ возвращаются (повтор = повторные вебхуки).
+- `finish_job` / `fail_job` — done/failed + finished_at + текст ошибки.
+
+**Подтверждено:** красная фаза — заглушка SELECT→UPDATE с окном
+sleep(0.05): оба воркера брали одну задачу (assert), requeue/finish/
+fail — no-op (по одному assert-падению). Зелёная: `test_42_jobs.py`
+→ 7 passed, включая структурный: PG-вариант компилируется с
+`FOR UPDATE SKIP LOCKED`, sqlite-вариант — без и компилируется.
+Полный прогон: **138 passed, 4 skipped**, mypy/ruff чистые.
+
+**Не сработало / ловушки:**
+- sqlite хранит DateTime наивно: started_at из базы теряет tzinfo —
+  первая зелёная упала на `== NOW` с tzinfo; сравнение без tzinfo
+  (ошибка теста, не реализации).
+- Наивная заглушка с read-lock до UPDATE мертвит sqlite (два
+  апгрейда shared→reserved = OperationalError, не assert): окно
+  сделано МЕЖДУ транзакциями (SELECT+commit → sleep → UPDATE),
+  как в оригинале server.py, где между SELECT и INSERT стояли
+  запросы к Telegram.
+
+**Не подтверждено:** SKIP LOCKED на живом Postgres (деплой закрыт К2);
+эндпоинты `POST /api/monitors/{id}/run` и `GET /api/jobs/{id}` — с
+роутерами Фазы 5 (К2), врезка claim в тик воркера — с диспетчеризацией.
+
+**Коммит `bef14ff`**; PLAN.md: строка 4.3.
+
+---
+
 ### 2026-09-02 — Задача 4.2: атомарная дедупликация
 
 **Сделано:** `app/services/dedup.py: filter_new(db, user_id, chat_id,
