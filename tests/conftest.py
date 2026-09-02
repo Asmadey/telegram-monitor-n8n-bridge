@@ -44,6 +44,17 @@ def walk_routes(routes):
             yield route
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """In-memory счётчики (slowapi + password-reset) живут в процессе —
+    без сброса один тест выжигал бы лимит на весь сеанс (11 логинов в
+    test_26 блокировали бы входы в test_23/24)."""
+    from app.security.ratelimit import reset_all
+
+    yield
+    reset_all()
+
+
 @pytest.fixture
 def _env(monkeypatch):
     """Секреты для подписи cookie. DATABASE_URL не нужен: get_db переопределён."""

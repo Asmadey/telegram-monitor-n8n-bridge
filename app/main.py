@@ -9,6 +9,8 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api import auth, public
 from app.security.csrf import (
@@ -17,6 +19,7 @@ from app.security.csrf import (
     issue_csrf_cookie,
     verify_csrf,
 )
+from app.security.ratelimit import limiter
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -24,6 +27,10 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 # бесплатная карта поверхности атаки (их перечисляет test_22 как маршруты).
 # Если документация понадобится — открывать только за require_user.
 app = FastAPI(title="Teleton", openapi_url=None, docs_url=None, redoc_url=None)
+
+# rate limiting (задача 2.7): 429 обрабатывает общий handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(public.router)
 app.include_router(auth.router)

@@ -19,6 +19,12 @@ from app.models import Session, User
 from app.security.csrf import clear_csrf_cookie, issue_csrf_cookie
 from app.security.password_reset import make_reset_token, resolve_reset_token
 from app.security.passwords import hash_password, verify_password
+from app.security.ratelimit import (
+    PASSWORD_RESET_LIMIT,
+    PASSWORD_RESET_WINDOW,
+    allow,
+    limiter,
+)
 from app.security.sessions import (
     clear_session_cookie,
     create_session,
@@ -122,6 +128,7 @@ async def logout(
 
 
 @public_router.post("/auth/signup")
+@limiter.limit("10/3minutes")  # спам-регистрации (задача 2.7)
 async def signup(
     req: SignupRequest,
     request: Request,
@@ -149,6 +156,7 @@ async def signup(
 
 
 @public_router.post("/auth/login")
+@limiter.limit("10/3minutes")  # брутфорс (задача 2.7)
 async def login(
     req: AuthRequest,
     request: Request,
@@ -170,8 +178,16 @@ async def login(
 
 @public_router.post("/auth/password-reset")
 async def request_password_reset(
-    req: EmailRequest, db: AsyncSession = Depends(get_db)
+    req: EmailRequest, request: Request, db: AsyncSession = Depends(get_db)
 ) -> dict[str, Any]:
+    # 5/час на пару IP+email (slowapi-декоратор не видит тело запроса):
+    # жертва получает максимум 5 писем в час с одного адреса отправки.
+    if not allow(
+        f"pwreset:{_client_ip(request)}:{req.email}",
+        PASSWORD_RESET_LIMIT,
+        PASSWORD_RESET_WINDOW,
+    ):
+        raise HTTPException(status_code=429, detail="Слишком много попыток")
     # Ответ одинаков для существующего и несуществующего адреса — иначе
     # эндпоинт перечисляет пользователей (passwords_controller.rb:create).
     user = await db.scalar(select(User).where(User.email == req.email))
