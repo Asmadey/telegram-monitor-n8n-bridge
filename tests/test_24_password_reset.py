@@ -7,16 +7,16 @@
    пароля хеш меняется — старый токен расходится (приём Rails
    generates_token_for). Плюс часовой max_age.
 """
+
 import time
 
 import pytest
 from itsdangerous.timed import TimestampSigner
 
 from app.models import User
+from app.security.password_reset import make_reset_token
 from app.security.passwords import hash_password
 from app.security.sessions import SESSION_COOKIE
-from app.security.password_reset import make_reset_token
-from app.services.mailer import reset_emails
 
 OLD_PASSWORD = "old-password-long"
 NEW_PASSWORD = "new-password-long"
@@ -31,9 +31,7 @@ async def _make_user_with_password(db) -> User:
 
 
 @pytest.mark.asyncio
-async def test_reset_response_identical_for_known_and_unknown_email(
-    anon_client, db
-):
+async def test_reset_response_identical_for_known_and_unknown_email(anon_client, db):
     await _make_user_with_password(db)
     a = await anon_client.post(
         "/auth/password-reset", json={"email": "reset@example.com"}
@@ -137,21 +135,18 @@ async def test_weak_new_password_rejected(anon_client, db):
 
 
 @pytest.mark.asyncio
-async def test_reset_email_only_for_known_user(anon_client, db):
-    """Письмо уходит только существующему адресу; в лог-заглушке — без токена."""
+async def test_reset_email_only_for_known_user(anon_client, db, tmp_path):
+    """Письмо (в dev — файл-аутбокс, задача 2.9) создаётся только
+    существующему адресу; несуществующему — ничего не пишется."""
     from app.security.password_reset import RESET_TTL
 
     assert RESET_TTL == RESET_TTL_SECONDS, "TTL сброса — час (план 2.5)"
-    user = await _make_user_with_password(db)
-    reset_emails.clear()
-    await anon_client.post(
-        "/auth/password-reset", json={"email": "reset@example.com"}
-    )
-    assert len(reset_emails) == 1, "письмо сброса не ушло существующему юзеру"
-    assert reset_emails[0] == "reset@example.com"
+    mail_dir = tmp_path / "mail"  # тот же tmp_path, что и в _env (conftest)
+    await _make_user_with_password(db)
+    await anon_client.post("/auth/password-reset", json={"email": "reset@example.com"})
+    files = list(mail_dir.glob("*.html"))
+    assert len(files) == 1, "письмо сброса не ушло существующему юзеру"
+    assert "reset@example.com" in files[0].read_text(encoding="utf-8")
 
-    reset_emails.clear()
-    await anon_client.post(
-        "/auth/password-reset", json={"email": "ghost@example.com"}
-    )
-    assert reset_emails == [], "письмо ушло несуществующему адресу"
+    await anon_client.post("/auth/password-reset", json={"email": "ghost@example.com"})
+    assert len(list(mail_dir.glob("*.html"))) == 1, "письмо ушло несуществующему адресу"
