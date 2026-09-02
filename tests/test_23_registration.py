@@ -62,7 +62,8 @@ async def test_over72byte_password_422(anon_client):
 @pytest.mark.asyncio
 async def test_login_me_logout_cycle(anon_client):
     await anon_client.post("/auth/signup", json=CRED)
-    anon_client.cookies.clear()  # выходим из сессии регистрации, не убивая её
+    # выходим из сессии, не трогая csrf-cookie (иначе 2.6 сломает прайминг)
+    anon_client.cookies.delete(SESSION_COOKIE)
     assert (await anon_client.get("/auth/me")).status_code == 401
 
     r = await anon_client.post(
@@ -82,7 +83,7 @@ async def test_login_me_logout_cycle(anon_client):
 @pytest.mark.asyncio
 async def test_wrong_password_unified_401(anon_client):
     await anon_client.post("/auth/signup", json=CRED)
-    anon_client.cookies.clear()
+    anon_client.cookies.delete(SESSION_COOKIE)
     r = await anon_client.post(
         "/auth/login", json={"email": CRED["email"], "password": "wrong-password"}
     )

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.deps import require_session, require_user
 from app.models import Session, User
+from app.security.csrf import clear_csrf_cookie, issue_csrf_cookie
 from app.security.password_reset import make_reset_token, resolve_reset_token
 from app.security.passwords import hash_password, verify_password
 from app.security.sessions import (
@@ -92,7 +93,7 @@ class PasswordResetConfirmRequest(BaseModel):
 async def _open_session(
     db: AsyncSession, request: Request, response: Response, user: User
 ) -> None:
-    """Сессия в БД + подписанная cookie в ответ (и signup, и login)."""
+    """Сессия в БД + подписанная cookie + csrf, привязанный к sid (signup/login)."""
     session = await create_session(
         db,
         user,
@@ -100,6 +101,7 @@ async def _open_session(
         user_agent=request.headers.get("user-agent", ""),
     )
     set_session_cookie(response, session.id)
+    issue_csrf_cookie(response, session.id)
 
 
 @router.get("/auth/me")
@@ -115,6 +117,7 @@ async def logout(
 ) -> dict[str, bool]:
     await destroy_session(db, session.id)
     clear_session_cookie(response)
+    clear_csrf_cookie(response)
     return {"ok": True}
 
 

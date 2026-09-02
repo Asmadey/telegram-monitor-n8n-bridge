@@ -41,6 +41,20 @@ def sign_session_id(session_id) -> str:
     return _serializer().dumps({"sid": str(session_id)})
 
 
+def read_session_id(cookie_value: str) -> Optional[uuid.UUID]:
+    """sid из подписанной cookie без обращения к БД (привязка CSRF, задача 2.6).
+
+    Проверяет только подпись — жива ли строка сессии, решает resolve_session.
+    """
+    if not cookie_value:
+        return None
+    try:
+        payload = _serializer().loads(cookie_value)
+        return uuid.UUID(payload["sid"])
+    except (BadSignature, ValueError, KeyError, TypeError):
+        return None
+
+
 async def create_session(
     db: AsyncSession, user: User, ip: str, user_agent: str
 ) -> Session:

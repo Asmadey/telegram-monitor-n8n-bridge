@@ -14,6 +14,7 @@ from itsdangerous.timed import TimestampSigner
 
 from app.models import User
 from app.security.passwords import hash_password
+from app.security.sessions import SESSION_COOKIE
 from app.security.password_reset import make_reset_token
 from app.services.mailer import reset_emails
 
@@ -67,7 +68,7 @@ async def test_confirm_changes_password_and_kills_sessions(anon_client, db):
     # все прежние сессии мертвы — смену пароля переживать они не должны
     assert (await anon_client.get("/auth/me")).status_code == 401
     # старый пароль больше не работает, новый — работает
-    anon_client.cookies.clear()
+    anon_client.cookies.delete(SESSION_COOKIE)
     r_old = await anon_client.post(
         "/auth/login", json={"email": "reset@example.com", "password": OLD_PASSWORD}
     )

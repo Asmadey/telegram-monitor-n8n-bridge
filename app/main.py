@@ -6,11 +6,17 @@ server.py остаётся точкой входа локальной разра
 """
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import auth, public
+from app.security.csrf import (
+    CSRF_COOKIE,
+    SAFE_METHODS,
+    issue_csrf_cookie,
+    verify_csrf,
+)
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -29,3 +35,21 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 @app.get("/", include_in_schema=False)
 async def index() -> FileResponse:
     return FileResponse(_STATIC_DIR / "index.html")
+
+
+@app.middleware("http")
+async def csrf_protect(request: Request, call_next):
+    """Каждый не-GET без валидного X-CSRF-Token — 403 (задача 2.6).
+
+    Проверка ВЫШЕ авторизации: CSRF не заботится, кто ты — только кто
+    подделал запрос. Новым посетителям тут же выдаётся anon-токен: браузер
+    грузит страницу (GET) и уже с неё шлёт POST-ы с заголовком.
+    """
+    if request.method not in SAFE_METHODS and not verify_csrf(request):
+        return JSONResponse(
+            {"detail": "CSRF-токен отсутствует или неверен"}, status_code=403
+        )
+    response = await call_next(request)
+    if CSRF_COOKIE not in request.cookies:
+        issue_csrf_cookie(response)  # anon-токен; при логине перевыпустится
+    return response
