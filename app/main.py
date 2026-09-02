@@ -21,6 +21,7 @@ app = FastAPI(title="Teleton", openapi_url=None, docs_url=None, redoc_url=None)
 
 app.include_router(public.router)
 app.include_router(auth.router)
+app.include_router(auth.public_router)  # signup/login — явный opt-out (2.4)
 
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 

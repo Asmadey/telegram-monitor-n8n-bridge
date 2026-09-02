@@ -8,14 +8,23 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.models import User
+from app.models import Session, User
 from app.security.sessions import SESSION_COOKIE, resolve_session
 
 
-async def require_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
-    """Аноним — 401 без объяснений: не раскрываем, чем именно не подошла cookie."""
+async def require_session(
+    request: Request, db: AsyncSession = Depends(get_db)
+) -> Session:
+    """Аноним — 401 без объяснений: не раскрываем, чем именно не подошла cookie.
+
+    Возвращает строку сессии (logout-у нужен её id, а не юзер).
+    """
     raw = request.cookies.get(SESSION_COOKIE)
     session = await resolve_session(db, raw) if raw else None
     if session is None:
         raise HTTPException(status_code=401, detail="Требуется вход")
+    return session
+
+
+async def require_user(session: Session = Depends(require_session)) -> User:
     return session.user

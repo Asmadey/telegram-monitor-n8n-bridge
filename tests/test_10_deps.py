@@ -26,6 +26,7 @@ REQUIRED_MODULES = [
     "pydantic_settings",
     "bcrypt",
     "itsdangerous",
+    "email_validator",
     "cryptography.fernet",
     "slowapi",
     # dev-зависимости
