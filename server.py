@@ -13,6 +13,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from telethon import TelegramClient, errors
 from telethon.tl.types import User, Chat, Channel
@@ -646,6 +647,12 @@ app = FastAPI(
     version="2.3.0",
     lifespan=lifespan
 )
+
+# Задача 5.1: index.html разрезан на разметку + /static/css + /static/js —
+# монолит обязан раздавать ассеты, иначе UI мёртв. Единственное изменение
+# server.py вне переноса в модули: инфраструктурная строка, логики нет
+# (исчезнет вместе с монолитом при закрытии К2).
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # ==================== Вспомогательные функции ====================
 
