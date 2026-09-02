@@ -15,6 +15,7 @@ chat_title, имя диалога и поля журнала полностью 
 
 Добавляя запись в SAFE_SINKS, пишите рядом, почему приёмник безопасен.
 """
+
 import re
 from pathlib import Path
 
@@ -22,14 +23,35 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Поля, значения которых приходят из Telegram, от пользователя или от LLM.
 RISKY_FIELDS = [
-    "chat_title", "chat_username", "chat_target", "ai_analysis", "model_name",
-    "event_type", "details", "sender", "prompt", "post_url", "photo_base64",
-    "reactionsTitle", "name", "username", "title", "text", "status", "type",
+    "chat_title",
+    "chat_username",
+    "chat_target",
+    "ai_analysis",
+    "model_name",
+    "event_type",
+    "details",
+    "sender",
+    "prompt",
+    "post_url",
+    "photo_base64",
+    "reactionsTitle",
+    "name",
+    "username",
+    "title",
+    "text",
+    "status",
+    "type",
 ]
 
 # Вызовы, после которых значение безопасно вставлять в разметку.
-ESCAPING_CALLS = ("esc(", "escapeHtml(", "formatTelegramText(",
-                  "highlightText(", "encodeURIComponent(", "Number(")
+ESCAPING_CALLS = (
+    "esc(",
+    "escapeHtml(",
+    "formatTelegramText(",
+    "highlightText(",
+    "encodeURIComponent(",
+    "Number(",
+)
 
 # Приёмники, которые не разбирают HTML. Ключ — маркер в коде, значение — причина.
 SAFE_SINKS = {
@@ -78,8 +100,8 @@ def output_part(expr: str) -> str:
             depth += 1
         elif ch in ")]}":
             depth -= 1
-        elif ch == "?" and depth == 0 and expr[idx:idx + 2] not in ("?.", "??"):
-            return expr[idx + 1:]
+        elif ch == "?" and depth == 0 and expr[idx : idx + 2] not in ("?.", "??"):
+            return expr[idx + 1 :]
     return expr
 
 
@@ -89,7 +111,7 @@ def sink_before(src: str, pos: int) -> str | None:
     Побеждает тот, что ближе — присваивание innerHTML, встреченное позже
     безопасного приёмника, означает, что мы уже в другом выражении.
     """
-    window = src[max(0, pos - SINK_LOOKBEHIND):pos]
+    window = src[max(0, pos - SINK_LOOKBEHIND) : pos]
     best_marker, best_at = None, -1
     for marker in ("innerHTML", "insertAdjacentHTML", *SAFE_SINKS):
         at = window.rfind(marker)
@@ -99,8 +121,9 @@ def sink_before(src: str, pos: int) -> str | None:
 
 
 def violations_in(path: Path) -> list[str]:
-    src = js_source(path.read_text(encoding="utf-8"),
-                    is_html=path.suffix.lower() == ".html")
+    src = js_source(
+        path.read_text(encoding="utf-8"), is_html=path.suffix.lower() == ".html"
+    )
     found = []
     for m in INTERPOLATION.finditer(src):
         payload = output_part(m.group(1)).strip()
@@ -128,10 +151,14 @@ def static_files() -> list[Path]:
 # из-за которого прошлые версии теста показывали зелёный при живом XSS.
 # --------------------------------------------------------------------------
 
+
 def test_detects_interpolation_inside_a_nested_template():
     sample = "el.innerHTML = `<div>${a ? `<b>${m.chat_title}</b>` : ''}</div>`;"
-    hits = [m.group(1) for m in INTERPOLATION.finditer(sample)
-            if FIELD_REF.search(output_part(m.group(1)))]
+    hits = [
+        m.group(1)
+        for m in INTERPOLATION.finditer(sample)
+        if FIELD_REF.search(output_part(m.group(1)))
+    ]
     assert any("chat_title" in h for h in hits), "вложенная подстановка не найдена"
 
 
@@ -141,19 +168,25 @@ def test_apostrophes_and_regex_literals_do_not_blind_the_scan():
         "<p>не удалось — don't panic</p>\n"
         "<script>\n"
         "  s = s.replace(/'/g, '&#39;');\n"
-        "  el.innerHTML = `<div title=\"${m.chat_title}\"></div>`;\n"
+        '  el.innerHTML = `<div title="${m.chat_title}"></div>`;\n'
         "</script>\n",
         is_html=True,
     )
-    hits = [m.group(1) for m in INTERPOLATION.finditer(src)
-            if FIELD_REF.search(output_part(m.group(1)))]
+    hits = [
+        m.group(1)
+        for m in INTERPOLATION.finditer(src)
+        if FIELD_REF.search(output_part(m.group(1)))
+    ]
     assert any("chat_title" in h for h in hits)
 
 
 def test_safe_sinks_are_not_reported():
     sample = "statusUser.textContent = `${data.user.username}`;"
-    assert not [m for m in INTERPOLATION.finditer(sample)
-                if sink_before(sample, m.start()) not in SAFE_SINKS]
+    assert not [
+        m
+        for m in INTERPOLATION.finditer(sample)
+        if sink_before(sample, m.start()) not in SAFE_SINKS
+    ]
 
 
 def test_every_safe_sink_carries_a_justification():
@@ -164,6 +197,7 @@ def test_every_safe_sink_carries_a_justification():
 # --------------------------------------------------------------------------
 # Собственно проверка
 # --------------------------------------------------------------------------
+
 
 def test_risky_fields_are_escaped_before_reaching_html():
     violations: list[str] = []

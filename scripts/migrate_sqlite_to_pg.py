@@ -20,6 +20,7 @@
 Использование:
     python -m scripts.migrate_sqlite_to_pg --user-email owner@example.com
 """
+
 import argparse
 import asyncio
 import sqlite3
@@ -68,8 +69,7 @@ def _read_sqlite(sqlite_path: str) -> dict[str, list[dict]]:
             "integrations_config": "SELECT * FROM integrations_config",
         }
         return {
-            name: [dict(r) for r in conn.execute(sql)]
-            for name, sql in tables.items()
+            name: [dict(r) for r in conn.execute(sql)] for name, sql in tables.items()
         }
     finally:
         conn.close()
@@ -147,9 +147,7 @@ async def _migrate_sent_messages(session, rows, user_id) -> int:
                 has_media=bool(r.get("has_media") or 0),
                 reactions_json=r.get("reactions_json") or "[]",
             )
-            .on_conflict_do_nothing(
-                index_elements=["user_id", "chat_id", "message_id"]
-            )
+            .on_conflict_do_nothing(index_elements=["user_id", "chat_id", "message_id"])
         )
         result = await session.execute(stmt)
         inserted += result.rowcount or 0
@@ -209,6 +207,7 @@ async def _migrate_logs(session, rows, user_id) -> int:
 async def _migrate_integrations(session, rows, user_id, fernet: Fernet) -> int:
     inserted = 0
     for r in rows:
+
         def enc(field: str) -> str:
             value = r.get(field) or ""
             return fernet.encrypt(value.encode()).decode() if value else ""
@@ -223,8 +222,7 @@ async def _migrate_integrations(session, rows, user_id, fernet: Fernet) -> int:
                 openrouter_api_key_encrypted=enc("openrouter_api_key"),
                 openrouter_base_url=r["openrouter_base_url"]
                 or "https://openrouter.ai/api/v1",
-                openrouter_model=r["openrouter_model"]
-                or "deepseek/deepseek-v4-flash",
+                openrouter_model=r["openrouter_model"] or "deepseek/deepseek-v4-flash",
                 openrouter_enabled=bool(r["openrouter_enabled"] or 0),
                 webhook_url_encrypted=enc("webhook_url"),
                 auto_webhook_enabled=bool(r["auto_webhook_enabled"] or 0),
@@ -247,7 +245,9 @@ async def migrate(sqlite_path: str, session, user_id: int) -> dict[str, int]:
         "sent_messages": await _migrate_sent_messages(
             session, data["sent_messages"], user_id
         ),
-        "feed_items": await _migrate_feed_items(session, data["analysis_feed"], user_id),
+        "feed_items": await _migrate_feed_items(
+            session, data["analysis_feed"], user_id
+        ),
         "logs": await _migrate_logs(session, data["logs"], user_id),
         "integrations": await _migrate_integrations(
             session, data["integrations_config"], user_id, fernet
@@ -280,7 +280,9 @@ async def filter_new(session, user_id: int, chat_id: int, messages: list) -> lis
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--user-email", required=True, help="владелец переносимых данных")
+    parser.add_argument(
+        "--user-email", required=True, help="владелец переносимых данных"
+    )
     parser.add_argument(
         "--sqlite-path", default=str(ROOT / "storage.db"), help="путь к старой SQLite"
     )
@@ -306,8 +308,9 @@ async def main() -> None:
         # поэтому передаём выбранный URL через окружение — в т.ч. для --url.
         import os as _os
 
-        from alembic import command
         from alembic.config import Config
+
+        from alembic import command
 
         _os.environ["DATABASE_URL"] = url
         command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
@@ -318,7 +321,9 @@ async def main() -> None:
             f"Перенесено для {user.email}: "
             + ", ".join(f"{k}={v}" for k, v in stats.items())
         )
-        print("Повторный запуск безопасен: дубли не создаются (ON CONFLICT DO NOTHING).")
+        print(
+            "Повторный запуск безопасен: дубли не создаются (ON CONFLICT DO NOTHING)."
+        )
 
     await engine.dispose()
 

@@ -3,6 +3,7 @@
 Dockerfile делает `COPY . .`, поэтому всё, чего нет в .dockerignore, оказывается
 внутри образа. .gitignore здесь не помогает — это другой файл с другим списком.
 """
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

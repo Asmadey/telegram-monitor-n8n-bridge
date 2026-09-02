@@ -7,6 +7,7 @@
 Поведенческий тест на временной aiosqlite-базе (Фаза 1 дала модели),
 живой Postgres не требуется.
 """
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -15,7 +16,8 @@ from fastapi import Response
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import get_settings
-from app.models import Base, Session as SessionRow, User
+from app.models import Base, User
+from app.models import Session as SessionRow
 from app.security.sessions import (
     SESSION_COOKIE,
     SESSION_TTL,
@@ -143,7 +145,9 @@ def test_cookie_flags_dev_vs_prod(monkeypatch):
     assert "secure" in header_prod.lower(), "в проде cookie без Secure"
 
     # и обратное: в dev Secure быть НЕ должно (иначе cookie потеряется на http://localhost)
-    assert "secure" not in header.lower(), "в dev cookie со Secure не переживёт localhost"
+    assert "secure" not in header.lower(), (
+        "в dev cookie со Secure не переживёт localhost"
+    )
 
 
 def test_session_ttl_is_30_days():

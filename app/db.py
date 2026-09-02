@@ -3,6 +3,7 @@
 Единственная точка создания движка: URL — только из app.config, дефолта нет
 (урок инцидента 2026-09-02: дефолт «рабочей» базы в конфиге — мина).
 """
+
 from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import (

@@ -6,6 +6,7 @@
 Контракт: в коде приложения DDL нет вообще; схема рождается только
 миграциями Alembic, и upgrade head на чистой БД совпадает с моделями.
 """
+
 import os
 import pathlib
 import re
@@ -42,10 +43,10 @@ def test_alembic_requires_explicit_database_url():
     это мина: misconfiguration не должен выглядеть успехом.
     """
     env_py = (ROOT / "alembic" / "env.py").read_text(encoding="utf-8")
-    assert 'os.environ' in env_py and "DATABASE_URL" in env_py, (
+    assert "os.environ" in env_py and "DATABASE_URL" in env_py, (
         "env.py должен читать DATABASE_URL из os.environ сам, а не через дефолт get_settings()"
     )
-    assert 'sys.exit' in env_py or 'raise SystemExit' in env_py, (
+    assert "sys.exit" in env_py or "raise SystemExit" in env_py, (
         "без DATABASE_URL env.py обязан завершаться с ошибкой, а не брать дефолт"
     )
 
@@ -86,10 +87,11 @@ async def test_upgrade_head_matches_models():
     if url is None:
         pytest.skip("нет TEST_DATABASE_URL с живым Postgres")
 
-    from alembic import command
     from alembic.config import Config
     from sqlalchemy import inspect
     from sqlalchemy.ext.asyncio import create_async_engine
+
+    from alembic import command
 
     cfg = Config(str(ROOT / "alembic.ini"))
     command.upgrade(cfg, "head")

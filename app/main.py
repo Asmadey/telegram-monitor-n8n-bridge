@@ -4,6 +4,7 @@ server.py остаётся точкой входа локальной разра
 перенесён в модули (Фазы 3–4); редактировать его после Фазы 1 нельзя —
 переносить. Эта сборка — та, что уедет на Railway.
 """
+
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -28,9 +29,11 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 # Если документация понадобится — открывать только за require_user.
 app = FastAPI(title="Teleton", openapi_url=None, docs_url=None, redoc_url=None)
 
-# rate limiting (задача 2.7): 429 обрабатывает общий handler
+# rate limiting (задача 2.7): 429 обрабатывает общий handler.
+# ignore[arg-type]: slowapi-хендлер типизирован под свой Exception —
+# для Starlette это несущественное расхождение сигнатур.
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 app.include_router(public.router)
 app.include_router(auth.router)

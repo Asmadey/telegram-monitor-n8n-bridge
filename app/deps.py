@@ -4,6 +4,7 @@
 целиком, а не на каждый эндпоинт руками — забыть закрыть эндпоинт
 невозможно, можно только забыть открыть (это заметно сразу).
 """
+
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 

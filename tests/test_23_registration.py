@@ -5,6 +5,7 @@
 по нему перебирать адреса. Вход с неверным паролем — единый 401 для
 «нет такого юзера» и «пароль не тот» (то же правило).
 """
+
 import pytest
 
 from app.security.sessions import SESSION_COOKIE
@@ -54,7 +55,8 @@ async def test_short_password_422(anon_client):
 async def test_over72byte_password_422(anon_client):
     # bcrypt молча усекает до 72 байт — хеширование откажется, эндпоинт тоже
     r = await anon_client.post(
-        "/auth/signup", json={**CRED, "email": "other@example.com", "password": "x" * 73}
+        "/auth/signup",
+        json={**CRED, "email": "other@example.com", "password": "x" * 73},
     )
     assert r.status_code == 422
 

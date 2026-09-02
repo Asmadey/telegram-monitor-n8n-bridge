@@ -7,6 +7,7 @@
 после логина — привязан к id сессии: подброшенное значение не пройдёт,
 даже если заголовок ему совпадает.
 """
+
 from typing import Optional
 
 from fastapi import Request, Response

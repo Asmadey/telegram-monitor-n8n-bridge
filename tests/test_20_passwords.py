@@ -4,6 +4,7 @@
 его утекшая копия работает, пока пользователь не сменит пароль сам. Поэтому
 хеш обязан быть bcrypt ($2b$), с солью на каждый вызов.
 """
+
 from app.security.passwords import hash_password, verify_password
 
 PLAIN = "correct horse battery staple"

@@ -5,6 +5,7 @@
 молча терялась при каждом редеплое. Контракт: конфиг читается из окружения
 через pydantic-settings, и ни один модуль приложения не пишет .env.
 """
+
 import importlib
 import pathlib
 import re
@@ -61,7 +62,8 @@ def test_env_file_is_not_tracked_by_git(env_file):
     if not ignore.exists():
         pytest.skip("нет .gitignore — проверка не применима")
     patterns = {
-        line.strip() for line in ignore.read_text().splitlines()
+        line.strip()
+        for line in ignore.read_text().splitlines()
         if line.strip() and not line.startswith("#")
     }
     assert ".env" in patterns, ".gitignore не исключает .env"

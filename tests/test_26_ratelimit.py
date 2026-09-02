@@ -7,6 +7,7 @@
 /api/telegram/send-code переносится из server.py в задаче 3.3 — там же
 вешается лимит; здесь проверяем, что политика уже задекларирована.
 """
+
 import pytest
 
 from app.security.ratelimit import TELEGRAM_SEND_CODE_LIMIT

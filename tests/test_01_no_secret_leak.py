@@ -4,6 +4,7 @@ GET /api/openrouter и GET /api/telegram-forward отдавали сырой api
 bot_token рядом с маской. Проверка статическая: разбираем AST и смотрим, что
 именно возвращают функции, помеченные декоратором @app.<метод>.
 """
+
 import ast
 from pathlib import Path
 
@@ -59,5 +60,7 @@ def test_no_endpoint_returns_a_raw_secret():
         for func in _route_functions(tree):
             leaked = _returned_keys(func) & FORBIDDEN_KEYS
             if leaked:
-                violations.append(f"{path.name}:{func.lineno} {func.name}() → {sorted(leaked)}")
+                violations.append(
+                    f"{path.name}:{func.lineno} {func.name}() → {sorted(leaked)}"
+                )
     assert not violations, "Эндпоинты возвращают секреты:\n" + "\n".join(violations)

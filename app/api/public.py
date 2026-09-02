@@ -4,6 +4,7 @@
 попасть в белый список tests/test_22_auth_required.py — иначе тест его
 заблокирует, и добавляющий сразу увидит, что открыл лишнее.
 """
+
 from fastapi import APIRouter
 
 router = APIRouter()

@@ -6,17 +6,18 @@
   в ini остаётся заглушка, чтобы секрет не утекал в конфиг;
 - target_metadata = Base.metadata — автогенерация сравнивает с моделями app.models.
 """
+
 import asyncio
 import os
 import sys
 import threading
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from app.models import Base
 
 # alembic.ini доступен только при запуске из CLI; при программном — не обязателен

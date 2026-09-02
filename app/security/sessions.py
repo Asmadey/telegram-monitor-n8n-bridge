@@ -5,6 +5,7 @@
 всех устройствах», блокировка аккаунта админом). Cookie подписана
 itsdangerous: подделка session_id не проходит даже до обращения к БД.
 """
+
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional

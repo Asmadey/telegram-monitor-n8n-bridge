@@ -11,6 +11,7 @@ send-code (3/час на пользователя) — важнейшая из �
 In-memory хранилище живёт в процессе: на Railway воркер пока один.
 При масштабировании — заменить на Redis (интерфейс allow() не изменится).
 """
+
 import time
 from collections import defaultdict, deque
 

@@ -3,6 +3,7 @@
 Имена модулей соответствуют пакетам: sqlalchemy[asyncio] → sqlalchemy,
 pydantic-settings → pydantic_settings, passlib[bcrypt] → passlib и т.д.
 """
+
 import importlib
 
 import pytest

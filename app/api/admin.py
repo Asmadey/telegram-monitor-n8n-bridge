@@ -3,6 +3,7 @@
 require_admin висит на РОУТЕРЕ: новый эндпоинт под /api/admin защищён
 автоматически. Список юзеров — без хешей паролей, даже для админа.
 """
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException

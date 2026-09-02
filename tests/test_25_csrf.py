@@ -7,6 +7,7 @@ Cookie-аутентификация без CSRF означает: сторонн
 к id сессии — подделанный cookie (взятый, например, с поддомена) не
 пройдёт, даже если заголовок совпадает: сверка не строковая.
 """
+
 import pytest
 
 from app.security.csrf import CSRF_COOKIE, CSRF_HEADER, SAFE_METHODS

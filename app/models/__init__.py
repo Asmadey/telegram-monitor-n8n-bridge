@@ -7,6 +7,7 @@
 Секреты (MTProto-сессия, токены интеграций) хранятся только в
 *_encrypted колонках; шифрование — задача 3.4.
 """
+
 import uuid
 from datetime import datetime, timezone
 
@@ -75,7 +76,9 @@ class Session(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     # lazy="joined": require_user трогает session.user после commit — ленивая
     # загрузка в async-контексте упадёт MissingGreenlet, поэтому сразу eager
     user: Mapped["User"] = relationship(lazy="joined")
@@ -95,9 +98,7 @@ class TelegramAccount(Base):
     session_string_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     tg_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     tg_username: Mapped[str | None] = mapped_column(String(64))
-    status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default="active"
-    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )
@@ -113,7 +114,9 @@ class TgAuthAttempt(Base):
     )
     phone: Mapped[str] = mapped_column(String(32), nullable=False)
     phone_code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class Monitor(Base):
@@ -168,9 +171,7 @@ class SentMessage(Base):
     has_media: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     reactions_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "chat_id", "message_id"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "chat_id", "message_id"),)
 
 
 class FeedItem(Base):
@@ -222,21 +223,31 @@ class Integration(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, unique=True, index=True
     )
-    telegram_bot_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    telegram_sender_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    telegram_bot_token_encrypted: Mapped[str] = mapped_column(
+        Text, nullable=False, default=""
+    )
+    telegram_sender_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, default=""
+    )
     telegram_forward_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
-    openrouter_api_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    openrouter_api_key_encrypted: Mapped[str] = mapped_column(
+        Text, nullable=False, default=""
+    )
     openrouter_base_url: Mapped[str] = mapped_column(
         String(255), nullable=False, default="https://openrouter.ai/api/v1"
     )
     openrouter_model: Mapped[str] = mapped_column(
         String(128), nullable=False, default="deepseek/deepseek-v4-flash"
     )
-    openrouter_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    openrouter_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     webhook_url_encrypted: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    auto_webhook_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    auto_webhook_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, onupdate=_now
     )

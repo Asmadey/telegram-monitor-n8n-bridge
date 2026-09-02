@@ -5,6 +5,7 @@
 user_id с индексом — без него фильтр по тенанту вырождается в full scan
 и его «забывают» добавить в очередной запрос.
 """
+
 from app.models import Base
 
 # Таблицы с данными конкретного пользователя (PLAN.md, задача 1.3).
@@ -32,9 +33,9 @@ def test_every_tenant_table_has_indexed_not_null_user_id():
         t = Base.metadata.tables[name]
         assert "user_id" in t.c, f"{name}: нет user_id"
         assert not t.c.user_id.nullable, f"{name}: user_id допускает NULL"
-        assert any(
-            "user_id" in i.columns for i in t.indexes
-        ), f"{name}: user_id без индекса"
+        assert any("user_id" in i.columns for i in t.indexes), (
+            f"{name}: user_id без индекса"
+        )
 
 
 def test_user_id_is_foreign_key_to_users():
@@ -51,7 +52,8 @@ def test_sent_messages_unique_per_tenant():
     """Дедуп теперь в разрезе тенанта: UNIQUE(user_id, chat_id, message_id)."""
     t = Base.metadata.tables["sent_messages"]
     combos = {
-        tuple(sorted(c.name for c in u.columns)) for u in t.constraints
+        tuple(sorted(c.name for c in u.columns))
+        for u in t.constraints
         if getattr(u, "columns", None) and u.__class__.__name__ == "UniqueConstraint"
     }
     assert ("chat_id", "message_id", "user_id") in combos, (

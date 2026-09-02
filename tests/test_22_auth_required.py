@@ -11,6 +11,7 @@
 всё приложение, и тест вырождался в вакуумный. "/" и "/static" сверяются
 отдельно: первый — точным равенством, второй — префиксом.
 """
+
 import pytest
 
 from app.security.sessions import SESSION_COOKIE, create_session, sign_session_id

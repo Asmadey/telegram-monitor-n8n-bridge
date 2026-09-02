@@ -8,7 +8,9 @@ Create Date: 2026-09-01
 сверена с app/models построчно: 10 таблиц, user_id NOT NULL + индекс
 у каждой тезисной таблицы, UNIQUE(user_id, chat_id, message_id).
 """
+
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0001_initial_schema"
@@ -87,7 +89,9 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
     )
-    op.create_index(op.f("ix_tg_auth_attempts_user_id"), "tg_auth_attempts", ["user_id"])
+    op.create_index(
+        op.f("ix_tg_auth_attempts_user_id"), "tg_auth_attempts", ["user_id"]
+    )
 
     op.create_table(
         "monitors",
@@ -114,7 +118,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
     )
     op.create_index(op.f("ix_monitors_user_id"), "monitors", ["user_id"])
-    op.create_index(op.f("uq_monitors_public_id"), "monitors", ["public_id"], unique=True)
+    op.create_index(
+        op.f("uq_monitors_public_id"), "monitors", ["public_id"], unique=True
+    )
 
     op.create_table(
         "sent_messages",
