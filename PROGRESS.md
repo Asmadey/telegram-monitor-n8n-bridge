@@ -5,6 +5,39 @@
 
 ---
 
+### 2026-09-02 — Задача 2.2: сессии в БД + подписанная cookie
+
+**Сделано:**
+- `app/security/sessions.py`: сессия — строка в таблице `sessions` (отзываемая:
+  «выйти на всех устройствах», блокировка админом), cookie подписана
+  itsdangerous `URLSafeSerializer` (salt `session-cookie`) — подделка
+  session_id отсекается до обращения к БД. HttpOnly + SameSite=Lax всегда,
+  Secure только в production (в dev не пережила бы http://localhost).
+  TTL 30 дней; любой сбой (подделка / удалённая строка / истёкшая) — единый
+  None, существование сессии не раскрываем. Без SECRET_KEY — RuntimeError:
+  подписывать нечем, тихо деградировать нельзя.
+- `tests/test_21_sessions.py` (CDD: красный на заглушке → зелёный): 7 тестов,
+  поведенческие на временной aiosqlite, живой PG не нужен.
+- Красный тест сразу поймал дефект моделей 1.3: BIGINT PK не автоинкрементился
+  на SQLite (`NOT NULL constraint failed: users.id` — вставка юзера падала в
+  фикстуре). Фикс: `BigInteger().with_variant(Integer, "sqlite")` + `Identity()`
+  по всем 9 BIGINT-PK (модели + ревизия 0001). Ревизию правили на месте —
+  под ней не было НИ ОДНОЙ живой БД (только временные смоук-базы).
+- Прогон после: `pytest -q` → **60 passed, 3 skipped** (skip — поведенческие
+  PG-части 1.4–1.5, ждут TEST_DATABASE_URL).
+
+**Подтверждено:** юнит-уровень (aiosqlite). Не подтверждено: живой PG
+(поведенческие 1.4–1.5), интеграция с эндпоинтами — в задачах 2.3–2.4.
+
+**Не сработало / отступления:** в itsdangerous `dump()` пишет в файл — строку
+даёт `dumps()` (первая версия sessions.py падала `TypeError: dump() missing
+1 required positional argument: 'f'`). SQLite возвращает naive-datetime —
+сравнение с aware UTC падает; добавлена нормализация `_utc()`.
+
+**Коммиты:** `109a2ce` (fix: BIGINT PK autoincrement), `c648c67` (task 2.2).
+
+---
+
 ### 2026-09-02 — Фаза 1 зелёная: установка, venv, инцидент с боевой базой
 
 **Сделано:**
