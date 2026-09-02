@@ -1,6 +1,6 @@
 """Модели SQLAlchemy — многотенантная схема (задача 1.3 PLAN.md).
 
-Десять таблиц. Ключевое отличие от старой схемы: user_id NOT NULL + индекс
+Одиннадцать таблиц. Ключевое отличие от старой схемы: user_id NOT NULL + индекс
 у каждой таблицы с данными тенанта — без индекса фильтр по пользователю
 вырождается в full scan, без NOT NULL строка «без владельца» видна всем.
 
@@ -270,3 +270,21 @@ class Job(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class LLMUsage(Base):
+    __tablename__ = "llm_usage"
+    # месячный счётчик токенов LLM на тенанта (задача 4.5): без него канал
+    # с длинными постами и интервалом 15 минут — неограниченный счёт
+
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
+    period: Mapped[str] = mapped_column(String(7), nullable=False)  # YYYY-MM
+    tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, onupdate=_now
+    )
+
+    __table_args__ = (UniqueConstraint("user_id", "period"),)
