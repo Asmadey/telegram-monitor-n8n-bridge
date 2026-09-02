@@ -24,7 +24,7 @@ REQUIRED_MODULES = [
     "aiosqlite",
     "alembic",
     "pydantic_settings",
-    "passlib",
+    "bcrypt",
     "itsdangerous",
     "cryptography.fernet",
     "slowapi",
