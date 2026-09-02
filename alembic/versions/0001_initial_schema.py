@@ -21,7 +21,12 @@ def upgrade() -> None:
     # users — первым: на него ссылаются все FK
     op.create_table(
         "users",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column(
+            "id",
+            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+            sa.Identity(),
+            primary_key=True,
+        ),
         sa.Column("email", sa.String(length=320), nullable=False),
         sa.Column("password_hash", sa.String(length=255), nullable=True),
         sa.Column("timezone", sa.String(length=64), nullable=False),
@@ -46,7 +51,12 @@ def upgrade() -> None:
 
     op.create_table(
         "telegram_accounts",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column(
+            "id",
+            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+            sa.Identity(),
+            primary_key=True,
+        ),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("phone", sa.String(length=32), nullable=False),
         sa.Column("session_string_encrypted", sa.Text(), nullable=False),
@@ -65,7 +75,12 @@ def upgrade() -> None:
 
     op.create_table(
         "tg_auth_attempts",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column(
+            "id",
+            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+            sa.Identity(),
+            primary_key=True,
+        ),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("phone", sa.String(length=32), nullable=False),
         sa.Column("phone_code_hash", sa.String(length=128), nullable=False),
@@ -76,7 +91,12 @@ def upgrade() -> None:
 
     op.create_table(
         "monitors",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column(
+            "id",
+            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+            sa.Identity(),
+            primary_key=True,
+        ),
         sa.Column("public_id", sa.String(length=36), nullable=False),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("chat_target", sa.String(length=255), nullable=False),
@@ -98,7 +118,12 @@ def upgrade() -> None:
 
     op.create_table(
         "sent_messages",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column(
+            "id",
+            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+            sa.Identity(),
+            primary_key=True,
+        ),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("chat_id", sa.BigInteger(), nullable=False),
         sa.Column("message_id", sa.BigInteger(), nullable=False),
@@ -119,7 +144,12 @@ def upgrade() -> None:
 
     op.create_table(
         "feed_items",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column(
+            "id",
+            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+            sa.Identity(),
+            primary_key=True,
+        ),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("job_id", sa.String(length=64), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -138,7 +168,12 @@ def upgrade() -> None:
 
     op.create_table(
         "logs",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column(
+            "id",
+            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+            sa.Identity(),
+            primary_key=True,
+        ),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),
         sa.Column("event_type", sa.String(length=64), nullable=False),
@@ -153,7 +188,12 @@ def upgrade() -> None:
 
     op.create_table(
         "integrations",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column(
+            "id",
+            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+            sa.Identity(),
+            primary_key=True,
+        ),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("telegram_bot_token_encrypted", sa.Text(), nullable=False),
         sa.Column("telegram_sender_id", sa.String(length=64), nullable=False),
@@ -173,7 +213,12 @@ def upgrade() -> None:
 
     op.create_table(
         "jobs",
-        sa.Column("id", sa.BigInteger(), primary_key=True),
+        sa.Column(
+            "id",
+            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+            sa.Identity(),
+            primary_key=True,
+        ),
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("kind", sa.String(length=64), nullable=False),
         sa.Column("payload_json", sa.Text(), nullable=False),

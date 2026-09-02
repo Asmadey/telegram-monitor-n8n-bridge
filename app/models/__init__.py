@@ -15,6 +15,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Identity,
     Integer,
     String,
     Text,
@@ -28,6 +29,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# BIGINT PK обязан автоинкрементиться на обеих СУБД. На SQLite автоинкремент
+# даёт только INTEGER PRIMARY KEY (rowid-alias), на Postgres — Identity.
+# Без этого вставка юзера падает «NOT NULL constraint failed: users.id»
+# (поймано красным тестом test_21_sessions.py).
+BigIntPK = BigInteger().with_variant(Integer, "sqlite")
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -36,7 +44,7 @@ class User(Base):
     __tablename__ = "users"
     # по образцу Ruby/db/schema.rb:168
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     # email хранится в нижнем регистре; uniqueness проверяется приложением
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
     # nullable: вход только через Google OAuth
@@ -74,7 +82,7 @@ class TelegramAccount(Base):
     __tablename__ = "telegram_accounts"
     # заменяет файл .session: сессия MTProto живёт в БД, шифрованная
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     # у пользователя один Telegram-аккаунт (сейчас; many — Phase 5+)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, unique=True, index=True
@@ -96,7 +104,7 @@ class TgAuthAttempt(Base):
     __tablename__ = "tg_auth_attempts"
     # заменяет глобальный auth_state-словарь в server.py
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
@@ -108,7 +116,7 @@ class TgAuthAttempt(Base):
 class Monitor(Base):
     __tablename__ = "monitors"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     # публичный идентификатор для URL/интерфейса: BIGINT-PK наружу не светим
     public_id: Mapped[str] = mapped_column(
         String(36), nullable=False, unique=True, default=lambda: str(uuid.uuid4())
@@ -138,7 +146,7 @@ class SentMessage(Base):
     __tablename__ = "sent_messages"
     # строгая дедупликация — теперь в разрезе тенанта
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
@@ -166,7 +174,7 @@ class FeedItem(Base):
     __tablename__ = "feed_items"
     # бывшая analysis_feed; photo_base64 вынесена (задача 5.4 — объектное хранилище)
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
@@ -187,7 +195,7 @@ class FeedItem(Base):
 class LogEntry(Base):
     __tablename__ = "logs"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
@@ -207,7 +215,7 @@ class Integration(Base):
     # бывшая integrations_config, но БЕЗ CHECK (id = 1): по строке на пользователя.
     # Ключи — только в *_encrypted колонках (шифрование — задача 3.4).
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, unique=True, index=True
     )
@@ -235,7 +243,7 @@ class Job(Base):
     __tablename__ = "jobs"
     # ручной запуск задач из UI
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
