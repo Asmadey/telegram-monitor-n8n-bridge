@@ -10,12 +10,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import require_session, require_user
 from app.models import Session, User
+from app.security.password_reset import make_reset_token, resolve_reset_token
 from app.security.passwords import hash_password, verify_password
 from app.security.sessions import (
     clear_session_cookie,
@@ -23,6 +24,7 @@ from app.security.sessions import (
     destroy_session,
     set_session_cookie,
 )
+from app.services.mailer import send_password_reset_email
 
 router = APIRouter(dependencies=[Depends(require_user)])
 public_router = APIRouter()
@@ -45,9 +47,8 @@ def _user_dict(user: User) -> dict[str, Any]:
     }
 
 
-class AuthRequest(BaseModel):
+class EmailRequest(BaseModel):
     email: EmailStr
-    password: str
 
     @field_validator("email")
     @classmethod
@@ -55,18 +56,37 @@ class AuthRequest(BaseModel):
         return v.strip().lower()
 
 
+class AuthRequest(EmailRequest):
+    password: str
+
+
+def _password_rules(v: str) -> str:
+    """Общие правила пароля (signup и сброс): 8..72 байт."""
+    if len(v) < _MIN_PASSWORD:
+        raise ValueError(f"пароль короче {_MIN_PASSWORD} символов")
+    if len(v.encode("utf-8")) > _MAX_PASSWORD_BYTES:
+        # bcrypt молча усекает до 72 байт — хеширование откажется (задача 2.1)
+        raise ValueError(f"пароль длиннее {_MAX_PASSWORD_BYTES} байт")
+    return v
+
+
 class SignupRequest(AuthRequest):
     timezone: str = "UTC"
 
     @field_validator("password")
     @classmethod
-    def _password_rules(cls, v: str) -> str:
-        if len(v) < _MIN_PASSWORD:
-            raise ValueError(f"пароль короче {_MIN_PASSWORD} символов")
-        if len(v.encode("utf-8")) > _MAX_PASSWORD_BYTES:
-            # bcrypt молча усекает до 72 байт — хеширование откажется (задача 2.1)
-            raise ValueError(f"пароль длиннее {_MAX_PASSWORD_BYTES} байт")
-        return v
+    def _signup_password(cls, v: str) -> str:
+        return _password_rules(v)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _new_password_rules(cls, v: str) -> str:
+        return _password_rules(v)
 
 
 async def _open_session(
@@ -143,3 +163,34 @@ async def login(
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
     await _open_session(db, request, response, user)
     return _user_dict(user)
+
+
+@public_router.post("/auth/password-reset")
+async def request_password_reset(
+    req: EmailRequest, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    # Ответ одинаков для существующего и несуществующего адреса — иначе
+    # эндпоинт перечисляет пользователей (passwords_controller.rb:create).
+    user = await db.scalar(select(User).where(User.email == req.email))
+    if user is not None:
+        await send_password_reset_email(user.email, make_reset_token(user))
+    return {
+        "ok": True,
+        "detail": "Если адрес зарегистрирован, письмо со ссылкой отправлено",
+    }
+
+
+@public_router.post("/auth/password-reset/confirm")
+async def confirm_password_reset(
+    req: PasswordResetConfirmRequest, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    # 422 без объяснений: подделка, истёк, уже использован — не различаем
+    user = await resolve_reset_token(db, req.token)
+    if user is None:
+        raise HTTPException(status_code=422, detail="Ссылка недействительна или устарела")
+    user.password_hash = hash_password(req.new_password)
+    await db.commit()
+    # смена пароля убивает ВСЕ сессии пользователя (в т.ч. угнанные)
+    await db.execute(delete(Session).where(Session.user_id == user.id))
+    await db.commit()
+    return {"ok": True}
