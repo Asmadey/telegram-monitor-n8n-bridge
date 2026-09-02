@@ -46,6 +46,58 @@
 
 ---
 
+### 2026-09-02 — Задача 5.1: разрезать index.html
+
+**Сделано:** 3975 строк одного файла разрезаны без сборки
+(`<script type="module">`, пакетный менеджер запрещён тестом):
+- `index.html` → **695 строк**, только разметка; CSS —
+  `static/css/main.css` (**1241**, баланс скобок 160/160), логика —
+  9 модулей в `static/js/` (**2139**): api, render, auth, feed,
+  channels, messages, integration, logs, main.
+- Граф импортов без циклов: main → все вкладки; рёбра в одну
+  сторону channels→messages (`mergeMessages`/`setFilterChatOptions`
+  — ручной запуск канала и фильтр «Канал») и integration→logs
+  (`loadLogs` после run-now cleanup).
+- Инлайн-onclick остаются в шаблонах — вызываемые функции выставлены
+  на `window` (модули file-scoped, иначе кнопки молча мертвы):
+  switchTab, selectFeedItem, toggleMonitor, runMonitor,
+  openEditModal, resetDedup, deleteMonitor, toggleExpand,
+  selectModelItem, quickFilterModel.
+- `apiFetch`/`apiGet` централизуют все запросы
+  (`credentials: same-origin`) — единственная точка вставки
+  X-CSRF-Token (В11).
+- Мёртвый вызов никогда не существовавшего `populateDatalist()`
+  (ReferenceError молча глотался ближайшим catch) убран с
+  комментарием — поведение не изменилось.
+- **server.py: `app.mount("/static", StaticFiles)`** — единственное
+  изменение вне переноса в модули, инфраструктура без логики: без
+  него разрезанный UI отдаёт 404 на css/js и мёртв на текущем
+  рантайме (app/main.py монтирует /static, но роутеров вкладок
+  нет — К2). Исчезнет вместе с монолитом.
+
+**Подтверждено:** красная фаза — 7 failed/1 passed до разреза.
+Зелёная: `test_47_frontend_split.py` → 9 passed (8 структурных:
+инлайн-CSS/JS, разрез, резолв импортов+экспортов, window-глобалы
+для inline-обработчиков, запрет сборки, node --check парсинг всех
+модулей через .mjs-копии; + поведенческий: server.py раздаёт
+css/js с правильным content-type — ASGITransport БЕЗ lifespan,
+Telethon/планировщик не стартуют; честный skip без окружения).
+Полный прогон: **195 passed, 4 skipped**, ruff чист.
+
+**Не сработало / ловушки:**
+- Ошибка теста (исправлена в тесте): sync `httpx.Client` c
+  ASGITransport — AttributeError `__enter__`, не assert;
+  ASGITransport только async → `AsyncClient` + `@pytest.mark.asyncio`
+  (asyncio_mode не auto, маркер обязателен — как в test_46).
+
+**Не подтверждено:** живой браузер (клик-потоки, gsap-анимации,
+мобильная вёрстка); XSS-сканер 0.4 прошёл по новым файлам, но
+уязвимостей в шаблонах он не создавал — новые не искали.
+
+**Коммит `78062f2`**; PLAN.md: строка 5.1.
+
+---
+
 ### 2026-09-02 — Задача 4.6: секреты не попадают в журнал
 
 **Сделано:** `app/services/journal.py` + рефакторинг `app/services/llm.py`:
