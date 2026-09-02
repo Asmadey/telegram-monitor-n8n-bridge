@@ -82,9 +82,15 @@ async def test_valid_session_resolves_and_touches_last_seen(db, user):
 @pytest.mark.asyncio
 async def test_tampered_cookie_rejected(db, user):
     cookie = await _cookie_for(db, user)
-    tampered = cookie[:-1] + ("A" if cookie[-1] != "A" else "B")
+    # Ошибка теста, не реализации: переворот ПОСЛЕДНЕГО символа срабатывает
+    # лишь в ~94% случаев — последний base64-символ подписи несёт только 2
+    # значащих бита, и замена может декодироваться в ту же подпись (то есть
+    # это был не подделанный, а побайтово тот же подписанный токен; поймано
+    # стресс-прогоном 20000 случайных sid: 1265 принятых). Меняем ПЕРВЫЙ
+    # символ — он в полезной нагрузке, подпись обязана разойтись всегда.
+    tampered = ("A" if cookie[0] != "A" else "B") + cookie[1:]
     assert await resolve_session(db, tampered) is None, (
-        "подделанная cookie (изменён один символ) прошла проверку подписи"
+        "подделанная cookie (изменён первый символ payload) прошла проверку подписи"
     )
 
 
