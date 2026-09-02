@@ -136,3 +136,22 @@ async def user(db):
     db.add(u)
     await db.commit()
     return u
+
+
+async def _new_user(db, email: str) -> User:
+    u = User(email=email)
+    db.add(u)
+    await db.commit()
+    return u
+
+
+@pytest_asyncio.fixture
+async def user_a(db):
+    """Владелец ресурсов (тенант A) для тестов изоляции (задача 3.1)."""
+    return await _new_user(db, "tenant-a@example.com")
+
+
+@pytest_asyncio.fixture
+async def user_b(db):
+    """Другой пользователь (тенант B): не должен видеть данные A."""
+    return await _new_user(db, "tenant-b@example.com")

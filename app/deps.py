@@ -8,7 +8,7 @@
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db
+from app.db import TenantRepo, get_db
 from app.models import Session, User
 from app.security.sessions import SESSION_COOKIE, resolve_session
 
@@ -38,3 +38,15 @@ async def require_admin(user: User = Depends(require_user)) -> User:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Требуются права администратора")
     return user
+
+
+def get_tenant_repo(
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> TenantRepo:
+    """Репозиторий с вшитым user_id ТЕКУЩЕГО юзера (задача 3.1).
+
+    Строится только поверх require_user: anon не может получить
+    репозиторий ни с каким user_id.
+    """
+    return TenantRepo(db, user.id)
