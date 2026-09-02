@@ -24,8 +24,10 @@ from sqlalchemy import BigInteger, Boolean, DateTime, Integer
 from app.models import Base, Monitor
 from tests.conftest import walk_routes
 
-# пути, где тенантный фильтр неприменим или не про данные тенанта
-_NON_TENANT_PREFIXES = ("/auth", "/api/admin")
+# пути, где тенантный фильтр неприменим или не про данные тенанта.
+# /api/telegram — поток ВХОДА (send-code/sign-in): изоляция попыток по
+# user_id проверена отдельно в test_32, ресурсных id-путей там нет.
+_NON_TENANT_PREFIXES = ("/auth", "/api/admin", "/api/telegram")
 _NON_TENANT_EXACT = {"/", "/static", "/health"}
 
 
