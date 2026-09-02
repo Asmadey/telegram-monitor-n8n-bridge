@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api import auth, public
+from app.api import admin, auth, public
 from app.security.csrf import (
     CSRF_COOKIE,
     SAFE_METHODS,
@@ -35,6 +35,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(public.router)
 app.include_router(auth.router)
 app.include_router(auth.public_router)  # signup/login — явный opt-out (2.4)
+app.include_router(admin.router)
 
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 

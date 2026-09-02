@@ -64,22 +64,25 @@ async def test_every_route_requires_auth_unless_whitelisted(anon_client):
     assert checked, "ни одного защищённого маршрута — тест вырожден"
 
 
-def test_non_public_routes_carry_router_level_require_user():
+def test_non_public_routes_carry_router_level_gatekeeper():
     """Суть 2.3 — закрытие на уровне РОУТЕРА, а не памяти разработчика:
-    новый эндпоинт в защищённом роутере обязан получить require_user
-    автоматически. Поведенческий тест выше видит только уже написанные
+    новый эндпоинт в защищённом роутере обязан получить зависимость
+    автоматически. Вратарь — require_user ИЛИ require_admin (задача 2.8:
+    require_admin сам проходит через require_user, поэтому закрыт
+    не слабее). Поведенческий тест выше видит только уже написанные
     эндпоинты; этот ловит «добавили роутер без dependencies=[...]»."""
-    from app.deps import require_user
+    from app.deps import require_admin, require_user
     from app.main import app
 
+    gatekeepers = {require_user, require_admin}
     found = 0
     for route in _walk(app.routes):
         path = getattr(route, "path", None)
         if not path or _is_public(path):
             continue
         deps = [d.dependency for d in getattr(route, "dependencies", [])]
-        assert require_user in deps, (
-            f"{path} не несёт Depends(require_user) от роутера — "
+        assert gatekeepers.intersection(deps), (
+            f"{path} не несёт Depends(require_user/require_admin) от роутера — "
             "закрытие не «по умолчанию»"
         )
         found += 1

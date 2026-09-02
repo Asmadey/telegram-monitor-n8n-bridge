@@ -28,3 +28,12 @@ async def require_session(
 
 async def require_user(session: Session = Depends(require_session)) -> User:
     return session.user
+
+
+async def require_admin(user: User = Depends(require_user)) -> User:
+    """Порт admin/base_controller.rb. 403 для не-админа легален: админка —
+    свой ресурс, её существование не секрет. Правило «на чужих ресурсах
+    404, не 403» — про данные тенантов, не про роль."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Требуются права администратора")
+    return user
