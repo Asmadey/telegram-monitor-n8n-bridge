@@ -34,6 +34,36 @@ def test_alembic_is_configured():
     assert "app.config" in env_src, "alembic не читает DATABASE_URL из app.config"
 
 
+def test_alembic_requires_explicit_database_url():
+    """Alembic отказывается работать без ЯВНО заданного DATABASE_URL.
+
+    Урок 2026-09-01: env var не экспортировался в процесс, alembic молча
+    взял дефолтную storage.db и побежал миграции по боевой базе. Дефолт —
+    это мина: misconfiguration не должен выглядеть успехом.
+    """
+    env_py = (ROOT / "alembic" / "env.py").read_text(encoding="utf-8")
+    assert 'os.environ' in env_py and "DATABASE_URL" in env_py, (
+        "env.py должен читать DATABASE_URL из os.environ сам, а не через дефолт get_settings()"
+    )
+    assert 'sys.exit' in env_py or 'raise SystemExit' in env_py, (
+        "без DATABASE_URL env.py обязан завершаться с ошибкой, а не брать дефолт"
+    )
+
+
+def test_settings_database_url_has_no_silent_default():
+    """Пустой database_url — ошибка, а не «тихий SQLite storage.db».
+
+    Дефолт в Settings означал: забыл DATABASE_URL — и приложение/миграция
+    молча ушли в боевую storage.db (см. урок выше).
+    """
+    from app.config import Settings
+
+    assert not Settings.model_fields["database_url"].default, (
+        "database_url не должен иметь непустого дефолта: misconfiguration "
+        "обязана падать громко, а не masquerade как успех"
+    )
+
+
 def test_migrations_directory_is_not_empty():
     versions = list((ROOT / "alembic" / "versions").glob("*.py"))
     assert versions, "нет ни одной ревизии"

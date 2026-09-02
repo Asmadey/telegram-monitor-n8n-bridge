@@ -7,6 +7,9 @@
 - target_metadata = Base.metadata — автогенерация сравнивает с моделями app.models.
 """
 import asyncio
+import os
+import sys
+import threading
 from logging.config import fileConfig
 
 from alembic import context
@@ -14,7 +17,6 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.config import get_settings
 from app.models import Base
 
 # alembic.ini доступен только при запуске из CLI; при программном — не обязателен
@@ -22,8 +24,18 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# DATABASE_URL из app.config — единственный источник истины об адресе БД.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# DATABASE_URL обязан быть задан ЯВНО (os.environ). Урок 2026-09-01:
+# неэкспортированная переменная + дефолт «sqlite storage.db» в app.config
+# отправили миграции молча по боевой базе. Дефолта здесь нет и не будет:
+# misconfiguration обязана падать громко.
+_url = os.environ.get("DATABASE_URL", "").strip()
+if not _url:
+    sys.exit(
+        "DATABASE_URL не задан. Alembic принципиально не работает по дефолту: "
+        "случайный прогон миграций уйдёт в боевую БД. "
+        "Задайте DATABASE_URL явно (Railway: ${{Postgres.DATABASE_URL}})."
+    )
+config.set_main_option("sqlalchemy.url", _url)
 
 target_metadata = Base.metadata
 
@@ -59,7 +71,22 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    """Работает и из CLI, и изнутри чужого event loop (asyncio.run дважды нельзя).
+
+    Вызов `command.upgrade()` из async-кода (например, из
+    scripts/migrate_sqlite_to_pg.py или теста) попадает сюда уже с
+    работающим loop — тогда миграции выполняются в отдельном потоке
+    со своим loop. Движок создаётся здесь же, так что пересечения с
+    сессией вызывающего кода нет.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(run_async_migrations())
+        return
+    worker = threading.Thread(target=asyncio.run, args=(run_async_migrations(),))
+    worker.start()
+    worker.join()
 
 
 if context.is_offline_mode():

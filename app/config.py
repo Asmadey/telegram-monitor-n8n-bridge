@@ -26,8 +26,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Инфраструктура
-    database_url: str = "sqlite+aiosqlite:///./storage.db"
+    # Инфраструктура. database_url БЕЗ дефолта: забыли URL — падаем громко,
+    # а не молча уходим в боевую storage.db (урок 2026-09-01).
+    database_url: str = ""
     secret_key: str = ""            # подпись сессий (Phase 2)
     app_encryption_key: str = ""    # Fernet-ключ для шифрования секретов тенантов (Phase 2)
 

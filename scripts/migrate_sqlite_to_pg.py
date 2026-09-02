@@ -301,10 +301,15 @@ async def main() -> None:
     Session = async_sessionmaker(engine, expire_on_commit=False)
 
     async with Session() as session:
-        # Схема должна существовать до переноса: Alembic, не самодельный DDL
+        # Схема должна существовать до переноса: Alembic, не самодельный DDL.
+        # env.py принципиально требует DATABASE_URL в os.environ (без дефолтов),
+        # поэтому передаём выбранный URL через окружение — в т.ч. для --url.
+        import os as _os
+
         from alembic import command
         from alembic.config import Config
 
+        _os.environ["DATABASE_URL"] = url
         command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
 
         user = await _get_or_create_user(session, args.user_email)
