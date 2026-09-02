@@ -60,10 +60,16 @@ def _reset_rate_limits():
 def _env(monkeypatch, tmp_path):
     """Секреты для подписи cookie. DATABASE_URL не нужен: get_db переопределён.
     MAIL_DEV_DIR — в tmp теста: dev-письма (задача 2.9) не должны сыпаться
-    в tmp/ репозитория во время прогона."""
+    в tmp/ репозитория во время прогона. APP_ENCRYPTION_KEY — случайный
+    Fernet-ключ per-run: тестовое значение, не секрет (генерится здесь же,
+    а не захардкожено, чтобы в репозитории не было НИ одного ключеподобного
+    значения)."""
+    from cryptography.fernet import Fernet
+
     monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-app")
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("MAIL_DEV_DIR", str(tmp_path / "mail"))
+    monkeypatch.setenv("APP_ENCRYPTION_KEY", Fernet.generate_key().decode())
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

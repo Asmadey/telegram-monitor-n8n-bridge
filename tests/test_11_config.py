@@ -15,6 +15,19 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def _clean_config_cache_after_reload():
+    """Гигиена reload: importlib.reload(config) создаёт НОВЫЙ get_settings
+    с собственным кэшем. Если его не очистить, любой модуль, импортируемый
+    ВРЕМЯ выполнения теста (а не на этапе collection), свяжется с этой
+    функцией и увидит кэш с мусорным APP_ENCRYPTION_KEY из этих тестов
+    (поймано задачей 3.2: crypto.py падал «Fernet key must be 32...»
+    только в полном прогоне, но не отдельно)."""
+    yield
+    config = importlib.import_module("app.config")
+    config.get_settings.cache_clear()
+
+
 def test_settings_read_from_env(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@h/db")
     monkeypatch.setenv("APP_ENCRYPTION_KEY", "x" * 44)
