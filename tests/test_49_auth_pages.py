@@ -9,7 +9,7 @@ login.html, signup.html, password-reset.html — отдельные страни
 
 Уровни проверок:
 - структурные: страницы существуют, содержат форму и грузят ровно один
-  свой скрипт (/static/js/auth.js), без внешних ресурсов; auth.js
+  свой скрипт (/static/js/auth-pages.js), без внешних ресурсов; auth.js
   самодостаточен (без import-ов) и вообще не строит HTML через
   innerHTML (ошибки — через textContent, задача 5.2);
 - поведенческие (ASGITransport + временная aiosqlite): страницы
@@ -50,13 +50,13 @@ def test_auth_page_exists_with_form(slug: str) -> None:
 @pytest.mark.parametrize("slug", sorted(PAGES))
 def test_auth_page_loads_only_its_own_script(slug: str) -> None:
     """«Ничего лишнего»: единственный скрипт страницы — общий для экранов
-    входа auth.js; никаких модулей SPA, gsap и внешних URL (CSP-совместимо)."""
+    входа auth-pages.js; никаких модулей SPA, gsap и внешних URL."""
     page = PAGES[slug]
     assert page.is_file(), f"{page} не существует"
     src = page.read_text(encoding="utf-8")
 
     script_srcs = SCRIPT_SRC.findall(src)
-    assert script_srcs == ["/static/js/auth.js"], (
+    assert script_srcs == ["/static/js/auth-pages.js"], (
         f"{page.name}: грузится не только свой скрипт: {script_srcs}"
     )
 
@@ -71,17 +71,17 @@ def test_auth_page_loads_only_its_own_script(slug: str) -> None:
 
 
 def test_auth_js_is_selfcontained_and_builds_no_html() -> None:
-    """auth.js — крошечный общий скрипт экранов входа: без import-ов
+    """auth-pages.js — крошечный общий скрипт экранов входа: без import-ов
     (не тянет граф SPA) и без innerHTML/insertAdjacentHTML — ошибки
     показываются через textContent, HTML строить нечему (5.2)."""
-    path = ROOT / "static" / "js" / "auth.js"
-    assert path.is_file(), "static/js/auth.js не существует"
+    path = ROOT / "static" / "js" / "auth-pages.js"
+    assert path.is_file(), "static/js/auth-pages.js не существует"
     src = path.read_text(encoding="utf-8")
     assert not re.search(r"^\s*import\b", src, re.M), (
-        "auth.js не должен иметь import-ов"
+        "auth-pages.js не должен иметь import-ов"
     )
     assert ".innerHTML" not in src and ".insertAdjacentHTML" not in src, (
-        "auth.js строит HTML напрямую — на экранах входа нечего строить, textContent"
+        "auth-pages.js строит HTML напрямую — на экранах входа нечего строить, textContent"
     )
 
 

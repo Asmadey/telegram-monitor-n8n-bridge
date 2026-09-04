@@ -93,30 +93,44 @@ def test_index_is_markup_only():
 
 
 def test_module_imports_resolve():
-    """Каждый относительный импорт резолвится в существующий файл, и
+    r"""Каждый относительный импорт резолвится в существующий файл, и
     каждое импортируемое имя ЭКСПОРТИРУЕТСЯ целью — иначе модуль падает
-    в рантайме браузера, а тестов браузера у нас нет."""
+    в рантайме браузера, а тестов браузера у нас нет.
+
+    Дефекты первой версии (пойманы задачей 5.3, когда перезапись auth.js
+    прошла незамеченной): (1) regex импортов требовал двойные кавычки,
+    а модули пишут одинарные — импорты НЕ находились вовсе, тест был
+    вакуумным; (2) экспорты собирались из исходника ИМПОРТЁРА, а не
+    цели импорта. Теперь карта экспортов строится для всех файлов, а
+    проверка смотрит экспорты именно цели."""
     sources = _js_sources()
     assert sources, "static/js/ пуст"
     export_re = re.compile(
         r"export\s+(?:async\s+)?(?:function|const|let|class)\s+(\w+)"
         r"|export\s*\{([^}]*)\}"
     )
-    violations = []
-    for name, src in sources.items():
-        exports: set[str] = set()
+
+    def _exports_of(src: str) -> set[str]:
+        out: set[str] = set()
         for m in export_re.finditer(src):
-            exports.update(filter(None, m.groups()[0:1]))
+            out.update(filter(None, m.groups()[0:1]))
             if m.group(2):
-                exports.update(
+                out.update(
                     part.strip().split(" as ")[-1].strip()
                     for part in m.group(2).split(",")
                     if part.strip()
                 )
-        for m in re.finditer(
-            r'import\s+(?:\{([^}]*)\}|(\w+))\s*from\s*"(\./[^"]+)"', src
-        ):
-            target = JS_DIR / Path(m.group(3)).name
+        return out
+
+    exports_map = {name: _exports_of(src) for name, src in sources.items()}
+    import_re = re.compile(
+        r"import\s+(?:\{([^}]*)\}|(\w+))\s*from\s*['\"](\./[^'\"]+)['\"]"
+    )
+    violations = []
+    for name, src in sources.items():
+        for m in import_re.finditer(src):
+            target_name = Path(m.group(3)).name
+            target = JS_DIR / target_name
             if not target.exists():
                 violations.append(f"{name}: нет файла {m.group(3)}")
                 continue
@@ -129,7 +143,12 @@ def test_module_imports_resolve():
                 }
             if m.group(2):
                 wanted = {m.group(2)}
-            missing = wanted - exports
+            # экспорты смотрим У ЦЕЛИ импорта, не у импортёра
+            target_exports = exports_map.get(
+                target_name,
+                _exports_of(target.read_text(encoding="utf-8")),
+            )
+            missing = wanted - target_exports
             if missing:
                 violations.append(
                     f"{name}: {m.group(3)} не экспортирует {sorted(missing)}"
