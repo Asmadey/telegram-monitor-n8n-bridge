@@ -1,0 +1,150 @@
+# Гейт всего проекта. Образец — Ruby/.github/workflows/ci.yml из Rails-шаблона:
+# там четыре джоба (brakeman / rubocop / tsc / rails test). Здесь те же четыре
+# роли на питоновских инструментах плюс собственный secret-scan.
+#
+# Контракт закреплён тестом tests/test_72_ci.py — правки в этом файле, ломающие
+# состав джобов, версию Python или охват секрет-скана, падают на прогоне.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+env:
+  # Ровно та версия, что в Dockerfile. Расхождение проверяет
+  # test_ci_python_matches_the_shipped_image: проверять типы и тесты против
+  # языка, которого нет в образе, — значит узнать о разнице на живом деплое.
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # Аналог brakeman: статический поиск небезопасных паттернов + известные
+  # уязвимости в зависимостях.
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Bandit — небезопасные паттерны в коде приложения
+        run: bandit -r app/ -ll
+
+      - name: pip-audit — уязвимости в зависимостях
+        run: pip-audit -r requirements.txt
+
+  # Аналог rubocop. Проверяются и правила, и форматирование: разъехавшийся
+  # формат создаёт шумные диффы, в которых теряется содержательная правка.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Ruff — правила
+        run: ruff check .
+
+      - name: Ruff — форматирование
+        run: ruff format --check .
+
+  # Аналог `npm run check` из шаблона.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Mypy
+        run: mypy app/
+
+  # Аналог `bin/rails test`. Postgres поднимается сервисом: без живой базы
+  # поведенческие тесты Alembic (1.4) и переноса данных (1.5) честно уходят
+  # в skip, и задачи остаются неподтверждёнными навсегда. AGENTS.md §4 —
+  # вердикт выносит прогон в среде, где база есть; для этого репозитория
+  # такая среда и есть CI.
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: teleton_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/teleton_test
+      # APP_ENCRYPTION_KEY и SECRET_KEY здесь намеренно не задаются: conftest.py
+      # генерирует свежий Fernet-ключ на прогон. Строке, похожей на секрет,
+      # в репозитории делать нечего — в том числе фиктивной.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Pytest
+        # -rs печатает причину каждого skip. Скипы допустимы, но должны быть
+        # видны в логе: молчаливый skip — это задача, которая никогда не будет
+        # подтверждена (AGENTS.md §4).
+        run: pytest -q -rs
+
+  # Собственный джоб, аналога в Rails-шаблоне нет.
+  #
+  # Сканируется ВСЁ дерево и ВСЯ история, а не список расширений. AGENTS.md §7:
+  # узкая проверка даёт зелёный статус при живом ключе в репозитории, и это
+  # хуже, чем отсутствие проверки — пароли в markdown-файле такая метрика
+  # однажды уже пропустила.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Без полной истории скан видит только последний коммит: секрет,
+          # добавленный и удалённый в прошлом, остаётся в объектах git.
+          fetch-depth: 0
+
+      - name: Установка gitleaks
+        env:
+          GITLEAKS_VERSION: 8.18.4
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Скан истории git
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose
+
+      - name: Скан рабочего дерева
+        # --no-git: файлы, которые ещё не закоммичены или лежат вне индекса.
+        run: gitleaks detect --source . --no-git --config .gitleaks.toml --redact --verbose
