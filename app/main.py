@@ -79,6 +79,22 @@ async def index() -> FileResponse:
 # Экраны входа (задача 5.3): отдельные страницы для анонима — не часть SPA,
 # ничего лишнего не грузят (свои роуты, а не /static/*.html — при деплое
 # за ними появятся заголовки безопасности из Фазы 7).
+# Адреса вкладок SPA: прямой заход и перезагрузка обязаны открывать
+# приложение, а не 404. Оболочка не содержит данных тенанта — их отдают
+# /api/*, закрытые require_user; сам SPA уводит анонима на /login.
+SPA_TABS = ("/feed", "/channels", "/messages", "/integration", "/logs")
+
+
+for _tab in SPA_TABS:
+    app.add_api_route(
+        _tab,
+        index,
+        methods=["GET"],
+        include_in_schema=False,
+        name=f"spa{_tab.replace('/', '_')}",
+    )
+
+
 @app.get("/login", include_in_schema=False)
 async def login_page() -> FileResponse:
     return FileResponse(_STATIC_DIR / "login.html")

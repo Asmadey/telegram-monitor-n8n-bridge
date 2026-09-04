@@ -20,10 +20,12 @@ photo_base64, и raw_messages_json целиком: двести аватарок
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import delete
 
 from app.db import TenantRepo
 from app.deps import get_tenant_repo, require_user
 from app.models import ChatAvatar, FeedItem, Monitor
+from app.services.jobs import enqueue_job
 
 router = APIRouter(dependencies=[Depends(require_user)])
 
@@ -97,3 +99,61 @@ async def chat_avatar(
         media_type="image/jpeg",
         headers={"Cache-Control": AVATAR_CACHE_CONTROL},
     )
+
+
+REANALYZE = "reanalyze_feed_item"
+
+
+@router.delete("/api/feed/{id}")
+async def delete_feed_item(
+    id: int, repo: TenantRepo = Depends(get_tenant_repo)
+) -> dict:
+    item = await repo.get(FeedItem, id)  # чужой id → None → 404
+    if item is None:
+        raise HTTPException(status_code=404, detail="Не найдено")
+    await repo.db.delete(item)
+    await repo.db.commit()
+    return {"status": "deleted", "id": id}
+
+
+@router.delete("/api/feed")
+async def clear_feed(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
+    """Очистка ленты — только своей.
+
+    В монолите (server.py:1971) это `DELETE FROM analysis_feed` без условия:
+    в мульти-тенанте один клиент стёр бы ленту всему сервису.
+    """
+    result = await repo.db.execute(
+        delete(FeedItem).where(FeedItem.user_id == repo.user_id)
+    )
+    await repo.db.commit()
+    return {"status": "cleared", "removed": result.rowcount or 0}
+
+
+@router.post("/api/feed/{id}/reanalyze", status_code=202)
+async def reanalyze(id: int, repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
+    """Повторный анализ выборки — задачей, а не вызовом LLM внутри запроса.
+
+    В монолите (server.py:1889) OpenRouter вызывался прямо в обработчике с
+    таймаутом 45 секунд: всё это время веб-процесс занят одним клиентом.
+    Лента и так обновляется живым опросом, поэтому 202 ничего не ломает.
+    """
+    item = await repo.get(FeedItem, id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Не найдено")
+    try:
+        messages = json.loads(item.raw_messages_json or "[]")
+    except ValueError:
+        messages = []
+    if not messages:
+        # 400 сразу, а не задача, которая гарантированно упадёт в воркере
+        raise HTTPException(
+            status_code=400, detail="В этой задаче нет исходных постов для анализа"
+        )
+    job = await enqueue_job(
+        repo.db,
+        user_id=repo.user_id,
+        kind=REANALYZE,
+        payload={"feed_item_id": item.id},
+    )
+    return {"status": "queued", "job_id": job.id}
