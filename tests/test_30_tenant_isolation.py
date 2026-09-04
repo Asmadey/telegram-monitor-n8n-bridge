@@ -181,7 +181,14 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
 
     marker = "tenant-a-secret-marker"
     chat_a, chat_b = 424242501, 424242502
-    db.add(Monitor(user_id=user_a.id, chat_target="@a-channel", chat_id=chat_a))
+    monitor_a = Monitor(
+        user_id=user_a.id,
+        public_id="a-monitor",
+        chat_target="@a-channel",
+        chat_title=marker,
+        chat_id=chat_a,
+    )
+    db.add(monitor_a)
     db.add(ChatAvatar(chat_id=chat_a, image_bytes=b"\xff\xd8avatar-of-a"))
     feed_a = FeedItem(
         user_id=user_a.id,
@@ -194,7 +201,16 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
     )
     db.add(feed_a)
     # собственные данные B: списки/эндпоинты обязаны работать и отдавать своё
-    db.add(Monitor(user_id=user_b.id, chat_target="@b-channel", chat_id=chat_b))
+    # заголовок несёт тот же маркер «сводка B»: позитивный контроль свипа
+    # ищет его в ответе КАЖДОГО списка, а у каналов видимое поле — название
+    db.add(
+        Monitor(
+            user_id=user_b.id,
+            chat_target="@b-channel",
+            chat_title="сводка B",
+            chat_id=chat_b,
+        )
+    )
     db.add(ChatAvatar(chat_id=chat_b, image_bytes=b"\xff\xd8avatar-of-b"))
     db.add(
         FeedItem(
@@ -213,14 +229,21 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
 
     # ЧУЖИЕ (A) ресурсы в path-параметрах: каждый маршрут свипа обязан
     # знать, чем их подставлять — новый параметр = громкий провал здесь
-    params = {"id": feed_a.id, "chat_id": chat_a}
+    params = {"id": feed_a.id, "chat_id": chat_a, "public_id": "a-monitor"}
     exercised = set()
     for route in routes:
         for method in sorted(getattr(route, "methods", None) or {"GET"}):
-            assert method in ("GET", "HEAD", "OPTIONS"), (
+            assert method in ("GET", "HEAD", "OPTIONS", "POST", "PATCH", "DELETE"), (
                 f"свип не умеет {method} {route.path} — дополни свип (PLAN 3.1)"
             )
-            if method != "GET":
+            if method in ("HEAD", "OPTIONS"):
+                continue
+            if method != "GET" and "{" not in route.path:
+                # Коллекционный не-GET (создание, пакетное действие) — чужой
+                # ресурс подставить не во что: изоляции здесь взяться неоткуда,
+                # проверяется тестом самого роутера. Пропуск осознанный, и
+                # он не молчаливый: маршрут остаётся в exercised ниже.
+                exercised.add(f"{method} {route.path}")
                 continue
 
             def _sub(path: str, path_route=route.path) -> str:
@@ -236,9 +259,19 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
                 return re.sub(r"\{(\w+)\}", repl, path)
 
             url = _sub(route.path)
-            resp = await anon_client.get(url)
-            exercised.add(f"GET {route.path}")
-            if "{" in route.path:
+            if method == "GET":
+                resp = await anon_client.get(url)
+            else:
+                # изменяющий метод по ЧУЖОМУ id: тело пустое — до валидации
+                # дело дойти не должно, ресурс не найден раньше
+                resp = await anon_client.request(method, url, json={})
+            exercised.add(f"{method} {route.path}")
+            if method != "GET":
+                assert resp.status_code == 404, (
+                    f"{method} {url} для юзера B → {resp.status_code}, должен 404: "
+                    "изменяющий метод по чужому ресурсу"
+                )
+            elif "{" in route.path:
                 # прямой доступ к ЧУЖИМУ ресурсу: 404, не 403 и не 200
                 assert resp.status_code == 404, (
                     f"{url} для юзера B → {resp.status_code}, должен 404 "
@@ -253,9 +286,16 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
                     "что списки вообще работают"
                 )
 
-    # анти-вакуум: каждый маршрут свипа реально проверен
-    assert exercised == {f"GET {r.path}" for r in routes}, (
-        f"свип покрыл не все маршруты: {sorted(exercised)}"
+    # анти-вакуум: каждый маршрут свипа реально проверен — по КАЖДОМУ методу,
+    # а не только по GET: изменяющие методы и есть самый опасный путь утечки
+    expected = {
+        f"{m} {r.path}"
+        for r in routes
+        for m in (getattr(r, "methods", None) or {"GET"})
+        if m not in ("HEAD", "OPTIONS")
+    }
+    assert exercised == expected, (
+        f"свип покрыл не все маршруты: не проверено {sorted(expected - exercised)}"
     )
 
     # позитивный контроль аватарки: владельцу монитора отдаётся своя

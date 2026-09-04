@@ -230,3 +230,21 @@ def alembic_target_db(monkeypatch):
     get_settings.cache_clear()
     yield url
     get_settings.cache_clear()
+
+
+@pytest_asyncio.fixture
+async def second_client(app, db_engine):
+    """Второй «браузерный» клиент — для проверок изоляции тенантов.
+
+    raw_client для этого не годится: он намеренно не шлёт csrf-заголовок
+    (его задача — негативные проверки 2.6), поэтому любой не-GET от него
+    возвращает 403 и тест изоляции проверяет CSRF вместо изоляции.
+    Появился при переносе роутера каналов (К2), где нужны два
+    одновременно авторизованных пользователя.
+    """
+    app.dependency_overrides[get_db] = _override_get_db(db_engine)
+    transport = ASGITransport(app=app)
+    async with FrontendLikeClient(transport=transport, base_url="http://test") as ac:
+        await ac.get("/health")
+        yield ac
+    app.dependency_overrides.pop(get_db, None)
