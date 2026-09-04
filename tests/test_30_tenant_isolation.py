@@ -28,7 +28,9 @@ from tests.conftest import walk_routes
 # /api/telegram — поток ВХОДА (send-code/sign-in): изоляция попыток по
 # user_id проверена отдельно в test_32, ресурсных id-путей там нет.
 _NON_TENANT_PREFIXES = ("/auth", "/api/admin", "/api/telegram")
-_NON_TENANT_EXACT = {"/", "/static", "/health"}
+# Экраны входа (5.3) — статическая разметка форм для анонима,
+# данных тенантов не отдают.
+_NON_TENANT_EXACT = {"/", "/static", "/health", "/login", "/signup", "/password-reset"}
 
 
 def _tenant_models():

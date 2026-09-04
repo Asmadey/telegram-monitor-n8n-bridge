@@ -55,6 +55,24 @@ async def index() -> FileResponse:
     return FileResponse(_STATIC_DIR / "index.html")
 
 
+# Экраны входа (задача 5.3): отдельные страницы для анонима — не часть SPA,
+# ничего лишнего не грузят (свои роуты, а не /static/*.html — при деплое
+# за ними появятся заголовки безопасности из Фазы 7).
+@app.get("/login", include_in_schema=False)
+async def login_page() -> FileResponse:
+    return FileResponse(_STATIC_DIR / "login.html")
+
+
+@app.get("/signup", include_in_schema=False)
+async def signup_page() -> FileResponse:
+    return FileResponse(_STATIC_DIR / "signup.html")
+
+
+@app.get("/password-reset", include_in_schema=False)
+async def password_reset_page() -> FileResponse:
+    return FileResponse(_STATIC_DIR / "password-reset.html")
+
+
 @app.middleware("http")
 async def csrf_protect(request: Request, call_next):
     """Каждый не-GET без валидного X-CSRF-Token — 403 (задача 2.6).

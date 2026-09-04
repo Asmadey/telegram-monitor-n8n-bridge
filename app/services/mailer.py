@@ -24,7 +24,9 @@ _SUBJECT = "Teleton: сброс пароля"
 
 def _reset_link(token: str) -> str:
     base = get_settings().app_base_url.rstrip("/")
-    return f"{base}/#reset-password?token={token}"
+    # Страница подтверждения — отдельная /password-reset (задача 5.3);
+    # hash-якорь SPA (#reset-password) никогда не существовал.
+    return f"{base}/password-reset?token={token}"
 
 
 def _render_letter(to_email: str, token: str) -> str:

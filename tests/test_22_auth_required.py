@@ -25,6 +25,9 @@ PUBLIC_PREFIXES = {
     "/auth/google",
 }
 PUBLIC_EXACT = {"/", "/static"}
+# Экраны входа (5.3) — отдельные страницы ДЛЯ анонима: формы входа,
+# регистрации и сброса; никаких данных тенантов не отдают.
+PUBLIC_EXACT |= {"/login", "/signup", "/password-reset"}
 
 
 def _is_public(path: str) -> bool:
