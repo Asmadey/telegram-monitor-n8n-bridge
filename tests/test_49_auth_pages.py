@@ -102,40 +102,40 @@ async def test_auth_page_served_to_anonymous(anon_client, slug: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_reset_letter_links_to_reset_page(anon_client, db, user) -> None:
+async def test_reset_letter_links_to_reset_page(anon_client) -> None:
     """Ссылка сброса в письме ведёт на /password-reset?token=... —
-    страница подтверждения существует и примет токен из query-парам."""
-    from app.config import get_settings
+    страница подтверждения существует и примет токен из query-парам.
 
-    resp = await anon_client.post("/auth/password-reset", json={"email": user.email})
+    Тест намеренно не пользуется фикстурами `db`/`user` и не читает
+    `get_settings()`. Причина: в CI он падал с «писем нет», хотя MAIL_DEV_DIR
+    в окружении был задан верно, а модуль app.config существовал в
+    единственном экземпляре — то есть кэш настроек, который видит тест, и
+    объект, который видит приложение, расходились, и пользователь из фикстуры
+    до приложения не доезжал. Тест не должен зависеть от того, чей кэш
+    свежее: пользователь заводится публичным эндпоинтом (тот же путь, что у
+    живого человека), а каталог берётся из переменной окружения — источника,
+    который здесь единственно авторитетен.
+    """
+    import os
+
+    email = "reset-letter@example.com"
+    signup = await anon_client.post(
+        "/auth/signup",
+        json={"email": email, "password": "correct horse battery"},
+    )
+    assert signup.status_code in (200, 201), (
+        f"регистрация не прошла: {signup.status_code}"
+    )
+
+    resp = await anon_client.post("/auth/password-reset", json={"email": email})
     assert resp.status_code == 200
 
-    settings = get_settings()
-    out_dir = Path(settings.mail_dev_dir)
-    letters = list(out_dir.glob("*.html"))
-    # Диагностика в самом сообщении: этот тест падал только в CI, и симптом
-    # («писем нет») не отличает «письмо не отправлено» от «письмо ушло в
-    # другой каталог». Причина обязана быть видна из лога с первого прогона.
-    import os
-    import sys
-
-    import app.config as app_config
-
-    twins = sorted(
-        name
-        for name, mod in list(sys.modules.items())
-        if mod is not None and getattr(mod, "__file__", None) == app_config.__file__
-    )
-    env_dir = os.environ.get("MAIL_DEV_DIR", "<не задан>")
+    out_dir = Path(os.environ["MAIL_DEV_DIR"])
+    letters = sorted(out_dir.glob("*.html")) if out_dir.exists() else []
     assert letters, (
-        "dev-письмо не упало в аутбокс. "
-        f"mail_dev_dir={settings.mail_dev_dir!r}, MAIL_DEV_DIR из окружения={env_dir!r}, "
-        f"is_production={settings.is_production}, "
-        f"environment={settings.environment!r}, "
+        f"dev-письмо не упало в аутбокс {out_dir}. "
         f"каталог существует={out_dir.exists()}, "
-        f"содержимое={sorted(p.name for p in out_dir.iterdir()) if out_dir.exists() else '—'}, "
-        f"модули app.config={twins}, "
-        f"пользователь в базе={user.email!r}"
+        f"содержимое={sorted(p.name for p in out_dir.iterdir()) if out_dir.exists() else '—'}"
     )
 
     letter = letters[-1].read_text(encoding="utf-8")
