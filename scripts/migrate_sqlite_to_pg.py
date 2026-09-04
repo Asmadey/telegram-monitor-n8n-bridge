@@ -97,6 +97,24 @@ def _ts(value):
         return None
 
 
+def _ts_required(value):
+    """То же, но для колонок NOT NULL: пустое значение заменяется на «сейчас».
+
+    Найдено CI 2026-09-04. Старая `init_db()` создаёт строку настроек как
+    `INSERT OR IGNORE INTO integrations_config (id) VALUES (1)` — без
+    `updated_at`. У любого, кто ни разу не сохранял настройки интеграций,
+    там NULL, и перенос падал на NOT NULL, не перенеся вообще ничего.
+    На живой базе автора значение случайно было, поэтому дефект был не виден;
+    вскрыл его синтетический источник, где колонка намеренно пуста.
+
+    Перенос не имеет права падать из-за отсутствующей отметки времени:
+    данные ценнее точности метки.
+    """
+    from datetime import datetime, timezone
+
+    return _ts(value) or datetime.now(timezone.utc)
+
+
 async def _migrate_monitors(session, rows, user_id) -> int:
     inserted = 0
     for r in rows:
@@ -116,7 +134,7 @@ async def _migrate_monitors(session, rows, user_id) -> int:
                 last_checked=_ts(r["last_checked"]),
                 last_sent_message_id=r["last_sent_message_id"] or 0,
                 prompt=r["prompt"],
-                created_at=_ts(r["created_at"]),
+                created_at=_ts_required(r["created_at"]),
             )
             .on_conflict_do_nothing(index_elements=["public_id"])
         )
@@ -141,7 +159,7 @@ async def _migrate_sent_messages(session, rows, user_id) -> int:
                 text=r["text"],
                 views=r["views"],
                 post_url=r["post_url"],
-                sent_at=_ts(r["sent_at"]),
+                sent_at=_ts_required(r["sent_at"]),
                 reactions_count=r.get("reactions_count") or 0,
                 forwards=r.get("forwards") or 0,
                 has_media=bool(r.get("has_media") or 0),
@@ -164,7 +182,7 @@ async def _migrate_feed_items(session, rows, user_id) -> int:
                 id=r["id"],
                 user_id=user_id,
                 job_id=r["job_id"],
-                created_at=_ts(r["created_at"]),
+                created_at=_ts_required(r["created_at"]),
                 chat_id=r["chat_id"],
                 chat_title=r["chat_title"],
                 chat_username=r["chat_username"],
@@ -189,7 +207,7 @@ async def _migrate_logs(session, rows, user_id) -> int:
             .values(
                 id=r["id"],  # PK из SQLite: повторный прогон ничего не вставит
                 user_id=user_id,
-                timestamp=_ts(r["timestamp"]),
+                timestamp=_ts_required(r["timestamp"]),
                 event_type=r["event_type"],
                 chat_title=r["chat_title"],
                 chat_id=r["chat_id"],
@@ -226,7 +244,7 @@ async def _migrate_integrations(session, rows, user_id, fernet: Fernet) -> int:
                 openrouter_enabled=bool(r["openrouter_enabled"] or 0),
                 webhook_url_encrypted=enc("webhook_url"),
                 auto_webhook_enabled=bool(r["auto_webhook_enabled"] or 0),
-                updated_at=_ts(r["updated_at"]),
+                updated_at=_ts_required(r["updated_at"]),
             )
             .on_conflict_do_nothing(index_elements=["user_id"])
         )
