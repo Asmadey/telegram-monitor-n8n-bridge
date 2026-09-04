@@ -10,7 +10,9 @@
 
 Идемпотентность: повторный запуск не создаёт дублей — каждая таблица
 вставляется с ON CONFLICT DO NOTHING по естественному ключу
-(public_id / (user_id, chat_id, message_id) / job_id / PK).
+(public_id / (user_id, chat_id, message_id) / job_id). PK старой базы
+НЕ переносится: он всегда начинается с 1 и ломал второго тенанта.
+У журнала естественного ключа нет — он переносится только в пустой.
 
 Секреты из integrations_config при переносе ОБЯЗАТЕЛЬНО шифруются:
 скрипт отказывается работать без APP_ENCRYPTION_KEY, потому что
@@ -150,7 +152,11 @@ async def _migrate_sent_messages(session, rows, user_id) -> int:
         stmt = (
             pg_insert(SentMessage)
             .values(
-                id=r["id"],  # старый PK сохраняем — повторный прогон упирается в него
+                # PK старой базы НЕ переносится. Он всегда начинается с 1, и
+                # у второго же тенанта вызывал duplicate key на sent_messages_pkey:
+                # ON CONFLICT целится в (user_id, chat_id, message_id), а не в PK,
+                # поэтому коллизию первичного ключа не перехватывал. Идемпотентность
+                # обеспечивает бизнес-ключ — он и есть правильная цель конфликта.
                 user_id=user_id,
                 chat_id=r["chat_id"],
                 message_id=r["message_id"],
@@ -179,7 +185,8 @@ async def _migrate_feed_items(session, rows, user_id) -> int:
         stmt = (
             pg_insert(FeedItem)
             .values(
-                id=r["id"],
+                # PK не переносим (см. sent_messages): идемпотентность —
+                # по job_id, который в старой базе тоже уникален.
                 user_id=user_id,
                 job_id=r["job_id"],
                 created_at=_ts_required(r["created_at"]),
@@ -200,22 +207,30 @@ async def _migrate_feed_items(session, rows, user_id) -> int:
 
 
 async def _migrate_logs(session, rows, user_id) -> int:
+    """У журнала нет естественного ключа, поэтому идемпотентность — проверкой.
+
+    Раньше повторный прогон упирался в перенесённый PK старой базы. От переноса
+    PK пришлось отказаться (он ломал второго тенанта — см. _migrate_sent_messages),
+    а конфликт по автогенерируемому PK не сработает никогда: он всегда новый.
+    Поэтому журнал переносится только в пустой: у пользователя, которому уже
+    что-то перенесли, второй прогон не должен удвоить историю.
+    """
+    if await session.scalar(
+        select(LogEntry.id).where(LogEntry.user_id == user_id).limit(1)
+    ):
+        return 0
+
     inserted = 0
     for r in rows:
-        stmt = (
-            pg_insert(LogEntry)
-            .values(
-                id=r["id"],  # PK из SQLite: повторный прогон ничего не вставит
-                user_id=user_id,
-                timestamp=_ts_required(r["timestamp"]),
-                event_type=r["event_type"],
-                chat_title=r["chat_title"],
-                chat_id=r["chat_id"],
-                messages_count=r["messages_count"] or 0,
-                status=r["status"],
-                details=r["details"],
-            )
-            .on_conflict_do_nothing(index_elements=["id"])
+        stmt = pg_insert(LogEntry).values(
+            user_id=user_id,
+            timestamp=_ts_required(r["timestamp"]),
+            event_type=r["event_type"],
+            chat_title=r["chat_title"],
+            chat_id=r["chat_id"],
+            messages_count=r["messages_count"] or 0,
+            status=r["status"],
+            details=r["details"],
         )
         result = await session.execute(stmt)
         inserted += result.rowcount or 0
