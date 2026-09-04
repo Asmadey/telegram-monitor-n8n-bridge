@@ -5,6 +5,40 @@
 
 ---
 
+### 2026-09-04 — Задача 7.2: заголовки безопасности
+
+**Сделано:** пять заголовков плана — middleware, не эндпоинты.
+- `app/security/headers.py` + регистрация ПЕРВОЙ middleware в
+  app.main: заголовки на ВСЕХ ответах, включая 404/429 (страница
+  ошибки — тоже HTML в браузере).
+- **CSP**: script-src 'self' БЕЗ unsafe-inline — второй рубеж после
+  экранирования 5.2 (прорвавшийся XSS не исполняется); возможно
+  после 5.1/5.3. style-src с 'unsafe-inline' осознанно —
+  инлайн-стили страниц входа, стили код не исполняют. Замыкания:
+  object-src 'none', base-uri 'none', form-action 'self',
+  frame-ancestors 'none', img-src 'self' data:, connect-src 'self'.
+- HSTS max-age=31536000 (includeSubDomains — после своего домена),
+  nosniff, Referrer-Policy strict-origin-when-cross-origin,
+  X-Frame-Options: DENY.
+
+**Подтверждено:** красная фаза — 4 failed на assert (заголовков
+нет). test_71 → 4 passed: страница, /health+404, запрет
+inline-скриптов, разрешители style/img/connect. Полный прогон
+**237 passed, 3 skipped**; ruff/mypy чисты.
+
+**Не сработало — ловушки:**
+- Регистрация `app.middleware("http")(add_security_headers)` до
+  CSRF-middleware: порядок важен — заголовки обязаны покрывать и
+  403 CSRF-ответа.
+
+**Не подтверждено:** живой браузер под CSP (реальный отказ
+инлайн-скрипта, страницы входа с инлайн-стилями), HSTS вживую
+(нужен HTTPS-домен).
+
+**Коммиты:** `9a10a2b`.
+
+---
+
 ### 2026-09-04 — Задача 7.1: два сервиса Railway из одного образа (конфиги в репо)
 
 **Сделано:** образ и конфиг деплоя переведены на новую сборку.
