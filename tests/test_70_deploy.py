@@ -80,3 +80,54 @@ def test_railway_json_worker_never_migrates():
         "railway.json общий на оба сервиса: команда воркера здесь запустила бы "
         "воркер и ВЕБ-сервисом тоже; воркер переопределяется на уровне сервиса"
     )
+
+
+# --------------------------------------------------------------------------
+# Дыра, найденная при ревью 7.1: CMD и railway.json перевели на app.main,
+# а Procfile остался на монолите. Тест выше был зелёным, дыра — живой:
+# ровно тот случай, от которого предостерегает AGENTS.md §10.
+# --------------------------------------------------------------------------
+
+
+def test_procfile_never_launches_the_monolith():
+    """Procfile — исполняемый артефакт запуска, а не документация.
+
+    Его читают foreman/hivemind, Heroku и Railway с NIXPACKS-билдером. Пока
+    в нём `server:app`, утверждение «монолит не запустим даже случайно»
+    неверно: это и есть путь «случайно».
+    """
+    path = ROOT / "Procfile"
+    if not path.exists():
+        return
+    src = path.read_text(encoding="utf-8")
+    assert "server:app" not in src, (
+        "Procfile поднимает монолит server.py — ~40 эндпоинтов без auth (К2)"
+    )
+    assert "app.main:app" in src, "Procfile не поднимает новую сборку"
+
+
+def test_procfile_declares_the_worker_process():
+    """Два процесса (задача 4.1): web владеет HTTP, worker — единственный
+    владелец долгоживущих Telethon-клиентов. Один процесс на оба = второй
+    клиент на том же auth-key = AUTH_KEY_DUPLICATED у пользователя."""
+    path = ROOT / "Procfile"
+    if not path.exists():
+        return
+    src = path.read_text(encoding="utf-8")
+    assert "app.worker" in src, "Procfile не объявляет процесс воркера"
+
+
+def test_monolith_source_is_not_shipped_in_the_image():
+    """Глубина защиты: `docker run <image> uvicorn server:app` поднимает
+    незакрытую сборку даже при правильном CMD. app/ не импортирует server,
+    рантайму монолит не нужен — в образе ему делать нечего.
+    """
+    patterns = {
+        line.strip()
+        for line in (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+    assert "server.py" in patterns, (
+        "server.py попадает в образ через COPY . . — монолит остаётся "
+        "запускаемым внутри контейнера в обход CMD"
+    )

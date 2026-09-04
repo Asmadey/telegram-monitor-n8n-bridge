@@ -14,3 +14,7 @@ exports/
 storage.db
 key.md
 Ruby/
+
+# Монолит рантайму не нужен: app/ его не импортирует, а в образе он
+# оставался бы запускаемым в обход CMD (uvicorn server:app).
+server.py
