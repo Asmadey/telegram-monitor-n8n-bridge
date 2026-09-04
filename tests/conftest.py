@@ -216,10 +216,17 @@ def alembic_target_db(monkeypatch):
     локально (переменной нет) и падали в CI (переменная есть, но Alembic
     читает другое имя). Без живой базы расхождение двух имён было невидимо.
     """
+    from cryptography.fernet import Fernet
+
     url = os.environ.get("TEST_DATABASE_URL", "")
     if not url.startswith("postgresql"):
         pytest.skip("нет TEST_DATABASE_URL с живым Postgres")
     monkeypatch.setenv("DATABASE_URL", url)
+    # scripts/migrate_sqlite_to_pg.py отказывается переносить секреты
+    # открытым текстом без APP_ENCRYPTION_KEY — правило верное, и тест,
+    # запускающий перенос, обязан дать ключ так же, как это делает оператор.
+    monkeypatch.setenv("APP_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-app")
     get_settings.cache_clear()
     yield url
     get_settings.cache_clear()
