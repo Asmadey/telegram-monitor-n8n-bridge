@@ -6,6 +6,8 @@ sync-TestClient: запросы и БД работают в одном event loo
 падает «attached to a different loop».
 """
 
+import os
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -198,3 +200,26 @@ async def act_as(client, db, user) -> None:
     client.cookies.set(
         CSRF_COOKIE, make_csrf_token(session.id), domain="test.local", path="/"
     )
+
+
+@pytest.fixture
+def alembic_target_db(monkeypatch):
+    """Направляет Alembic на TEST_DATABASE_URL и отдаёт этот URL.
+
+    alembic/env.py принципиально отказывается работать без ЯВНОГО
+    DATABASE_URL — иначе случайный прогон миграций уйдёт в боевую базу.
+    Правило верное и остаётся; следствие в том, что поведенческий тест,
+    решивший работать с TEST_DATABASE_URL, обязан сам направить туда же
+    Alembic — иначе он падает с SystemExit вместо честного skip.
+
+    Найдено первым прогоном CI с живым Postgres: три теста уходили в skip
+    локально (переменной нет) и падали в CI (переменная есть, но Alembic
+    читает другое имя). Без живой базы расхождение двух имён было невидимо.
+    """
+    url = os.environ.get("TEST_DATABASE_URL", "")
+    if not url.startswith("postgresql"):
+        pytest.skip("нет TEST_DATABASE_URL с живым Postgres")
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    yield url
+    get_settings.cache_clear()

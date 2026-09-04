@@ -77,15 +77,13 @@ def _pg_url() -> str | None:
 
 
 @pytest.mark.asyncio
-async def test_upgrade_head_matches_models():
+async def test_upgrade_head_matches_models(alembic_target_db):
     """alembic upgrade head на чистой БД даёт схему, совпадающую с моделями.
 
     Поведенческий уровень: без живого Postgres проверка не выполняется
     (AGENTS.md §4 — честный skip, а не зелёный прогон вхолостую).
     """
-    url = _pg_url()
-    if url is None:
-        pytest.skip("нет TEST_DATABASE_URL с живым Postgres")
+    url = alembic_target_db
 
     from alembic.config import Config
     from sqlalchemy import inspect

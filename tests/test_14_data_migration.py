@@ -30,7 +30,7 @@ async def _create_user(session, email: str) -> int:
 
 
 @pytest.mark.asyncio
-async def test_migration_preserves_counts_and_dedup(tmp_path):
+async def test_migration_preserves_counts_and_dedup(tmp_path, alembic_target_db):
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from scripts.migrate_sqlite_to_pg import migrate
@@ -94,7 +94,7 @@ async def test_migration_preserves_counts_and_dedup(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_migration_is_idempotent():
+async def test_migration_is_idempotent(alembic_target_db):
     """Повторный запуск не создаёт дублей (ON CONFLICT DO NOTHING)."""
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 

@@ -3,18 +3,29 @@
 FastAPI/Ruby/ — вторая копия Rails-шаблона внутри Python-проекта (живой образец
 остаётся в Teleton/Ruby/). Teleton/storage.db — пустой файл-дубль: приложение
 однажды запишет данные не туда. monitors.json.bak — остаток старой миграции.
+
+О путях. Корень репозитория git — каталог приложения (локально `Teleton/FastAPI`,
+в CI — корень чекаута), поэтому REPO вычисляется от файла теста, а не от имени
+каталога. Каталог ВЫШЕ репозитория существует только в рабочем дереве оператора;
+в CI его нет, и проверки, которые на него опираются, обязаны честно писать skip,
+а не падать. Первый живой прогон CI уронил ровно эти три теста: они были написаны
+под локальную раскладку и работали только на машине автора.
 """
 
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]  # Teleton/
-APP = REPO / "FastAPI"
+import pytest
+
+REPO = Path(__file__).resolve().parents[1]  # корень репозитория
+OUTER = REPO.parent  # рабочее дерево оператора; в CI отсутствует
+OUTER_IS_WORKTREE = (OUTER / "Ruby").exists() or (OUTER / "CLAUDE.md").exists()
 
 GONE = [
-    APP / "Ruby",  # дубль Rails-шаблона
-    REPO / "storage.db",  # пустой файл в корне
-    APP / "monitors.json.bak",  # остаток старой миграции
+    REPO / "Ruby",  # дубль Rails-шаблона внутри приложения
+    REPO / "monitors.json.bak",  # остаток старой миграции
 ]
+
+PLAN = REPO / "docs" / "PLAN.md"
 
 
 def test_junk_paths_do_not_exist():
@@ -22,11 +33,25 @@ def test_junk_paths_do_not_exist():
     assert not survivors, f"В репозитории остался мусор: {survivors}"
 
 
+def test_empty_duplicate_db_above_the_repo_is_gone():
+    """Пустой `storage.db` рядом с репозиторием: приложение однажды запишет
+    данные не туда. Проверяется только в рабочем дереве оператора."""
+    if not OUTER_IS_WORKTREE:
+        pytest.skip("каталог выше репозитория недоступен (CI клонирует репозиторий)")
+    assert not (OUTER / "storage.db").exists(), (
+        "пустой storage.db выше репозитория вернулся — живая база лежит внутри"
+    )
+
+
 def test_app_storage_db_is_the_real_one():
-    """Живая база остаётся на месте и не пуста (защита от случайной уборки не того файла)."""
-    db = APP / "storage.db"
-    assert db.exists(), "FastAPI/storage.db исчез — удалён не тот файл"
-    assert db.stat().st_size > 0, "FastAPI/storage.db пуст"
+    """Живая база не пуста — защита от уборки не того файла в задаче 0.5.
+
+    Файл в .gitignore, поэтому в чекауте CI его нет: там проверять нечего.
+    """
+    db = REPO / "storage.db"
+    if not db.exists():
+        pytest.skip("storage.db отсутствует (gitignore) — нечего проверять")
+    assert db.stat().st_size > 0, "storage.db пуст — удалён/затёрт не тот файл"
 
 
 # --------------------------------------------------------------------------
@@ -36,13 +61,11 @@ def test_app_storage_db_is_the_real_one():
 # агент получал заведомо неверный статус. AGENTS.md §9 — статус в одном месте.
 # --------------------------------------------------------------------------
 
-PLAN = APP / "docs" / "PLAN.md"
-
 
 def test_plan_in_repo_is_the_maintained_one():
     """Версионированный план обязан нести таблицу статусов: именно её
     наличие отличает живой документ от замороженной копии."""
-    assert PLAN.exists(), "docs/PLAN.md отсутствует"
+    assert PLAN.exists(), f"нет {PLAN.relative_to(REPO)}"
     text = PLAN.read_text(encoding="utf-8")
     assert "## Статус выполнения" in text, (
         "в версионированном плане нет таблицы «Статус выполнения» — "
@@ -55,16 +78,14 @@ def test_plan_in_repo_is_the_maintained_one():
 
 
 def test_no_competing_plan_copy_above_the_repo():
-    """Файл выше корня репозитория допустим только как указатель.
-
-    Пропускается там, где родительского каталога нет (CI клонирует
-    репозиторий, а не рабочее дерево оператора).
-    """
-    outer = REPO / "PLAN.md"
-    if not outer.exists():
+    """Файл выше корня репозитория допустим только как указатель."""
+    if not OUTER_IS_WORKTREE:
+        pytest.skip("каталог выше репозитория недоступен (CI клонирует репозиторий)")
+    outer_plan = OUTER / "PLAN.md"
+    if not outer_plan.exists():
         return
-    lines = outer.read_text(encoding="utf-8").count("\n")
+    lines = outer_plan.read_text(encoding="utf-8").count("\n")
     assert lines < 100, (
-        f"{outer.name} выше репозитория снова стал полной копией плана "
+        f"PLAN.md выше репозитория снова стал полной копией плана "
         f"({lines} строк) — статус разъедется молча, как в прошлый раз"
     )
