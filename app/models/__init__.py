@@ -126,7 +126,7 @@ class Monitor(Base):
     id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     # публичный идентификатор для URL/интерфейса: BIGINT-PK наружу не светим
     public_id: Mapped[str] = mapped_column(
-        String(36), nullable=False, unique=True, default=lambda: str(uuid.uuid4())
+        String(36), nullable=False, default=lambda: str(uuid.uuid4())
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
@@ -147,6 +147,12 @@ class Monitor(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )
+
+    # public_id уникален В ПРЕДЕЛАХ пользователя, а не глобально: старые id
+    # из SQLite — это имена каналов (`theyseeku`), и при глобальной
+    # уникальности канал второго пользователя молча не переносился
+    # (ON CONFLICT DO NOTHING). Тихая потеря данных хуже падения.
+    __table_args__ = (UniqueConstraint("user_id", "public_id"),)
 
 
 class SentMessage(Base):
@@ -252,6 +258,15 @@ class Integration(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, onupdate=_now
     )
+
+    # Автоочистка — на тенанта: срок хранения данных выбирает их владелец,
+    # общей настройки на весь сервис здесь быть не может (в монолите она
+    # лежала в общей таблице settings)
+    cleanup_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    cleanup_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    cleanup_last_run: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Job(Base):

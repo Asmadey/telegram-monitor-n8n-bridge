@@ -17,6 +17,7 @@ from app.api import (
     admin,
     auth,
     checks,
+    cleanup,
     feed,
     integrations,
     journal,
@@ -69,6 +70,7 @@ app.include_router(monitors.router)  # К2: каналы мониторинга
 app.include_router(journal.router)  # К2: сохранённые посты и журнал
 app.include_router(integrations.router)  # К2: n8n / OpenRouter / бот
 app.include_router(checks.router)  # К2: проверочные кнопки интеграций
+app.include_router(cleanup.router)  # К2: автоочистка базы
 
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 

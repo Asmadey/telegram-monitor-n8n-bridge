@@ -5,6 +5,7 @@
 """
 
 from collections.abc import AsyncIterator
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
@@ -65,3 +66,13 @@ class TenantRepo:
         """
         stmt = self.query(model).where(model.id == id_)
         return (await self.db.scalars(stmt)).first()
+
+
+def deleted_count(result: Any) -> int:
+    """Сколько строк удалил DELETE.
+
+    SQLAlchemy типизирует `execute()` как `Result`, у которого `rowcount` нет,
+    хотя DELETE возвращает `CursorResult`, у которого он есть. Один помощник
+    вместо `type: ignore` в каждом месте удаления — их уже три.
+    """
+    return getattr(result, "rowcount", 0) or 0

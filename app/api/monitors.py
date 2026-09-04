@@ -26,9 +26,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import CursorResult, delete, func
+from sqlalchemy import delete, func
 
-from app.db import TenantRepo
+from app.db import TenantRepo, deleted_count
 from app.deps import get_tenant_repo, require_user
 from app.models import Monitor, SentMessage
 from app.services.jobs import enqueue_job
@@ -282,14 +282,14 @@ async def reset_dedup(
     старых постов повторно.
     """
     monitor = await _get_or_404(repo, public_id)
-    result: CursorResult = await repo.db.execute(  # type: ignore[assignment]
+    result = await repo.db.execute(
         delete(SentMessage).where(
             SentMessage.user_id == repo.user_id,
             SentMessage.chat_id == monitor.chat_id,
         )
     )
     await repo.db.commit()
-    removed = result.rowcount or 0
+    removed = deleted_count(result)
     await add_log(
         repo.db,
         repo.user_id,
