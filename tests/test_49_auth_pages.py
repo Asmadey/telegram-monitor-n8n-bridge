@@ -110,9 +110,21 @@ async def test_reset_letter_links_to_reset_page(anon_client, db, user) -> None:
     resp = await anon_client.post("/auth/password-reset", json={"email": user.email})
     assert resp.status_code == 200
 
-    out_dir = Path(get_settings().mail_dev_dir)
+    settings = get_settings()
+    out_dir = Path(settings.mail_dev_dir)
     letters = list(out_dir.glob("*.html"))
-    assert letters, "dev-письмо не упало в аутбокс"
+    # Диагностика в самом сообщении: этот тест падал только в CI, и симптом
+    # («писем нет») не отличает «письмо не отправлено» от «письмо ушло в
+    # другой каталог». Причина обязана быть видна из лога с первого прогона.
+    assert letters, (
+        "dev-письмо не упало в аутбокс. "
+        f"mail_dev_dir={settings.mail_dev_dir!r}, "
+        f"is_production={settings.is_production}, "
+        f"environment={settings.environment!r}, "
+        f"каталог существует={out_dir.exists()}, "
+        f"содержимое={sorted(p.name for p in out_dir.iterdir()) if out_dir.exists() else '—'}, "
+        f"пользователь в базе={user.email!r}"
+    )
 
     letter = letters[-1].read_text(encoding="utf-8")
     m = re.search(r"/password-reset\?token=([\w.-]+)", letter)
