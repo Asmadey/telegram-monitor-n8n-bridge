@@ -144,7 +144,9 @@ async def _migrate_monitors(session, rows, user_id) -> int:
                 prompt=r["prompt"],
                 created_at=_ts_required(r["created_at"]),
             )
-            .on_conflict_do_nothing(index_elements=["public_id"])
+            # цель конфликта — пара, а не один public_id: уникальность стала
+            # тенантной (миграция 0005), иначе Postgres не находит индекс
+            .on_conflict_do_nothing(index_elements=["user_id", "public_id"])
         )
         result = await session.execute(stmt)
         inserted += result.rowcount or 0
