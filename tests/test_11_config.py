@@ -80,3 +80,27 @@ def test_env_file_is_not_tracked_by_git(env_file):
         if line.strip() and not line.startswith("#")
     }
     assert ".env" in patterns, ".gitignore не исключает .env"
+
+
+def test_scripts_do_not_duplicate_the_app_package():
+    """sys.path правится только при необходимости.
+
+    Безусловный `sys.path.insert(0, ROOT)` в скрипте создаёт вторую копию
+    пакета `app` при импорте из уже настроенного окружения. У дубля свой
+    `lru_cache` в `app.config`, поэтому настройки, подставленные тестом
+    первому экземпляру, второй не видит. В CI это проявилось как «письмо
+    сброса не дошло» в тесте страниц входа — симптом за три файла от причины.
+    """
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    for script in (root / "scripts").rglob("*.py"):
+        src = script.read_text(encoding="utf-8")
+        for m in re.finditer(r"sys\.path\.insert\([^)]*\)", src):
+            line = src.count("\n", 0, m.start()) + 1
+            before = src[: m.start()].rsplit("\n", 3)[-3:]
+            assert any("not in sys.path" in ln for ln in before), (
+                f"{script.name}:{line} правит sys.path безусловно — "
+                "возможен второй экземпляр пакета app со своим кэшем настроек"
+            )

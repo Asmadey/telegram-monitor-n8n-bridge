@@ -30,7 +30,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+# Вставляем корень в sys.path только если его там нет. Безусловная вставка
+# создаёт ВТОРУЮ копию пакета app при импорте скрипта из уже настроенного
+# окружения: у app.config появляется свой lru_cache, и настройки, заданные
+# тестом первому экземпляру, второй не видит. В CI это проявилось как
+# «письмо сброса не дошло» в совершенно другом тесте — искать пришлось долго.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from cryptography.fernet import Fernet
 from sqlalchemy import select
