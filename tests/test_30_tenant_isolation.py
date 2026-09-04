@@ -248,6 +248,16 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
     )
     await db.commit()
 
+    # секреты интеграций A: конфиг-эндпоинты не отдают их даже владельцу
+    # (только маска), а чужому — тем более. Маркер внутри значения делает
+    # проверку утечки настоящей и для них.
+    from app.services.integrations import save_integration_secrets
+
+    await save_integration_secrets(
+        db, user_a.id, webhook_url=f"https://example.com/hook/{marker}"
+    )
+    await db.commit()
+
     await act_as(anon_client, db, user_b)
 
     # ЧУЖИЕ (A) ресурсы в path-параметрах: каждый маршрут свипа обязан
@@ -304,10 +314,20 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
                 # списочный маршрут: 200, НИ ОДНОГО маркера A, но своё — видно
                 assert resp.status_code == 200, f"{url} → {resp.status_code}"
                 assert marker not in resp.text, f"{url} утёк маркер тенанта A"
-                assert "сводка B" in resp.text, (
-                    f"{url}: собственных данных B не видно — свип не видит, "
-                    "что списки вообще работают"
+                # Позитивный контроль — только для СПИСКОВ. Конфигурационные
+                # эндпоинты (/api/webhook, /api/openrouter, ...) отдают одну
+                # строку настроек и по замыслу не показывают ни секрета, ни
+                # чужих данных: маркеру там взяться неоткуда. Проверка утечки
+                # выше применяется к ним наравне со списками.
+                body = resp.json()
+                has_list = isinstance(body, dict) and any(
+                    isinstance(v, list) for v in body.values()
                 )
+                if has_list:
+                    assert "сводка B" in resp.text, (
+                        f"{url}: собственных данных B не видно — свип не видит, "
+                        "что списки вообще работают"
+                    )
 
     # анти-вакуум: каждый маршрут свипа реально проверен — по КАЖДОМУ методу,
     # а не только по GET: изменяющие методы и есть самый опасный путь утечки

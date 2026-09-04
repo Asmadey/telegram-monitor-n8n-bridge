@@ -13,7 +13,16 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api import admin, auth, feed, journal, monitors, public, telegram
+from app.api import (
+    admin,
+    auth,
+    feed,
+    integrations,
+    journal,
+    monitors,
+    public,
+    telegram,
+)
 from app.security.crypto import validate_encryption_key
 from app.security.csrf import (
     CSRF_COOKIE,
@@ -57,6 +66,7 @@ app.include_router(telegram.router)  # send-code/sign-in (3.3), state в БД
 app.include_router(feed.router)
 app.include_router(monitors.router)  # К2: каналы мониторинга
 app.include_router(journal.router)  # К2: сохранённые посты и журнал
+app.include_router(integrations.router)  # К2: n8n / OpenRouter / бот
 
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
