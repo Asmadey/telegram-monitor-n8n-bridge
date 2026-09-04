@@ -20,7 +20,7 @@ photo_base64, и raw_messages_json целиком: двести аватарок
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import delete
+from sqlalchemy import CursorResult, delete
 
 from app.db import TenantRepo
 from app.deps import get_tenant_repo, require_user
@@ -123,7 +123,7 @@ async def clear_feed(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
     В монолите (server.py:1971) это `DELETE FROM analysis_feed` без условия:
     в мульти-тенанте один клиент стёр бы ленту всему сервису.
     """
-    result = await repo.db.execute(
+    result: CursorResult = await repo.db.execute(  # type: ignore[assignment]
         delete(FeedItem).where(FeedItem.user_id == repo.user_id)
     )
     await repo.db.commit()

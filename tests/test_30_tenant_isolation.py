@@ -144,13 +144,13 @@ def test_get_tenant_repo_chains_through_require_user():
 
 def _tenant_resource_routes():
     """Маршруты с данными тенантов: всё защищённое, кроме auth и админки."""
-    from app.main import app
-
     # Публичные маршруты берём из белого списка test_22 — один источник
     # истины о том, что открыто анониму. Маршрут, открытый по замыслу, не
     # может быть ресурсом тенанта: оболочка SPA отдаёт HTML без данных, и
     # разбирать её как JSON нечего.
     from test_22_auth_required import _is_public
+
+    from app.main import app
 
     for route in walk_routes(app.routes):
         path = getattr(route, "path", None)
