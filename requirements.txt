@@ -21,3 +21,7 @@ bcrypt>=4.1.0
 itsdangerous>=2.2.0
 cryptography>=42.0.0
 slowapi>=0.1.9
+# Фаза 6 (PLAN.md): верификация Google ID-токенов через firebase_admin.
+# Импорт ленивый (app/services/google_auth.py) — без конфигурации Firebase
+# web-процесс поднимается, но POST /auth/google падает громко, не 401.
+firebase-admin>=6.5.0

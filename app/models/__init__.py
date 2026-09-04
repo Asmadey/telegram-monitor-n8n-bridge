@@ -1,6 +1,6 @@
 """Модели SQLAlchemy — многотенантная схема (задача 1.3 PLAN.md).
 
-Двенадцать таблиц. Ключевое отличие от старой схемы: user_id NOT NULL + индекс
+Тринадцать таблиц. Ключевое отличие от старой схемы: user_id NOT NULL + индекс
 у каждой таблицы с данными тенанта — без индекса фильтр по пользователю
 вырождается в full scan, без NOT NULL строка «без владельца» видна всем.
 
@@ -307,3 +307,26 @@ class ChatAvatar(Base):
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )
+
+
+class UserIdentity(Base):
+    """Внешние идентичности (Фаза 6 PLAN.md): связывание Google-аккаунта
+    с пользователем. Имя — НЕ Identity: в модуле оно занято
+    sqlalchemy.Identity (PK-конструктор), тень ломала бы mapped_column
+    у моделей, объявленных ниже."""
+
+    __tablename__ = "identities"
+
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    # uid у провайдера (Firebase sub): уникален в паре с provider — один
+    # Google-аккаунт не может быть связан с двумя юзерами
+    provider_uid: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+
+    __table_args__ = (UniqueConstraint("provider", "provider_uid"),)

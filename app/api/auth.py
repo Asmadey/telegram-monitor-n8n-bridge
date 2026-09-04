@@ -1,8 +1,9 @@
-"""Роутер аутентификации: /auth/me, /auth/logout, signup, login (задачи 2.3–2.4).
+"""Роутер аутентификации: /auth/me, /auth/logout, signup, login, google (2.3–2.4, Фаза 6).
 
 Закрыто по умолчанию: защищённый `router` несёт Depends(require_user) на
-РОУТЕРЕ — новый эндпоинт в нём защищён автоматически. signup и login —
-явный opt-out, живут в `public_router` и в белом списке test_22.
+РОУТЕРЕ — новый эндпоинт в нём защищён автоматически. signup, login и
+вход через Google — явный opt-out, живут в `public_router` и в белом
+списке test_22.
 
 Порт registrations_controller.rb / sessions_controller.rb (Rails-шаблон).
 """
@@ -15,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import require_session, require_user
-from app.models import Session, User
+from app.models import Session, User, UserIdentity
 from app.security.csrf import clear_csrf_cookie, issue_csrf_cookie
 from app.security.password_reset import make_reset_token, resolve_reset_token
 from app.security.passwords import hash_password, verify_password
@@ -31,6 +32,7 @@ from app.security.sessions import (
     destroy_session,
     set_session_cookie,
 )
+from app.services.google_auth import get_google_verifier
 from app.services.mailer import send_password_reset_email
 
 router = APIRouter(dependencies=[Depends(require_user)])
@@ -84,6 +86,12 @@ class SignupRequest(AuthRequest):
     @classmethod
     def _signup_password(cls, v: str) -> str:
         return _password_rules(v)
+
+
+class GoogleLoginRequest(BaseModel):
+    """Фаза 6: Firebase-токен с фронта. Верификатор — зависимость,
+    подменяемая в тестах (app.services.google_auth)."""
+    id_token: str
 
 
 class PasswordResetConfirmRequest(BaseModel):
@@ -172,6 +180,62 @@ async def login(
         or not verify_password(req.password, user.password_hash)
     ):
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
+    await _open_session(db, request, response, user)
+    return _user_dict(user)
+
+
+@public_router.post("/auth/google")
+@limiter.limit("10/3minutes")  # тот же бюджет, что у login: брутфорс токенов
+async def google_login(
+    req: GoogleLoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    verifier=Depends(get_google_verifier),
+) -> dict[str, Any]:
+    """Вход через Google (Фаза 6): Firebase проверяет ТОКЕН, юзер — свой,
+    сессия — своя cookie. Существующий email → ПРИВЯЗКА (строка
+    identities), а не второй аккаунт."""
+    try:
+        claims = verifier(req.id_token)
+    except RuntimeError:
+        # Firebase не сконфигурирован — громкий 500, не маскировка под 401
+        raise
+    except Exception:  # noqa: BLE001 — невалидный/чужой aud/просроченный
+        raise HTTPException(status_code=401, detail="Неверный токен") from None
+
+    email = str(claims.get("email") or "").strip().lower()
+    uid = str(claims.get("sub") or "").strip()
+    if not email or not uid:
+        raise HTTPException(status_code=401, detail="Неверный токен")
+    if not claims.get("email_verified"):
+        # Google не подтвердил адрес за юзером: привязка идентичности к
+        # неподтверждённому email — обход владения ящиком
+        raise HTTPException(status_code=401, detail="Неверный токен")
+
+    ident = await db.scalar(
+        select(UserIdentity).where(
+            UserIdentity.provider == "google",
+            UserIdentity.provider_uid == uid,
+        )
+    )
+    if ident is not None:
+        # повторный вход: владелец идентичности уже решён. uid за другим
+        # email (Google сменил адрес аккаунта) — молча перетасовывать
+        # владельца нельзя
+        user = await db.get(User, ident.user_id)
+        if user is None or user.email != email:
+            raise HTTPException(status_code=401, detail="Неверный токен")
+    else:
+        user = await db.scalar(select(User).where(User.email == email))
+        if user is None:
+            # вход только через Google: password_hash остаётся NULL
+            user = User(email=email)
+            db.add(user)
+            await db.commit()
+        db.add(UserIdentity(user_id=user.id, provider="google", provider_uid=uid))
+        await db.commit()
+
     await _open_session(db, request, response, user)
     return _user_dict(user)
 
