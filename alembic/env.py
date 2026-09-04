@@ -12,12 +12,20 @@ import os
 import sys
 import threading
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
+
+# Корень репозитория — АБСОЛЮТНЫМ путём и только если его там нет:
+# относительный "." создал бы вторую копию пакета app (см. alembic.ini).
+_ROOT = str(Path(__file__).resolve().parents[1])
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 from app.models import Base
 
 # alembic.ini доступен только при запуске из CLI; при программном — не обязателен

@@ -25,3 +25,7 @@ select = ["E4", "E7", "E9", "F", "I"]
 [lint.per-file-ignores]
 # sys.path.insert(ROOT) ДО импортов app.* — намеренный bootstrap скрипта
 "scripts/migrate_sqlite_to_pg.py" = ["E402"]
+# то же в alembic/env.py: корень добавляется абсолютным путём перед
+# импортом моделей. Относительный prepend_sys_path из alembic.ini убран —
+# он импортировал пакет app во второй раз (см. tests/test_11_config.py)
+"alembic/env.py" = ["E402"]

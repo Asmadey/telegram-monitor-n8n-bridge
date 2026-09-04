@@ -42,8 +42,8 @@ def issue_csrf_cookie(response: Response, session_id=None) -> None:
         CSRF_COOKIE,
         make_csrf_token(session_id),
         httponly=False,
-        secure=get_settings().is_production,
-        samesite="lax",
+        secure=get_settings().cookie_policy.secure,
+        samesite=get_settings().cookie_policy.samesite,
         path="/",
     )
 

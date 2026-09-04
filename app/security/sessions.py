@@ -110,8 +110,9 @@ def set_session_cookie(response: Response, session_id) -> None:
         sign_session_id(session_id),
         max_age=int(SESSION_TTL.total_seconds()),
         httponly=True,  # JS не читает сессию — половина XSS бесполезна
-        secure=get_settings().is_production,  # в dev localhost http://
-        samesite="lax",
+        secure=get_settings().cookie_policy.secure,
+        # lax при общем сайте, none при раздельном деплое (app/security/cookies.py)
+        samesite=get_settings().cookie_policy.samesite,
     )
 
 

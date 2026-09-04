@@ -48,12 +48,35 @@ class Settings(BaseSettings):
     # mail_dev_dir (letter_opener), реальных отправок из dev нет.
     resend_api_key: str = ""
     mail_from: str = "Teleton <onboarding@resend.dev>"
-    app_base_url: str = ""  # база для ссылок в письмах
+    app_base_url: str = ""  # база для ссылок в письмах = адрес ФРОНТЕНДА
     mail_dev_dir: str = "tmp/mail"  # dev-аутбокс; tmp/ в .gitignore
+
+    # Раздельный деплой: фронтенд на Vercel, API на Railway.
+    # FRONTEND_ORIGINS — список origin через запятую, которым разрешён CORS
+    # с учётными данными. Пусто = фронтенд приходит с того же origin
+    # (переписывание /api/* на Vercel или единый деплой) — CORS не нужен.
+    frontend_origins: str = ""
+    # Собственный публичный адрес API: по нему определяется, межсайтовый ли
+    # запрос от фронтенда, и, следовательно, политика cookie.
+    api_origin: str = ""
 
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def frontend_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.frontend_origins.split(",") if o.strip()]
+
+    @property
+    def cookie_policy(self):
+        from app.security.cookies import cookie_policy
+
+        return cookie_policy(
+            frontend_origins=self.frontend_origin_list,
+            api_origin=self.api_origin,
+            force_secure=self.is_production,
+        )
 
 
 @lru_cache

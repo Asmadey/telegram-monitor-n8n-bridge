@@ -279,3 +279,25 @@ def _no_outbound_http(monkeypatch, request):
     monkeypatch.setattr(
         httpx.AsyncHTTPTransport, "handle_async_request", blocked, raising=True
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_settings_cache():
+    """Кэш настроек не переживает границу теста.
+
+    `get_settings` — процессный `lru_cache`. Он пересекает границы тестов, и
+    объект Settings, созданный в одном тесте, достаётся другому. Это уже
+    дважды стоило дорогого поиска: тест письма сброса падал ТОЛЬКО в CI, а
+    тест ссылки на фронтенд — ТОЛЬКО в полном прогоне; зонд внутри мейлера
+    показал, что тот получает экземпляр Settings с пустыми полями, хотя тест
+    непосредственно перед вызовом видел верные.
+
+    Сброс до и после каждого теста делает состояние явным. Настоящее лечение —
+    сделать настройки инъектируемой зависимостью FastAPI вместо глобального
+    кэша; до тех пор эта фикстура держит прогон честным.
+    """
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

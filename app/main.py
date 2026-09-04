@@ -25,6 +25,7 @@ from app.api import (
     public,
     telegram,
 )
+from app.security.cors import CorsMiddleware
 from app.security.crypto import validate_encryption_key
 from app.security.csrf import (
     CSRF_COOKIE,
@@ -71,6 +72,8 @@ app.include_router(journal.router)  # К2: сохранённые посты и 
 app.include_router(integrations.router)  # К2: n8n / OpenRouter / бот
 app.include_router(checks.router)  # К2: проверочные кнопки интеграций
 app.include_router(cleanup.router)  # К2: автоочистка базы
+
+app.add_middleware(CorsMiddleware)  # раздельный деплой: Vercel ↔ Railway
 
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
