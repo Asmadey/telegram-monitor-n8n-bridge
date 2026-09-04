@@ -21,6 +21,7 @@ from app.security.csrf import (
     issue_csrf_cookie,
     verify_csrf,
 )
+from app.security.headers import add_security_headers
 from app.security.ratelimit import limiter
 
 # Стартовый барьер (задача 3.4): без валидного APP_ENCRYPTION_KEY приложение
@@ -34,6 +35,11 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 # бесплатная карта поверхности атаки (их перечисляет test_22 как маршруты).
 # Если документация понадобится — открывать только за require_user.
 app = FastAPI(title="Teleton", openapi_url=None, docs_url=None, redoc_url=None)
+
+# Заголовки безопасности (задача 7.2): CSP без инлайн-скриптов (возможно
+# после 5.1/5.3), HSTS, nosniff, Referrer-Policy, X-Frame-Options.
+# Регистрируется ПЕРВЫМ — оборачивает и CSRF-middleware, и 404/429.
+app.middleware("http")(add_security_headers)
 
 # rate limiting (задача 2.7): 429 обрабатывает общий handler.
 # ignore[arg-type]: slowapi-хендлер типизирован под свой Exception —
