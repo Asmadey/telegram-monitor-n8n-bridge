@@ -116,13 +116,25 @@ async def test_reset_letter_links_to_reset_page(anon_client, db, user) -> None:
     # Диагностика в самом сообщении: этот тест падал только в CI, и симптом
     # («писем нет») не отличает «письмо не отправлено» от «письмо ушло в
     # другой каталог». Причина обязана быть видна из лога с первого прогона.
+    import os
+    import sys
+
+    import app.config as app_config
+
+    twins = sorted(
+        name
+        for name, mod in list(sys.modules.items())
+        if mod is not None and getattr(mod, "__file__", None) == app_config.__file__
+    )
+    env_dir = os.environ.get("MAIL_DEV_DIR", "<не задан>")
     assert letters, (
         "dev-письмо не упало в аутбокс. "
-        f"mail_dev_dir={settings.mail_dev_dir!r}, "
+        f"mail_dev_dir={settings.mail_dev_dir!r}, MAIL_DEV_DIR из окружения={env_dir!r}, "
         f"is_production={settings.is_production}, "
         f"environment={settings.environment!r}, "
         f"каталог существует={out_dir.exists()}, "
         f"содержимое={sorted(p.name for p in out_dir.iterdir()) if out_dir.exists() else '—'}, "
+        f"модули app.config={twins}, "
         f"пользователь в базе={user.email!r}"
     )
 
