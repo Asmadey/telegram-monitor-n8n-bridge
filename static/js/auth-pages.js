@@ -12,10 +12,19 @@
     return m ? decodeURIComponent(m[1]) : '';
   }
 
+  // База API: пусто = тот же origin (Vercel переписывает /auth/* на Railway).
+  // Прямые межсайтовые вызовы включаются заданием window.__TELETON_API__.
+  function apiBase() {
+    return (window.__TELETON_API__ || '').replace(/\/$/, '');
+  }
+
   async function postJson(url, payload) {
-    const res = await fetch(url, {
+    const res = await fetch(apiBase() + url, {
       method: 'POST',
-      credentials: 'same-origin',
+      // include, а не same-origin: при отдельном домене фронтенда cookie
+      // сессии к межсайтовому запросу не приложится, и вход «не сработает»
+      // без единой ошибки в консоли
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         'X-CSRF-Token': csrfToken()

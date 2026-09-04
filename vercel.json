@@ -1,0 +1,44 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": null,
+  "outputDirectory": "static",
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://REPLACE-WITH-RAILWAY-HOST/api/:path*"
+    },
+    {
+      "source": "/auth/:path*",
+      "destination": "https://REPLACE-WITH-RAILWAY-HOST/auth/:path*"
+    },
+    { "source": "/health", "destination": "https://REPLACE-WITH-RAILWAY-HOST/health" },
+    { "source": "/feed", "destination": "/index.html" },
+    { "source": "/channels", "destination": "/index.html" },
+    { "source": "/messages", "destination": "/index.html" },
+    { "source": "/integration", "destination": "/index.html" },
+    { "source": "/logs", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)\\.html",
+      "headers": [{ "key": "Cache-Control", "value": "no-store" }]
+    }
+  ]
+}
