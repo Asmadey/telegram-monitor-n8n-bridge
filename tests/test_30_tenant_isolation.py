@@ -176,7 +176,7 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
             "до первого переноса свип нечего перебирать"
         )
 
-    from app.models import ChatAvatar, FeedItem
+    from app.models import ChatAvatar, FeedItem, LogEntry, SentMessage
     from tests.conftest import act_as
 
     marker = "tenant-a-secret-marker"
@@ -200,6 +200,17 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
         raw_messages_json=json.dumps([{"id": 1, "text": marker}]),
     )
     db.add(feed_a)
+    # посты и журнал A: те же списки обязаны не отдавать их B
+    db.add(
+        SentMessage(
+            user_id=user_a.id,
+            chat_id=chat_a,
+            message_id=1,
+            text=marker,
+            reactions_json="[]",
+        )
+    )
+    db.add(LogEntry(user_id=user_a.id, event_type="X", status="INFO", details=marker))
     # собственные данные B: списки/эндпоинты обязаны работать и отдавать своё
     # заголовок несёт тот же маркер «сводка B»: позитивный контроль свипа
     # ищет его в ответе КАЖДОГО списка, а у каналов видимое поле — название
@@ -222,6 +233,18 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
             ai_analysis="сводка B",
             raw_messages_json="[]",
         )
+    )
+    db.add(
+        SentMessage(
+            user_id=user_b.id,
+            chat_id=chat_b,
+            message_id=2,
+            text="сводка B",
+            reactions_json="[]",
+        )
+    )
+    db.add(
+        LogEntry(user_id=user_b.id, event_type="X", status="INFO", details="сводка B")
     )
     await db.commit()
 
