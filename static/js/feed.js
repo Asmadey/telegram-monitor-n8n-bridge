@@ -77,9 +77,14 @@ function renderFeedList() {
   feedListContainer.innerHTML = currentFeed.map(item => {
     const isActive = item.id === selectedFeedId;
     const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
+    // Аватарка — с отдельного эндпоинта с кешом браузера (задача 5.4),
+    // не из строки ленты. Ветка photo_base64 — совместимость с монолитом
+    // (server.py, рантайм до закрытия К2): он ещё отдаёт аватарку строкой.
     const avatarHtml = item.photo_base64
       ? html`<img src="${item.photo_base64}" class="feed-avatar" alt="${item.chat_title}">`
-      : html`<div class="feed-avatar">${initial}</div>`;
+      : item.chat_id
+        ? html`<img src="/api/avatars/${item.chat_id}" class="feed-avatar" alt="${item.chat_title}" data-initial="${initial}">`
+        : html`<div class="feed-avatar">${initial}</div>`;
 
     const rawMsgs = Array.isArray(item.messages) ? item.messages : [];
     const snippet = item.ai_analysis
@@ -103,12 +108,40 @@ function renderFeedList() {
       </div>
     `;
   }).join('');
+
+  // Аватарки нет в chat_avatars (канал без фото / воркер не ходил) —
+  // 404 превращаем в букву-заглушку, а не в битый img.
+  feedListContainer.querySelectorAll('img.feed-avatar').forEach(img => {
+    img.addEventListener('error', () => {
+      const div = document.createElement('div');
+      div.className = 'feed-avatar';
+      div.textContent = img.dataset.initial || 'Т';
+      img.replaceWith(div);
+    }, { once: true });
+  });
 }
 
-function selectFeedItem(id) {
+async function selectFeedItem(id) {
   selectedFeedId = id;
-  const item = currentFeed.find(f => f.id === id);
+  let item = currentFeed.find(f => f.id === id);
   if (!item) return;
+
+  // Новая сборка (5.4): список несёт только метаданные, исходные посты —
+  // детальным видом. В монолите (server.py, рантайм до К2) посты приходят
+  // списком — лишний запрос не дёргаем.
+  if (!Array.isArray(item.messages)) {
+    try {
+      const res = await apiGet(`/api/feed/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.feed_item && Array.isArray(data.feed_item.messages)) {
+          item = { ...item, ...data.feed_item };
+        }
+      }
+    } catch (e) {
+      console.error('Error loading feed detail:', e);
+    }
+  }
 
   document.querySelectorAll('.feed-card').forEach(el => el.classList.remove('active'));
   const cards = document.querySelectorAll('.feed-card');
@@ -127,6 +160,15 @@ function selectFeedItem(id) {
   if (feedDetailAvatar) {
     if (item.photo_base64) {
       feedDetailAvatar.innerHTML = html`<img src="${item.photo_base64}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+    } else if (item.chat_id) {
+      // аватарка с эндпоинта (5.4); 404 → буква-заглушка
+      feedDetailAvatar.innerHTML = html`<img src="/api/avatars/${item.chat_id}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="">`;
+      const img = feedDetailAvatar.querySelector('img');
+      if (img) {
+        img.addEventListener('error', () => {
+          feedDetailAvatar.textContent = initial;
+        }, { once: true });
+      }
     } else {
       feedDetailAvatar.textContent = initial;
     }

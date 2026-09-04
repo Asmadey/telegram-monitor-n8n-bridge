@@ -14,7 +14,17 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import get_settings
 from app.db import get_db
 from app.models import Base, User
-from app.security.csrf import CSRF_COOKIE, CSRF_HEADER, SAFE_METHODS
+from app.security.csrf import (
+    CSRF_COOKIE,
+    CSRF_HEADER,
+    SAFE_METHODS,
+    make_csrf_token,
+)
+from app.security.sessions import (
+    SESSION_COOKIE,
+    create_session,
+    sign_session_id,
+)
 
 
 class FrontendLikeClient(AsyncClient):
@@ -161,3 +171,30 @@ async def user_a(db):
 async def user_b(db):
     """Другой пользователь (тенант B): не должен видеть данные A."""
     return await _new_user(db, "tenant-b@example.com")
+
+
+async def act_as(client, db, user) -> None:
+    """Клиент действует от имени юзера: свежая сессия в cookie.
+
+    Сессия создаётся прямо в БД (минуя login), поэтому csrf-токен выдаём
+    так же, как его выдаёт _open_session при логине: ПОДПИСАННЫЙ и
+    привязанный к sid (анон-токен с живой cookie сессии не проходит —
+    так устроен verify_csrf, задача 2.6). Прежние cookie (домен test от
+    прайминга GET /health) вычищаем из jar — httpx падает CookieConflict
+    при двух cookie с одним именем. Вынесена из test_32 (3.3), когда
+    появился второй потребитель: свип изоляции в test_30 и лента в
+    test_50 (задача 5.4).
+
+    httpx нормализует base_url http://test в хост test.local — cookie,
+    поставленная на домен "test", на запрос просто не уедет (403 CSRF).
+    """
+    session = await create_session(db, user, ip="127.0.0.1", user_agent="pytest")
+    for c in list(client.cookies.jar):
+        if c.name in (CSRF_COOKIE, SESSION_COOKIE):
+            client.cookies.jar.clear(c.domain, c.path, c.name)
+    client.cookies.set(
+        SESSION_COOKIE, sign_session_id(session.id), domain="test.local", path="/"
+    )
+    client.cookies.set(
+        CSRF_COOKIE, make_csrf_token(session.id), domain="test.local", path="/"
+    )

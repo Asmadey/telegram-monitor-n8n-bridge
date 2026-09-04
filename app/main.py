@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from app.api import admin, auth, public, telegram
+from app.api import admin, auth, feed, public, telegram
 from app.security.crypto import validate_encryption_key
 from app.security.csrf import (
     CSRF_COOKIE,
@@ -46,6 +46,9 @@ app.include_router(auth.router)
 app.include_router(auth.public_router)  # signup/login — явный opt-out (2.4)
 app.include_router(admin.router)
 app.include_router(telegram.router)  # send-code/sign-in (3.3), state в БД
+# первый ресурсный роутер из server.py (5.4): лента + аватарки. Свип
+# изоляции эндпоинт-уровня (test_30) закрыт вместе с этим переносом.
+app.include_router(feed.router)
 
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 

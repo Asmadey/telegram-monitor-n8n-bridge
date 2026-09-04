@@ -1,6 +1,6 @@
 """Модели SQLAlchemy — многотенантная схема (задача 1.3 PLAN.md).
 
-Одиннадцать таблиц. Ключевое отличие от старой схемы: user_id NOT NULL + индекс
+Двенадцать таблиц. Ключевое отличие от старой схемы: user_id NOT NULL + индекс
 у каждой таблицы с данными тенанта — без индекса фильтр по пользователю
 вырождается в full scan, без NOT NULL строка «без владельца» видна всем.
 
@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Identity,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -176,7 +177,7 @@ class SentMessage(Base):
 
 class FeedItem(Base):
     __tablename__ = "feed_items"
-    # бывшая analysis_feed; photo_base64 вынесена (задача 5.4 — объектное хранилище)
+    # бывшая analysis_feed; photo_base64 вынесена в chat_avatars (задача 5.4)
 
     id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(
@@ -288,3 +289,21 @@ class LLMUsage(Base):
     )
 
     __table_args__ = (UniqueConstraint("user_id", "period"),)
+
+
+class ChatAvatar(Base):
+    """Аватарка канала (задача 5.4 PLAN.md): раньше photo_base64 лежала
+    в КАЖДОЙ строке ленты и уезжала клиенту списком — мегабайты на запрос.
+
+    user_id здесь НЕТ и это не дыра: фото публичного канала одно на всех,
+    дублировать его по тенантам — раздувание базы. Изоляция держится на
+    чтении — эндпоинт отдаёт bytes только юзеру, который мониторит канал
+    (иначе 404: существование канала произвольным клиентам не раскрываем)."""
+
+    __tablename__ = "chat_avatars"
+
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    image_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )

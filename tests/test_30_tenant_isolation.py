@@ -16,6 +16,8 @@ A читает ленту пользователя B». Поэтому тена�
 
 import datetime
 import inspect
+import json
+import re
 
 import pytest
 from fastapi import params
@@ -154,20 +156,110 @@ def _tenant_resource_routes():
 
 
 @pytest.mark.asyncio
-async def test_user_a_cannot_see_or_touch_user_b_resources(anon_client, db):
+async def test_user_a_cannot_see_or_touch_user_b_resources(
+    anon_client, db, user_a, user_b
+):
     """Свип эндпоинт-уровня из плана: B не видит ресурсы A в списках и
     получает 404 по прямым id. Маршруты перебираются автоматически —
-    перенесённый из server.py роутер попадает сюда без правки списка."""
+    следующий перенесённый из server.py роутер попадает сюда без правки
+    списков; неизвестный path-параметр или метод падает ГРОМКО: свип
+    обязан расти вместе с роутерами, молча пропускать нельзя.
+
+    Закрыт задачей 5.4 — первым ресурсным роутером (лента + аватарки):
+    сидинг данных A с маркерами, списки B — без маркеров (и со СВОИМИ
+    данными — позитивный контроль, иначе «пусто» выглядело бы зелёным),
+    прямые id/параметры — данные A → 404."""
     routes = list(_tenant_resource_routes())
     if not routes:
         pytest.skip(
             "ресурсные эндпоинты ещё в server.py (перенос — Фазы 3–4); "
             "до первого переноса свип нечего перебирать"
         )
-    # первый перенесённый ресурсный роутер обязан дополнить свип:
-    # сидинг данных A (маркеры), проверка списков B на отсутствие маркеров,
-    # прямые id — 404. Анти-вакуум: routes не пуст (скип выше).
-    raise AssertionError(
-        f"свип не реализован для {len(routes)} маршрутов — задача переноса "
-        "первого ресурсного роутера обязана закрыть его (PLAN 3.1)"
+
+    from app.models import ChatAvatar, FeedItem
+    from tests.conftest import act_as
+
+    marker = "tenant-a-secret-marker"
+    chat_a, chat_b = 424242501, 424242502
+    db.add(Monitor(user_id=user_a.id, chat_target="@a-channel", chat_id=chat_a))
+    db.add(ChatAvatar(chat_id=chat_a, image_bytes=b"\xff\xd8avatar-of-a"))
+    feed_a = FeedItem(
+        user_id=user_a.id,
+        job_id="job-of-a",
+        chat_id=chat_a,
+        chat_title=marker,
+        messages_count=1,
+        ai_analysis=marker,
+        raw_messages_json=json.dumps([{"id": 1, "text": marker}]),
+    )
+    db.add(feed_a)
+    # собственные данные B: списки/эндпоинты обязаны работать и отдавать своё
+    db.add(Monitor(user_id=user_b.id, chat_target="@b-channel", chat_id=chat_b))
+    db.add(ChatAvatar(chat_id=chat_b, image_bytes=b"\xff\xd8avatar-of-b"))
+    db.add(
+        FeedItem(
+            user_id=user_b.id,
+            job_id="job-of-b",
+            chat_id=chat_b,
+            chat_title="канал B",
+            messages_count=0,
+            ai_analysis="сводка B",
+            raw_messages_json="[]",
+        )
+    )
+    await db.commit()
+
+    await act_as(anon_client, db, user_b)
+
+    # ЧУЖИЕ (A) ресурсы в path-параметрах: каждый маршрут свипа обязан
+    # знать, чем их подставлять — новый параметр = громкий провал здесь
+    params = {"id": feed_a.id, "chat_id": chat_a}
+    exercised = set()
+    for route in routes:
+        for method in sorted(getattr(route, "methods", None) or {"GET"}):
+            assert method in ("GET", "HEAD", "OPTIONS"), (
+                f"свип не умеет {method} {route.path} — дополни свип (PLAN 3.1)"
+            )
+            if method != "GET":
+                continue
+
+            def _sub(path: str, path_route=route.path) -> str:
+                def repl(m: re.Match) -> str:
+                    name = m.group(1)
+                    if name not in params:
+                        pytest.fail(
+                            f"свип не знает параметр {name} маршрута "
+                            f"{path_route} — дополни params"
+                        )
+                    return str(params[name])
+
+                return re.sub(r"\{(\w+)\}", repl, path)
+
+            url = _sub(route.path)
+            resp = await anon_client.get(url)
+            exercised.add(f"GET {route.path}")
+            if "{" in route.path:
+                # прямой доступ к ЧУЖИМУ ресурсу: 404, не 403 и не 200
+                assert resp.status_code == 404, (
+                    f"{url} для юзера B → {resp.status_code}, должен 404 "
+                    "(403 подтверждает существование)"
+                )
+            else:
+                # списочный маршрут: 200, НИ ОДНОГО маркера A, но своё — видно
+                assert resp.status_code == 200, f"{url} → {resp.status_code}"
+                assert marker not in resp.text, f"{url} утёк маркер тенанта A"
+                assert "сводка B" in resp.text, (
+                    f"{url}: собственных данных B не видно — свип не видит, "
+                    "что списки вообще работают"
+                )
+
+    # анти-вакуум: каждый маршрут свипа реально проверен
+    assert exercised == {f"GET {r.path}" for r in routes}, (
+        f"свип покрыл не все маршруты: {sorted(exercised)}"
+    )
+
+    # позитивный контроль аватарки: владельцу монитора отдаётся своя
+    own = await anon_client.get(f"/api/avatars/{chat_b}")
+    assert own.status_code == 200 and own.content == b"\xff\xd8avatar-of-b", (
+        f"собственная аватарка юзера B → {own.status_code}"
     )
