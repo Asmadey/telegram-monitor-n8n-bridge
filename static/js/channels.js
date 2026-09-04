@@ -6,7 +6,7 @@
 // и компания обязаны быть на window (ES-модули file-scoped).
 
 import { apiFetch, apiGet } from './api.js';
-import { escapeHtml, esc, formatIntervalHuman, formatNextRun, showToast, closeModalAnimated } from './render.js';
+import { html, raw, formatIntervalHuman, formatNextRun, showToast, closeModalAnimated } from './render.js';
 import { setFilterChatOptions, mergeMessages } from './messages.js';
 
 const monitorsList = document.getElementById('monitorsList');
@@ -79,7 +79,7 @@ function renderMonitors() {
   tabChannelsCount.textContent = currentMonitors.length;
 
   if (currentMonitors.length === 0) {
-    monitorsList.innerHTML = `
+    monitorsList.innerHTML = html`
       <div style="text-align: center; color: var(--mute); padding: 40px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-md);">
         Нет добавленных каналов. Нажмите <b>«➕ Добавить канал»</b> выше, чтобы настроить первый источник!
       </div>
@@ -87,16 +87,16 @@ function renderMonitors() {
     return;
   }
 
-  monitorsList.innerHTML = currentMonitors.map(m => `
+  monitorsList.innerHTML = currentMonitors.map(m => html`
     <div class="monitor-row-card ${m.is_active ? '' : 'inactive'}" id="monitor-${m.id}">
 
       <!-- Column 1: Channel Info -->
       <div class="channel-main-info">
-        <div class="channel-title" title="${esc(m.chat_title)}">
-          ${esc(m.chat_title)}
+        <div class="channel-title" title="${m.chat_title}">
+          ${m.chat_title}
         </div>
         <div class="channel-target">
-          ${esc(m.chat_username ? '@' + m.chat_username : 'ID: ' + m.chat_id)}
+          ${m.chat_username ? '@' + m.chat_username : 'ID: ' + m.chat_id}
         </div>
       </div>
 
@@ -111,18 +111,18 @@ function renderMonitors() {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
             Лимит: <b>${m.limit}</b>
           </span>
-          ${m.prompt ? `
-            <span class="clean-pill clean-pill-purple" title="Кастомный системный промпт: ${escapeHtml(m.prompt)}">
+          ${m.prompt ? raw(html`
+            <span class="clean-pill clean-pill-purple" title="Кастомный системный промпт: ${m.prompt}">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
               LLM Промпт
             </span>
-          ` : ''}
+          `) : ''}
         </div>
 
         <div class="meta-timeline-row">
           <span class="timeline-segment" title="Частота автоматического опроса">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            ${formatIntervalHuman(m.interval_minutes)}
+            ${raw(formatIntervalHuman(m.interval_minutes))}
           </span>
           <span class="timeline-divider">•</span>
           <span class="timeline-segment" title="Время последней проверки канала">
@@ -131,7 +131,7 @@ function renderMonitors() {
           <span class="timeline-divider">•</span>
           <span class="timeline-next-status ${m.is_active ? 'active' : ''}" title="Расчетное время следующего запуска">
             <span class="pulse-dot ${m.is_active ? '' : 'paused'}"></span>
-            След: ${formatNextRun(m)}
+            След: ${raw(formatNextRun(m))}
           </span>
         </div>
       </div>
@@ -427,15 +427,15 @@ document.getElementById('openDialogsModalBtn').addEventListener('click', async (
     const res = await apiGet('/dialogs?limit=30');
     const data = await res.json();
     if (data.dialogs) {
-      dialogsModalBody.innerHTML = data.dialogs.map(d => `
+      dialogsModalBody.innerHTML = data.dialogs.map(d => html`
         <div class="dialog-item">
           <div>
-            <div style="font-weight: 600; color: var(--ink);">${esc(d.name)}</div>
+            <div style="font-weight: 600; color: var(--ink);">${d.name}</div>
             <div style="font-size: 11px; color: var(--body-mid);">
-              ${esc(d.username ? '@' + d.username : 'ID: ' + d.id)} • Тип: ${esc(d.type)}
+              ${d.username ? '@' + d.username : 'ID: ' + d.id} • Тип: ${d.type}
             </div>
           </div>
-          <button class="btn btn-secondary btn-sm" data-dialog-select="${esc(d.username ? '@' + d.username : String(d.id))}">+ Выбрать</button>
+          <button class="btn btn-secondary btn-sm" data-dialog-select="${d.username ? '@' + d.username : String(d.id)}">+ Выбрать</button>
         </div>
       `).join('');
     }

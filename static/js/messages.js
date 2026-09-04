@@ -6,7 +6,7 @@
 // без цикла импортов.
 
 import { apiFetch, apiGet } from './api.js';
-import { escapeHtml, esc, formatTelegramText, showToast, openModalAnimated, closeModalAnimated } from './render.js';
+import { html, raw, formatTelegramText, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 
 const tabMessagesCount = document.getElementById('tabMessagesCount');
 const messagesTableBody = document.getElementById('messagesTableBody');
@@ -57,7 +57,7 @@ export function renderTable() {
   tabMessagesCount.textContent = filtered.length;
 
   if (filtered.length === 0) {
-    messagesTableBody.innerHTML = `
+    messagesTableBody.innerHTML = html`
       <tr>
         <td colspan="6" style="text-align: center; padding: 48px; color: var(--mute);">
           Сообщения по заданным фильтрам не найдены.
@@ -73,34 +73,34 @@ export function renderTable() {
     const totalReactions = msg.reactions_count || reactionsList.reduce((sum, r) => sum + (r.count || 0), 0);
     const reactionsTitle = reactionsList.length > 0 ? reactionsList.map(r => (r.emoji || '👍') + ' ' + r.count).join(' ') : `${totalReactions} реакций`;
 
-    return `
+    return html`
     <tr>
       <td><span class="badge-metric">${msg.id}</span></td>
       <td style="color: var(--body-mid); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap;">
         ${new Date(msg.date).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
       </td>
       <td>
-        <div style="font-weight: 600; color: var(--ink);">${escapeHtml(msg.chat_title || 'Канал')}</div>
-        <div style="font-size: 11px; color: var(--body-mid);">${escapeHtml(msg.sender || '')}</div>
+        <div style="font-weight: 600; color: var(--ink);">${msg.chat_title || 'Канал'}</div>
+        <div style="font-size: 11px; color: var(--body-mid);">${msg.sender || ''}</div>
       </td>
       <td class="msg-text-cell">
-        <div class="msg-text" id="msg-text-${msg.chat_id}-${msg.id}">${formatTelegramText(msg.text)}</div>
-        ${msg.text && msg.text.length > 140 ? `<button class="expand-btn" onclick="toggleExpand('${msg.chat_id}-${msg.id}')">Развернуть / Свернуть</button>` : ''}
+        <div class="msg-text" id="msg-text-${msg.chat_id}-${msg.id}">${raw(formatTelegramText(msg.text))}</div>
+        ${msg.text && msg.text.length > 140 ? raw(html`<button class="expand-btn" onclick="toggleExpand('${msg.chat_id}-${msg.id}')">Развернуть / Свернуть</button>`) : ''}
       </td>
       <td>
         <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
-          ${msg.views !== null && msg.views !== undefined ? `<span class="badge-metric" title="Просмотры">👁️ ${Number(msg.views).toLocaleString('ru-RU')}</span>` : ''}
-          ${hasReactions ? `<span class="badge-metric" style="color: #ed52cb; background: rgba(237, 82, 203, 0.08); border-color: rgba(237, 82, 203, 0.25);" title="${esc(reactionsTitle)}">❤️ ${totalReactions}</span>` : ''}
-          ${msg.forwards ? `<span class="badge-metric" title="Пересылки">↗️ ${Number(msg.forwards).toLocaleString('ru-RU')}</span>` : ''}
-          ${msg.has_media ? `<span class="badge-media">📎 Медиа</span>` : ''}
+          ${msg.views !== null && msg.views !== undefined ? raw(`<span class="badge-metric" title="Просмотры">👁️ ${Number(msg.views).toLocaleString('ru-RU')}</span>`) : ''}
+          ${hasReactions ? raw(html`<span class="badge-metric" style="color: #ed52cb; background: rgba(237, 82, 203, 0.08); border-color: rgba(237, 82, 203, 0.25);" title="${reactionsTitle}">❤️ ${totalReactions}</span>`) : ''}
+          ${msg.forwards ? raw(`<span class="badge-metric" title="Пересылки">↗️ ${Number(msg.forwards).toLocaleString('ru-RU')}</span>`) : ''}
+          ${msg.has_media ? raw(`<span class="badge-media">📎 Медиа</span>`) : ''}
         </div>
       </td>
       <td>
-        ${msg.post_url ? `
-          <a href="${esc(msg.post_url)}" target="_blank" class="post-link-btn">
+        ${msg.post_url ? raw(html`
+          <a href="${msg.post_url}" target="_blank" class="post-link-btn">
             🔗 Открыть
           </a>
-        ` : '<span style="color: var(--mute);">-</span>'}
+        `) : '<span style="color: var(--mute);">-</span>'}
       </td>
     </tr>
     `;
@@ -116,8 +116,8 @@ window.toggleExpand = toggleExpand;
 
 export function setFilterChatOptions(monitors) {
   // опции фильтра «Канал» наполняет вкладка каналов после renderMonitors
-  filterChatSelect.innerHTML = '<option value="ALL">Все каналы</option>' +
-    monitors.map(m => `<option value="${m.chat_id}">${esc(m.chat_title)}</option>`).join('');
+  const options = monitors.map(m => html`<option value="${m.chat_id}">${m.chat_title}</option>`).join('');
+  filterChatSelect.innerHTML = html`<option value="ALL">Все каналы</option>${raw(options)}`;
 }
 
 export function mergeMessages(messages, meta) {

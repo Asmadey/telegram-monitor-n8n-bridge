@@ -2,7 +2,7 @@
 // очистка журнала (задача 5.1, разрез index.html).
 
 import { apiFetch, apiGet } from './api.js';
-import { escapeHtml, esc, showToast } from './render.js';
+import { html, showToast } from './render.js';
 
 const tabLogsCount = document.getElementById('tabLogsCount');
 const logsTableBody = document.getElementById('logsTableBody');
@@ -29,7 +29,7 @@ export async function loadLogs() {
 
 function renderLogs() {
   if (currentLogs.length === 0) {
-    logsTableBody.innerHTML = `
+    logsTableBody.innerHTML = html`
       <tr>
         <td colspan="5" style="text-align: center; padding: 48px; color: var(--mute);">
           Записи в журнале логов отсутствуют.
@@ -39,22 +39,22 @@ function renderLogs() {
     return;
   }
 
-  logsTableBody.innerHTML = currentLogs.map(log => `
+  logsTableBody.innerHTML = currentLogs.map(log => html`
     <tr>
       <td style="color: var(--body-mid); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap;">
         ${new Date(log.timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'})}
       </td>
       <td>
-        <span class="meta-tag" style="font-size: 11px;">${esc(log.event_type)}</span>
+        <span class="meta-tag" style="font-size: 11px;">${log.event_type}</span>
       </td>
       <td>
-        <div style="font-weight: 500; color: var(--ink);">${esc(log.chat_title || '—')}</div>
+        <div style="font-weight: 500; color: var(--ink);">${log.chat_title || '—'}</div>
       </td>
       <td>
-        <span class="status-tag ${esc(log.status)}">${esc(log.status)}</span>
+        <span class="status-tag ${log.status}">${log.status}</span>
       </td>
       <td style="font-size: 12.5px; color: var(--body); word-break: break-word;">
-        ${escapeHtml(log.details || '')}
+        ${log.details || ''}
       </td>
     </tr>
   `).join('');

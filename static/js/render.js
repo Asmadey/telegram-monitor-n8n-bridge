@@ -1,10 +1,16 @@
 // render.js — общие помощники DOM: экранирование, форматирование,
 // модалки и тосты (задача 5.1, разрез index.html).
 //
-// escapeHtml/esc — единственные точки экранирования интерфейса: всё,
-// что уходит в innerHTML, обязано проходить через них (XSS-сканер задачи
-// 0.4 ходит по всем файлам static/**). esc дополнительно экранирует
-// кавычки — безопасен и в текстовом узле, и внутри атрибута.
+// Задача 5.2 — экранирование ПО УМОЛЧАНИЮ: html — единственный способ
+// строить разметку с данными. Это tagged-template: каждая подстановка
+// ${...} экранируется сама (включая кавычки — безопасно и в текстовом
+// узле, и внутри атрибута); raw() — осознанный opt-out для готового
+// безопасного HTML (например raw(formatTelegramText(...)) — виден в
+// ревью, XSS-сканер 0.4 treats raw( как отсутствие экранирования).
+// Прямой innerHTML со строковой интерполяцией запрещён (test_48).
+//
+// escapeHtml/esc остаются для точек вне билдера: атрибуты внутри raw()
+// и значения, экранируемые до построения разметки.
 
 export function escapeHtml(text) {
   if (!text) return '';
@@ -17,6 +23,39 @@ export function escapeHtml(text) {
 // и внутри атрибута (escapeHtml кавычки не экранирует).
 export function esc(text) {
   return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Чистый (без DOM) escaper для билдера: исполним и в node (test_48),
+// и в браузере; порядок важен — & первым, иначе двойное экранирование.
+function escapeAll(text) {
+  return String(text)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+const RAW = Symbol('html-raw');
+
+// Метка «значение уже безопасно»: внутри html` вставляется как есть.
+export function raw(value) {
+  return { [RAW]: true, value: String(value) };
+}
+
+// html`<a href="${url}">${title}</a>` — каждая подстановка экранируется
+// автоматически; числа и null/undefined не калечатся.
+export function html(strings, ...values) {
+  let out = strings[0];
+  values.forEach((value, i) => {
+    if (value !== null && value !== undefined) {
+      out += value && typeof value === 'object' && RAW in value
+        ? value.value
+        : escapeAll(value);
+    }
+    out += strings[i + 1];
+  });
+  return out;
 }
 
 export function formatTelegramText(text) {

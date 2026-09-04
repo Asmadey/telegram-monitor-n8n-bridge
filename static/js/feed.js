@@ -5,7 +5,7 @@
 // обязана быть на window (ES-модули file-scoped).
 
 import { apiFetch, apiGet } from './api.js';
-import { escapeHtml, esc, formatRelativeTime, formatTelegramText, showToast } from './render.js';
+import { html, raw, formatRelativeTime, formatTelegramText, showToast } from './render.js';
 
 const tabFeedCount = document.getElementById('tabFeedCount');
 const feedTotalCount = document.getElementById('feedTotalCount');
@@ -63,7 +63,7 @@ export async function loadFeed(silent = false) {
 function renderFeedList() {
   if (!feedListContainer) return;
   if (currentFeed.length === 0) {
-    feedListContainer.innerHTML = `
+    feedListContainer.innerHTML = html`
       <div style="text-align: center; padding: 48px 16px; color: var(--mute); font-size: 13px;">
         Пока нет выполненных задач анализа.<br>
         <span style="font-size: 11.5px; color: var(--body-mid); display: inline-block; margin-top: 6px;">
@@ -78,20 +78,20 @@ function renderFeedList() {
     const isActive = item.id === selectedFeedId;
     const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
     const avatarHtml = item.photo_base64
-      ? `<img src="${esc(item.photo_base64)}" class="feed-avatar" alt="${esc(item.chat_title)}">`
-      : `<div class="feed-avatar">${initial}</div>`;
+      ? html`<img src="${item.photo_base64}" class="feed-avatar" alt="${item.chat_title}">`
+      : html`<div class="feed-avatar">${initial}</div>`;
 
     const rawMsgs = Array.isArray(item.messages) ? item.messages : [];
     const snippet = item.ai_analysis
       ? item.ai_analysis.replace(/[*#`_]/g, '')
       : (rawMsgs[0]?.text || 'Выборка сообщений Telegram');
 
-    return `
+    return html`
       <div class="feed-card ${isActive ? 'active' : ''}" onclick="selectFeedItem(${item.id})">
         <div class="feed-card-header">
-          ${avatarHtml}
+          ${raw(avatarHtml)}
           <div style="min-width: 0; flex: 1;">
-            <div class="feed-card-title">${escapeHtml(item.chat_title || 'Канал')}</div>
+            <div class="feed-card-title">${item.chat_title || 'Канал'}</div>
             <div class="feed-card-meta">
               <span>${formatRelativeTime(item.created_at)}</span>
               <span style="opacity: 0.5;">•</span>
@@ -99,7 +99,7 @@ function renderFeedList() {
             </div>
           </div>
         </div>
-        <div class="feed-card-snippet">${escapeHtml(snippet)}</div>
+        <div class="feed-card-snippet">${snippet}</div>
       </div>
     `;
   }).join('');
@@ -126,7 +126,7 @@ function selectFeedItem(id) {
   const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
   if (feedDetailAvatar) {
     if (item.photo_base64) {
-      feedDetailAvatar.innerHTML = `<img src="${esc(item.photo_base64)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+      feedDetailAvatar.innerHTML = html`<img src="${item.photo_base64}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
     } else {
       feedDetailAvatar.textContent = initial;
     }
@@ -160,7 +160,7 @@ function selectFeedItem(id) {
     if (msgs.length === 0) {
       feedRawMessagesList.innerHTML = '<div style="color: var(--mute); font-size: 12.5px;">Нет исходных постов в этой выборке.</div>';
     } else {
-      feedRawMessagesList.innerHTML = msgs.map((m, idx) => `
+      feedRawMessagesList.innerHTML = msgs.map((m, idx) => html`
         <div class="feed-raw-post">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <div style="font-size: 12px; font-weight: 600; color: var(--ink);">
@@ -171,14 +171,14 @@ function selectFeedItem(id) {
             </div>
           </div>
           <div style="font-size: 13px; line-height: 1.5; color: var(--body); margin-bottom: 8px;">
-            ${formatTelegramText(m.text || '')}
+            ${raw(formatTelegramText(m.text || ''))}
           </div>
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            ${m.views !== null && m.views !== undefined ? `<span class="badge-metric">👁️ ${Number(m.views).toLocaleString('ru-RU')}</span>` : ''}
-            ${m.reactions_count ? `<span class="badge-metric" style="color: #ed52cb;">❤️ ${m.reactions_count}</span>` : ''}
-            ${m.forwards ? `<span class="badge-metric">↗️ ${m.forwards}</span>` : ''}
-            ${m.has_media ? `<span class="badge-media">📎 Медиа</span>` : ''}
-            ${m.post_url ? `<a href="${esc(m.post_url)}" target="_blank" class="post-link-btn" style="margin-left: auto;">🔗 Открыть в TG</a>` : ''}
+            ${m.views !== null && m.views !== undefined ? raw(`<span class="badge-metric">👁️ ${Number(m.views).toLocaleString('ru-RU')}</span>`) : ''}
+            ${m.reactions_count ? raw(`<span class="badge-metric" style="color: #ed52cb;">❤️ ${m.reactions_count}</span>`) : ''}
+            ${m.forwards ? raw(`<span class="badge-metric">↗️ ${m.forwards}</span>`) : ''}
+            ${m.has_media ? raw(`<span class="badge-media">📎 Медиа</span>`) : ''}
+            ${m.post_url ? raw(html`<a href="${m.post_url}" target="_blank" class="post-link-btn" style="margin-left: auto;">🔗 Открыть в TG</a>`) : ''}
           </div>
         </div>
       `).join('');

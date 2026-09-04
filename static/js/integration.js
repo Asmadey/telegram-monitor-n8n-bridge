@@ -6,7 +6,7 @@
 // обязаны быть на window (ES-модули file-scoped).
 
 import { apiFetch, apiGet } from './api.js';
-import { escapeHtml, showToast, openModalAnimated, closeModalAnimated } from './render.js';
+import { html, raw, escapeHtml, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 import { loadLogs } from './logs.js';
 
 // OpenRouter
@@ -114,9 +114,9 @@ function renderModelsDropdown(query = '') {
   }
 
   if (filtered.length === 0) {
-    openrouterModelsDropdown.innerHTML = `
+    openrouterModelsDropdown.innerHTML = html`
       <div style="padding: 14px; text-align: center; color: var(--mute); font-size: 12.5px;">
-        Модели по запросу <b>"${escapeHtml(query)}"</b> не найдены в каталоге.<br>
+        Модели по запросу <b>"${query}"</b> не найдены в каталоге.<br>
         <span style="font-size: 11px; color: var(--body-mid);">Вы можете использовать введенный ID модели.</span>
       </div>
     `;
@@ -149,30 +149,30 @@ function renderModelsDropdown(query = '') {
     else groups['Другие модели'].push(m);
   });
 
-  let html = `<div style="padding: 6px 12px; font-size: 11px; color: #5533ff; background: #f5f3ff; border-bottom: 1px solid var(--hairline); font-weight: 600;">Найдено моделей: ${filtered.length} ${q ? `по запросу "${escapeHtml(q)}"` : ''}</div>`;
+  let dropdownHtml = html`<div style="padding: 6px 12px; font-size: 11px; color: #5533ff; background: #f5f3ff; border-bottom: 1px solid var(--hairline); font-weight: 600;">Найдено моделей: ${filtered.length} ${q ? raw(`по запросу "${escapeHtml(q)}"`) : ''}</div>`;
   for (const [groupName, groupModels] of Object.entries(groups)) {
     if (groupModels.length > 0) {
-      html += `<div class="autocomplete-group-header">🌟 ${groupName} (${groupModels.length})</div>`;
-      html += groupModels.map(m => {
+      dropdownHtml += html`<div class="autocomplete-group-header">🌟 ${groupName} (${groupModels.length})</div>`;
+      dropdownHtml += groupModels.map(m => {
         const isCurrent = (m.id === openrouterModel.value.trim());
         // HTML строится в переменных: экранирование выполняется внутри
         // highlightText (через escapeHtml), в разметку уходит готовый безопасный HTML.
         const nameHtml = highlightText(m.name || m.id, q);
         const idHtml = highlightText(m.id, q);
-        return `
+        return html`
           <div class="autocomplete-item ${isCurrent ? 'selected' : ''}" data-model-id="${m.id}" onclick="selectModelItem('${m.id}')">
             <div>
-              <div class="autocomplete-item-name">${nameHtml}</div>
-              <div class="autocomplete-item-id">${idHtml}</div>
+              <div class="autocomplete-item-name">${raw(nameHtml)}</div>
+              <div class="autocomplete-item-id">${raw(idHtml)}</div>
             </div>
-            ${isCurrent ? '<span style="font-size: 12px; color: #5533ff; font-weight: 700;">✓</span>' : ''}
+            ${isCurrent ? raw(`<span style="font-size: 12px; color: #5533ff; font-weight: 700;">✓</span>`) : ''}
           </div>
         `;
       }).join('');
     }
   }
 
-  openrouterModelsDropdown.innerHTML = html;
+  openrouterModelsDropdown.innerHTML = dropdownHtml;
   showModelsDropdown();
 }
 
