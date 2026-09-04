@@ -5,6 +5,61 @@
 
 ---
 
+### 2026-09-04 — Фаза 6: вход через Google (Firebase)
+
+**Сделано:** Firebase — провайдер идентичности, НЕ система сессий.
+- `POST /auth/google` (public_router, rate-limit 10/3minutes —
+  бюджет login): verify_id_token → claims → юзер ищется/создаётся
+  в своей таблице → **своя** cookie-сессия. Отзыв работает
+  (блокировка убивает сессии), админка видит всех, GitHub/Apple
+  добавятся без переписывания аутентификации.
+- **UserIdentity** (identities, миграция `0004_identities` за
+  0003_chat_avatars): UNIQUE(provider, provider_uid) — один
+  Google-аккаунт не связывается с двумя юзерами. Имя НЕ Identity:
+  в app.models оно занято sqlalchemy.Identity (PK-конструктор),
+  тень ломала бы mapped_column у моделей ниже.
+- Верификатор — инъектируемая зависимость
+  (`app/services/google_auth.py: get_google_verifier`, паттерн
+  Telethon-клиента из 3.3): firebase_admin импортируется ЛЕНИВО
+  (web без единого /auth/google не требует конфигурации), но без
+  кредов верификация поднимает RuntimeError → громкий 500, НЕ
+  маскировка под 401 (урок 2026-09-02: misconfiguration не
+  выглядит отказом входа).
+- Сверх красных случаев плана: email_verified=False → 401 (Google
+  не подтвердил адрес за юзером — иначе привязка идентичности к
+  чужому ящику, обход владения email); uid уже за другим юзером
+  при другом email → 401 — владельца идентичности молча не
+  перетасовываем.
+
+**Подтверждено:** красная фаза — падения на assert (модель
+UserIdentity через getattr, сервисный модуль через
+importlib+try/except, 404 на POST /auth/google до роута);
+test_60 → **9 passed** (4 красных случая плана + email_verified
++ конфликт uid + 3 структурных). Полный прогон: **228 passed,
+3 skipped**; ruff/mypy чисты (mypy.ini: точечный override
+firebase_admin.* — без py.typed, прецедент telethon).
+
+**Не сработало — ловушки:**
+- sqlalchemy.Identity затеняет имя «Identity» — модель названа
+  UserIdentity, тест берёт её через getattr+assert.
+- UniqueConstraint-объект не имеет атрибута .unique — уникальность
+  проверяется isinstance(uc, UniqueConstraint) + uc.columns.keys().
+- ColumnCollection итерируется как Column-объекты, не имена —
+  `set(cols)` давал бессмыслицу, нужно `cols.keys()`.
+- getattr(services, "google_auth") не видит непрощённый
+  подмодуль — только importlib.import_module.
+- Ответ /auth/google — плоский _user_dict(user) (конвенция
+  signup/login), не {"user": ...}.
+
+**Не подтверждено:** живой Firebase (verify_id_token реальным
+токеном — нужен проект/креды, деплойный шаг), кнопка Google
+Sign-In на страницах входа (до клиентского GOOGLE_CLIENT_ID),
+живой Postgres для миграции 0004 (без TEST_DATABASE_URL).
+
+**Коммиты:** `1157095` (код + тесты).
+
+---
+
 ### 2026-09-04 — Задача 5.4: аватарки из строк ленты (первый ресурсный роутер)
 
 **Сделано:** GET /api/feed больше не возит тяжёлое строкой.
