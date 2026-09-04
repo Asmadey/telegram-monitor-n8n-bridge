@@ -248,3 +248,34 @@ async def second_client(app, db_engine):
         await ac.get("/health")
         yield ac
     app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_http(monkeypatch, request):
+    """Тесты не ходят в интернет.
+
+    Найдено при переносе каталога моделей (К2): свип изоляции дёрнул
+    /api/openrouter/models, и прогон ушёл в настоящий OpenRouter — 427
+    моделей в ответе. Сетевой вызов делает тест медленным, ненадёжным и
+    зависящим от чужого сервиса, а в CI ещё и утекающим наружу.
+
+    Разрешить осознанно: пометить тест `@pytest.mark.allow_network`.
+    """
+    if request.node.get_closest_marker("allow_network"):
+        return
+
+    import httpx
+
+    async def blocked(self, *a, **kw):
+        raise RuntimeError(
+            "исходящий HTTP-запрос из теста заблокирован: подмените зависимость "
+            "(get_model_lister / get_outbound / get_entity_resolver) или пометьте "
+            "тест @pytest.mark.allow_network"
+        )
+
+    # Именно AsyncHTTPTransport — это настоящая сеть. Перехватывать
+    # AsyncClient.send нельзя: через него же идёт ASGITransport, которым
+    # тестовые клиенты обращаются к приложению в памяти.
+    monkeypatch.setattr(
+        httpx.AsyncHTTPTransport, "handle_async_request", blocked, raising=True
+    )

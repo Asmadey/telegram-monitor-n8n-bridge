@@ -211,3 +211,36 @@ async def save_telegram_forward(
         "SUCCESS",
     )
     return await get_telegram_forward(repo)
+
+
+async def get_model_lister():
+    """Список моделей OpenRouter. Зависимостью — тест не ходит в сеть."""
+    import httpx
+
+    async def lister(api_key: str, base_url: str) -> list[dict]:
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(f"{base_url.rstrip('/')}/models", headers=headers)
+            resp.raise_for_status()
+            return resp.json().get("data", [])
+
+    return lister
+
+
+@router.get("/api/openrouter/models")
+async def openrouter_models(
+    repo: TenantRepo = Depends(get_tenant_repo), lister=Depends(get_model_lister)
+) -> dict:
+    """Каталог моделей. Ключ не обязателен — список публичный; но если он
+    задан, шлём его, чтобы получить доступные именно этому аккаунту."""
+    row, secrets = await _secrets(repo)
+    base_url = (row.openrouter_base_url if row else "") or DEFAULT_BASE_URL
+    try:
+        models = await lister(secrets.get("openrouter_api_key", ""), base_url)
+    except Exception as exc:  # сбой чужого сервиса — 502, а не наша 500
+        raise HTTPException(
+            status_code=502, detail=f"OpenRouter не ответил: {exc}"
+        ) from exc
+    # наружу — только то, что нужно выпадающему списку
+    items = [{"id": m.get("id"), "name": m.get("name")} for m in models if m.get("id")]
+    return {"total": len(items), "models": items}

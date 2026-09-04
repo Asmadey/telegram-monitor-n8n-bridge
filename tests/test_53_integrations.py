@@ -159,3 +159,23 @@ async def test_integrations_are_per_tenant(
 
     await act_as(second_client, db, user_b)
     assert (await second_client.get("/api/openrouter")).json()["has_key"] is False
+
+
+@pytest.fixture
+def fake_models(app):
+    from app.api.integrations import get_model_lister
+
+    async def lister(api_key: str, base_url: str):
+        return [{"id": "deepseek/deepseek-v4-flash", "name": "DeepSeek", "extra": 1}]
+
+    app.dependency_overrides[get_model_lister] = lambda: lister
+    yield
+    app.dependency_overrides.pop(get_model_lister, None)
+
+
+async def test_models_list_is_trimmed_to_what_the_dropdown_needs(
+    anon_client, db, user, fake_models
+):
+    await act_as(anon_client, db, user)
+    body = (await anon_client.get("/api/openrouter/models")).json()
+    assert body["models"] == [{"id": "deepseek/deepseek-v4-flash", "name": "DeepSeek"}]

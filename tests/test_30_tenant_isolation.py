@@ -32,7 +32,17 @@ from tests.conftest import walk_routes
 _NON_TENANT_PREFIXES = ("/auth", "/api/admin", "/api/telegram")
 # Экраны входа (5.3) — статическая разметка форм для анонима,
 # данных тенантов не отдают.
-_NON_TENANT_EXACT = {"/", "/static", "/health", "/login", "/signup", "/password-reset"}
+_NON_TENANT_EXACT = {
+    "/",
+    "/static",
+    "/health",
+    "/login",
+    "/signup",
+    "/password-reset",
+    # каталог моделей OpenRouter — проксирование чужого сервиса, а не
+    # данные тенанта: маркеру владельца там взяться неоткуда
+    "/api/openrouter/models",
+}
 
 
 def _tenant_models():
