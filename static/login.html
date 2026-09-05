@@ -30,6 +30,12 @@
   }
   button:hover { opacity: 0.9; }
   .form-error { min-height: 20px; margin: 8px 0; color: #d33; font-size: 13px; }
+  .alt-signin { margin-top: 14px; }
+  .google-btn {
+    background: #fff; color: var(--ink); border: 1px solid var(--hairline);
+  }
+  .google-btn:hover { background: #f3f4f6; opacity: 1; }
+  .google-error { min-height: 18px; margin: 8px 0 0; color: #d33; font-size: 13px; }
   .links { margin: 16px 0 0; text-align: center; font-size: 13px; }
   .links a { color: var(--accent); text-decoration: none; margin: 0 6px; }
 </style>
@@ -48,6 +54,12 @@
     <p class="form-error" role="alert"></p>
     <button type="submit">Войти</button>
   </form>
+  <div class="alt-signin">
+    <button type="button" id="googleSignIn" class="google-btn" hidden>
+      Войти через Google
+    </button>
+    <p class="google-error" role="alert"></p>
+  </div>
   <p class="links"><a href="/signup">Регистрация</a>·<a href="/password-reset">Забыли пароль?</a></p>
 </main>
 <script src="/static/js/auth-pages.js"></script>

@@ -32,6 +32,7 @@ from app.security.sessions import (
     destroy_session,
     set_session_cookie,
 )
+from app.config import get_settings
 from app.services.google_auth import get_google_verifier
 from app.services.mailer import send_password_reset_email
 
@@ -182,6 +183,34 @@ async def login(
         raise HTTPException(status_code=401, detail="Неверный email или пароль")
     await _open_session(db, request, response, user)
     return _user_dict(user)
+
+
+@public_router.get("/auth/google/config")
+async def google_config() -> dict[str, Any]:
+    """Публичная конфигурация Firebase для страницы входа.
+
+    Значения приходят из окружения, а не зашиты в HTML: они зависят от
+    проекта оператора, и иначе смена проекта требовала бы пересборки
+    фронтенда. `apiKey` Firebase ПУБЛИЧЕН по устройству — он идентифицирует
+    проект, доступ дают правила и список разрешённых доменов в консоли;
+    приватный ключ сервисного аккаунта сюда не попадает никогда (его читает
+    firebase_admin из GOOGLE_APPLICATION_CREDENTIALS).
+
+    Не настроено — `{"enabled": false}` и ничего больше: клиент прячет
+    кнопку. Пустой объект или 404 не дали бы ему решения.
+
+    Имена полей — camelCase, как их ждёт сам Firebase SDK: объект уходит в
+    initializeApp как есть.
+    """
+    settings = get_settings()
+    if not settings.google_sign_in_enabled:
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "apiKey": settings.firebase_api_key,
+        "authDomain": settings.firebase_auth_domain,
+        "projectId": settings.firebase_project_id,
+    }
 
 
 @public_router.post("/auth/google")

@@ -132,4 +132,73 @@
       showError(confirmForm, detailText(r.data, 'Ссылка устарела или неверна'));
     });
   }
+  // --- вход через Google (Фаза 6) ---
+  //
+  // Firebase здесь — ПРОВАЙДЕР ИДЕНТИЧНОСТИ, а не система сессий: SDK лишь
+  // добывает ID-токен, дальше его проверяет бэкенд и выдаёт СВОЮ cookie.
+  // Поэтому отзыв доступа, блокировка пользователя и админка продолжают
+  // работать, а GitHub или Apple добавятся без переписывания входа.
+  //
+  // Версия SDK закреплена точно: плавающая ссылка на чужой скрипт означает
+  // код, который может смениться между двумя загрузками страницы входа.
+  // При обновлении менять обе строки разом — модули одной версии.
+  const FIREBASE_APP = 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+  const FIREBASE_AUTH = 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
+
+  const googleButton = document.getElementById('googleSignIn');
+  if (googleButton) {
+    const errorBox = document.querySelector('.google-error');
+    const setError = function (text) {
+      if (errorBox) errorBox.textContent = text; // textContent, не innerHTML (5.2)
+    };
+
+    // Кнопка скрыта в разметке и показывается ТОЛЬКО если Firebase
+    // настроен: кнопка, ведущая в ошибку инициализации, хуже отсутствующей.
+    fetch(apiBase() + '/auth/google/config', { credentials: 'include' })
+      .then(function (res) { return res.json(); })
+      .then(function (cfg) {
+        if (!cfg || !cfg.enabled) return;
+        googleButton.hidden = false;
+        googleButton.addEventListener('click', function () {
+          signInWithGoogle(cfg, setError, googleButton);
+        });
+      })
+      .catch(function () { /* API недоступен — вход по паролю остаётся */ });
+  }
+
+  async function signInWithGoogle(cfg, setError, button) {
+    setError('');
+    button.disabled = true;
+    try {
+      // динамический import: SDK грузится только по нажатию, а не на
+      // каждой загрузке страницы входа
+      const appMod = await import(FIREBASE_APP);
+      const authMod = await import(FIREBASE_AUTH);
+      const app = appMod.initializeApp({
+        apiKey: cfg.apiKey,
+        authDomain: cfg.authDomain,
+        projectId: cfg.projectId
+      });
+      const auth = authMod.getAuth(app);
+      const result = await authMod.signInWithPopup(
+        auth, new authMod.GoogleAuthProvider()
+      );
+      const idToken = await result.user.getIdToken();
+
+      const r = await postJson('/auth/google', { id_token: idToken });
+      if (r.ok) {
+        window.location.href = '/';
+        return;
+      }
+      setError(detailText(r.data, 'Не удалось войти через Google'));
+    } catch (e) {
+      // закрытое пользователем окно — не ошибка, о которой стоит кричать
+      const code = (e && e.code) || '';
+      if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        setError('Не удалось войти через Google');
+      }
+    } finally {
+      button.disabled = false;
+    }
+  }
 })();

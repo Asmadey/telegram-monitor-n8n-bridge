@@ -60,6 +60,27 @@ class Settings(BaseSettings):
     # запрос от фронтенда, и, следовательно, политика cookie.
     api_origin: str = ""
 
+    # Вход через Google. Значения ПУБЛИЧНЫ по устройству Firebase: apiKey
+    # идентифицирует проект, а не даёт доступ — защищают правила доступа и
+    # список разрешённых доменов в консоли. Приватный ключ сервисного
+    # аккаунта здесь не появляется никогда: его читает firebase_admin сам
+    # из GOOGLE_APPLICATION_CREDENTIALS.
+    # Пусто = вход через Google выключен: кнопка скрыта, а CSP не пускает
+    # сторонние origin — за выключенную функцию не платят политикой.
+    firebase_api_key: str = ""
+    firebase_auth_domain: str = ""
+    firebase_project_id: str = ""
+
+    @property
+    def google_sign_in_enabled(self) -> bool:
+        """Все три значения обязательны: SDK не инициализируется частично,
+        а кнопка, ведущая в ошибку инициализации, хуже отсутствующей."""
+        return bool(
+            self.firebase_api_key
+            and self.firebase_auth_domain
+            and self.firebase_project_id
+        )
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
