@@ -28,12 +28,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import SentMessage
 
 
+def _parse_date(value: Any) -> datetime.datetime | None:
+    """Дата поста → datetime для колонки DateTime.
+
+    Стык двух зелёных модулей: `fetch_channel_messages` кладёт в словарь
+    ISO-СТРОКУ (словарь уезжает в JSON — вебхук, лента, raw_messages_json,
+    а datetime туда не сериализуется), а колонка `sent_messages.date` —
+    DateTime. По отдельности оба контракта верны; вместе они не стыковались,
+    и первый же реальный опрос падал бы на вставке: SQLite бросает
+    TypeError, asyncpg — invalid input. Ни один модульный тест этого не
+    видел, потому что каждый передавал свой формат.
+
+    Преобразование живёт здесь, а не в выборке: словарь сообщения —
+    транспортный формат (JSON-совместимый), в тип колонки его приводит слой
+    доступа к данным.
+    """
+    if value is None or isinstance(value, datetime.datetime):
+        return value
+    try:
+        return datetime.datetime.fromisoformat(str(value))
+    except ValueError:
+        # дата поста не критична — пост важнее, чем его метка времени
+        return None
+
+
 def _to_row(user_id: int, chat_id: int, msg: dict) -> dict:
     return {
         "user_id": user_id,
         "chat_id": chat_id,
         "message_id": msg["id"],
-        "date": msg.get("date"),
+        "date": _parse_date(msg.get("date")),
         "sender": msg.get("sender"),
         "text": (msg.get("text") or "")[:1000],
         "views": msg.get("views"),
@@ -55,11 +79,6 @@ def _insert_for(dialect_name: str) -> Callable[..., Any]:
     Callable: stmt строит ровно один вызов."""
     module = sqlite if dialect_name == "sqlite" else postgresql
     return module.insert
-    if dialect_name == "sqlite":
-        from sqlalchemy.dialects.sqlite import insert
-    else:
-        from sqlalchemy.dialects.postgresql import insert
-    return insert
 
 
 async def filter_new(
