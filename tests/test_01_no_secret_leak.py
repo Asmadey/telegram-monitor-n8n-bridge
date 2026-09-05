@@ -48,9 +48,14 @@ def _returned_keys(func: ast.AST) -> set[str]:
 
 
 def _sources():
-    files = [ROOT / "server.py"]
-    files += sorted((ROOT / "app").rglob("*.py")) if (ROOT / "app").exists() else []
-    return [f for f in files if f.exists()]
+    """Весь исполняемый код. Монолит server.py удалён задачей 7.4; список
+    каталогов вместо перечня файлов — новый роутер проверяется сам,
+    без правки теста."""
+    files = sorted((ROOT / "app").rglob("*.py"))
+    files += sorted((ROOT / "scripts").rglob("*.py"))
+    existing = [f for f in files if f.exists()]
+    assert existing, "нечего сканировать — проверка выродилась в пустую"
+    return existing
 
 
 def test_no_endpoint_returns_a_raw_secret():

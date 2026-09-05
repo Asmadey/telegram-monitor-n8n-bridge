@@ -66,10 +66,18 @@ def test_get_settings_is_cached(monkeypatch):
 
 
 def test_app_never_writes_env_file():
-    """update_env_file не существует ни в app/, ни в server.py,
-    и никакой модуль не открывает .env на запись."""
+    """update_env_file не существует ни в одном модуле, и никто не
+    открывает .env на запись.
+
+    Монолит server.py, где эта функция жила, удалён задачей 7.4 — сканируем
+    весь исполняемый код: `app/` и `scripts/`. Список каталогов, а не
+    перечень файлов: новый модуль попадает под проверку сам."""
     bad_open = re.compile(r"open\(\s*ENV_FILE")
-    for f in list((ROOT / "app").rglob("*.py")) + [ROOT / "server.py"]:
+    sources = list((ROOT / "app").rglob("*.py")) + list(
+        (ROOT / "scripts").rglob("*.py")
+    )
+    assert sources, "нечего сканировать — проверка выродилась в пустую"
+    for f in sources:
         src = f.read_text(encoding="utf-8")
         assert "update_env_file" not in src, f"{f.name}: update_env_file жив"
         assert not bad_open.search(src), f"{f.name}: пишет .env напрямую"

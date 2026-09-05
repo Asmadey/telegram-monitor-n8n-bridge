@@ -18,7 +18,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-import httpx
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -204,33 +203,22 @@ def test_js_modules_parse():
 
 
 @pytest.mark.asyncio
-async def test_monolith_serves_split_assets():
-    """server.py — рантайм до закрытия К2 (перенос старых эндпоинтов), и
-    разрез 5.1 обязан работать НА НЁМ: index.html ссылается на
-    /static/css/main.css и /static/js/main.js, монолит обязан их раздавать.
-    Иначе UI оператора после разреза мёртв (голая разметка без стилей
-    и логики). ASGITransport не запускает lifespan — фоновый планировщик
-    и Telethon-клиент не стартуют.
+async def test_app_serves_split_assets(anon_client):
+    """Разрез 5.1 обязан работать на рантайме: index.html ссылается на
+    /static/css/main.css и /static/js/main.js, сборка обязана их раздавать.
+    Иначе UI после разреза мёртв — голая разметка без стилей и логики.
 
-    Поведенческий уровень: без окружения (нет .env с ключами Telegram)
-    импорт server.py падает — честный skip, не молчаливая зелень.
+    Раньше эта проверка шла против монолита server.py и после его удаления
+    (7.4) вечно писала skip. Тест, который не может выполниться, не
+    защищает ничего: перенесён на app.main, где рантайм и живёт.
     """
-    try:
-        import server  # noqa: PLC0415 — импорт в тесте, лениво и осознанно
-    except Exception as e:  # pragma: no cover — зависит от окружения
-        pytest.skip(f"server.py не импортируется без окружения: {e}")
-
-    transport = httpx.ASGITransport(app=server.app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        for url, ctype in (
-            ("/static/css/main.css", "text/css"),
-            ("/static/js/main.js", "javascript"),
-            ("/static/js/api.js", "javascript"),
-        ):
-            resp = await client.get(url)
-            assert resp.status_code == 200, (
-                f"{url} не раздаётся монолитом — разрезанный UI мёртв"
-            )
-            assert ctype in resp.headers.get("content-type", ""), (
-                f"{url}: content-type {resp.headers.get('content-type')!r}"
-            )
+    for url, ctype in (
+        ("/static/css/main.css", "text/css"),
+        ("/static/js/main.js", "javascript"),
+        ("/static/js/api.js", "javascript"),
+    ):
+        resp = await anon_client.get(url)
+        assert resp.status_code == 200, f"{url} не раздаётся — разрезанный UI мёртв"
+        assert ctype in resp.headers.get("content-type", ""), (
+            f"{url}: content-type {resp.headers.get('content-type')!r}"
+        )
