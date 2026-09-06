@@ -345,3 +345,17 @@ class UserIdentity(Base):
     )
 
     __table_args__ = (UniqueConstraint("provider", "provider_uid"),)
+
+
+class LegacyImportRow(Base):
+    """Tenant-scoped receipt for repeatable imports; raw settings stay encrypted."""
+
+    __tablename__ = "legacy_import_rows"
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
+    source_table: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    payload_encrypted: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (UniqueConstraint("user_id", "source_table", "source_id"),)

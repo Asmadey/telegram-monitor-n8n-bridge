@@ -12,7 +12,7 @@
 вставляется с ON CONFLICT DO NOTHING по естественному ключу
 (public_id / (user_id, chat_id, message_id) / job_id). PK старой базы
 НЕ переносится: он всегда начинается с 1 и ломал второго тенанта.
-У журнала естественного ключа нет — он переносится только в пустой.
+Для журнала сохраняются отдельные квитанции переноса по исходному ID.
 
 Секреты из integrations_config при переносе ОБЯЗАТЕЛЬНО шифруются:
 скрипт отказывается работать без APP_ENCRYPTION_KEY, потому что
@@ -25,8 +25,10 @@
 
 import argparse
 import asyncio
+import json
 import sqlite3
 import sys
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +46,17 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import get_settings
-from app.models import FeedItem, Integration, LogEntry, Monitor, SentMessage, User
+from app.models import (
+    FeedItem,
+    Integration,
+    LegacyImportRow,
+    LogEntry,
+    Monitor,
+    SentMessage,
+    TelegramAccount,
+    User,
+)
+from app.services.journal import redact
 
 SECRETS_PLAINTEXT_FIELDS = [
     "telegram_bot_token",
@@ -66,10 +78,11 @@ def _encryptor() -> Fernet:
 
 def _read_sqlite(sqlite_path: str) -> dict[str, list[dict]]:
     """Читает все переносимые таблицы в dict-ы (sync — файл локальный)."""
-    conn = sqlite3.connect(sqlite_path)
+    conn = sqlite3.connect(Path(sqlite_path).resolve().as_uri() + "?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     try:
         tables = {
+            "settings": "SELECT * FROM settings",
             "monitors": "SELECT * FROM monitors",
             "sent_messages": "SELECT * FROM sent_messages",
             "analysis_feed": "SELECT * FROM analysis_feed",
@@ -84,12 +97,12 @@ def _read_sqlite(sqlite_path: str) -> dict[str, list[dict]]:
 
 
 async def _get_or_create_user(session, email: str) -> User:
-    email = email.lower()
+    email = email.strip().lower()
     user = await session.scalar(select(User).where(User.email == email))
     if user is None:
         user = User(email=email)
         session.add(user)
-        await session.commit()
+        await session.flush()
     return user
 
 
@@ -189,6 +202,9 @@ async def _migrate_sent_messages(session, rows, user_id) -> int:
 async def _migrate_feed_items(session, rows, user_id) -> int:
     inserted = 0
     for r in rows:
+        job_id = r["job_id"] or str(
+            uuid.uuid5(uuid.NAMESPACE_URL, f"teleton:legacy:{user_id}:feed:{r['id']}")
+        )
         # photo_base64 сознательно НЕ переносится (задача 5.4 — объектное хранилище)
         stmt = (
             pg_insert(FeedItem)
@@ -196,7 +212,7 @@ async def _migrate_feed_items(session, rows, user_id) -> int:
                 # PK не переносим (см. sent_messages): идемпотентность —
                 # по job_id, который в старой базе тоже уникален.
                 user_id=user_id,
-                job_id=r["job_id"],
+                job_id=job_id,
                 created_at=_ts_required(r["created_at"]),
                 chat_id=r["chat_id"],
                 chat_title=r["chat_title"],
@@ -210,26 +226,30 @@ async def _migrate_feed_items(session, rows, user_id) -> int:
             .on_conflict_do_nothing(index_elements=["job_id"])
         )
         result = await session.execute(stmt)
+        if not result.rowcount:
+            owner = await session.scalar(
+                select(FeedItem.user_id).where(FeedItem.job_id == job_id)
+            )
+            if owner != user_id:
+                raise ValueError("Legacy feed job ID belongs to another owner")
         inserted += result.rowcount or 0
     return inserted
 
 
 async def _migrate_logs(session, rows, user_id) -> int:
-    """У журнала нет естественного ключа, поэтому идемпотентность — проверкой.
-
-    Раньше повторный прогон упирался в перенесённый PK старой базы. От переноса
-    PK пришлось отказаться (он ломал второго тенанта — см. _migrate_sent_messages),
-    а конфликт по автогенерируемому PK не сработает никогда: он всегда новый.
-    Поэтому журнал переносится только в пустой: у пользователя, которому уже
-    что-то перенесли, второй прогон не должен удвоить историю.
-    """
-    if await session.scalar(
-        select(LogEntry.id).where(LogEntry.user_id == user_id).limit(1)
-    ):
-        return 0
-
+    """Receipts and log rows share a transaction; unrelated destination logs stay intact."""
     inserted = 0
     for r in rows:
+        receipt = await session.execute(
+            pg_insert(LegacyImportRow)
+            .values(user_id=user_id, source_table="logs", source_id=str(r["id"]))
+            .on_conflict_do_nothing(
+                index_elements=["user_id", "source_table", "source_id"]
+            )
+            .returning(LegacyImportRow.id)
+        )
+        if receipt.scalar_one_or_none() is None:
+            continue
         stmt = pg_insert(LogEntry).values(
             user_id=user_id,
             timestamp=_ts_required(r["timestamp"]),
@@ -238,7 +258,7 @@ async def _migrate_logs(session, rows, user_id) -> int:
             chat_id=r["chat_id"],
             messages_count=r["messages_count"] or 0,
             status=r["status"],
-            details=r["details"],
+            details=redact(str(r["details"] or "")),
         )
         result = await session.execute(stmt)
         inserted += result.rowcount or 0
@@ -268,6 +288,9 @@ async def _migrate_integrations(session, rows, user_id, fernet: Fernet) -> int:
                 webhook_url_encrypted=enc("webhook_url"),
                 auto_webhook_enabled=bool(r["auto_webhook_enabled"] or 0),
                 updated_at=_ts_required(r["updated_at"]),
+                cleanup_enabled=r.get("cleanup_enabled", False),
+                cleanup_days=r.get("cleanup_days", 30),
+                cleanup_last_run=_ts(r.get("cleanup_last_run")),
             )
             .on_conflict_do_nothing(index_elements=["user_id"])
         )
@@ -276,10 +299,141 @@ async def _migrate_integrations(session, rows, user_id, fernet: Fernet) -> int:
     return inserted
 
 
-async def migrate(sqlite_path: str, session, user_id: int) -> dict[str, int]:
+def _merge_settings(rows: list[dict], settings_rows: list[dict]) -> list[dict]:
+    """Keep integration values authoritative, including intentionally empty strings."""
+    settings = {r["key"]: r["value"] for r in settings_rows}
+    row = dict(rows[0]) if rows else {}
+    for name in (
+        "telegram_bot_token",
+        "telegram_forward_enabled",
+        "openrouter_api_key",
+        "openrouter_base_url",
+        "openrouter_model",
+        "openrouter_enabled",
+        "webhook_url",
+        "auto_webhook_enabled",
+    ):
+        row.setdefault(name, settings.get(name, ""))
+    row.setdefault("telegram_sender_id", settings.get("telegram_forward_chat_id", ""))
+    row.setdefault("updated_at", None)
+    for name in (
+        "telegram_forward_enabled",
+        "openrouter_enabled",
+        "auto_webhook_enabled",
+    ):
+        row[name] = str(row[name]).lower() in ("1", "true")
+    row["cleanup_enabled"] = str(settings.get("auto_cleanup_enabled", "0")).lower() in (
+        "1",
+        "true",
+    )
+    row["cleanup_days"] = int(settings.get("auto_cleanup_days") or 30)
+    if row["cleanup_days"] < 1:
+        raise ValueError("Legacy cleanup_days must be positive")
+    row["cleanup_last_run"] = settings.get("auto_cleanup_last_run")
+    return [row]
+
+
+async def _archive_settings(session, rows, user_id, fernet) -> int:
+    count = 0
+    for row in rows:
+        result = await session.execute(
+            pg_insert(LegacyImportRow)
+            .values(
+                user_id=user_id,
+                source_table="settings",
+                source_id=row["key"],
+                payload_encrypted=fernet.encrypt(json.dumps(row).encode()).decode(),
+            )
+            .on_conflict_do_nothing(
+                index_elements=["user_id", "source_table", "source_id"]
+            )
+        )
+        count += result.rowcount or 0
+    return count
+
+
+def _read_telegram_session(path: str) -> str:
+    """Convert SQLite session offline, read-only, without constructing SQLiteSession."""
+    from telethon.crypto import AuthKey
+    from telethon.sessions import StringSession
+
+    conn = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        rows = conn.execute(
+            "SELECT dc_id, server_address, port, auth_key FROM sessions"
+        ).fetchall()
+    finally:
+        conn.close()
+    if len(rows) != 1 or not rows[0][3] or len(rows[0][3]) != 256:
+        raise ValueError("Legacy Telegram session has no unambiguous authorization key")
+    dc_id, address, port, key = rows[0]
+    converted = StringSession()
+    converted.set_dc(dc_id, address, port)
+    converted.auth_key = AuthKey(key)
+    return converted.save()
+
+
+async def _verify_telegram_session(encoded: str) -> dict:
+    """Operator must stop every prior session owner before this short verification."""
+    from telethon import TelegramClient
+    from telethon.sessions import StringSession
+
+    settings = get_settings()
+    if not settings.telegram_api_id or not settings.telegram_api_hash:
+        raise ValueError("TELEGRAM_API_ID and TELEGRAM_API_HASH are required")
+    client = TelegramClient(
+        StringSession(encoded), settings.telegram_api_id, settings.telegram_api_hash
+    )
+    try:
+        await client.connect()
+        me = await client.get_me()
+        if me is None:
+            raise ValueError("Legacy Telegram session is no longer authorized")
+        return {
+            "phone": me.phone or "",
+            "tg_user_id": me.id,
+            "tg_username": me.username,
+        }
+    finally:
+        await client.disconnect()
+
+
+async def _migrate_telegram_session(
+    session, user_id, encoded, fernet, phone="", tg_user_id=0, tg_username=None
+) -> int:
+    result = await session.execute(
+        pg_insert(TelegramAccount)
+        .values(
+            user_id=user_id,
+            phone=phone,
+            tg_user_id=tg_user_id,
+            tg_username=tg_username,
+            session_string_encrypted=fernet.encrypt(encoded.encode()).decode(),
+            status="active",
+        )
+        .on_conflict_do_nothing(index_elements=["user_id"])
+    )
+    return result.rowcount or 0
+
+
+async def migrate(
+    sqlite_path: str,
+    session,
+    user_id: int,
+    *,
+    telegram_session: str | None = None,
+    telegram_metadata: dict | None = None,
+) -> dict[str, int]:
     """Переносит данные; возвращает счётчики ВСТАВЛЕННЫХ строк (не всех)."""
     fernet = _encryptor()
+    if telegram_session and (
+        not telegram_metadata or not telegram_metadata.get("tg_user_id")
+    ):
+        raise ValueError("Verified Telegram account metadata is required")
     data = _read_sqlite(sqlite_path)
+    data["integrations_config"] = _merge_settings(
+        data["integrations_config"], data["settings"]
+    )
 
     stats = {
         "monitors": await _migrate_monitors(session, data["monitors"], user_id),
@@ -294,6 +448,13 @@ async def migrate(sqlite_path: str, session, user_id: int) -> dict[str, int]:
             session, data["integrations_config"], user_id, fernet
         ),
     }
+    stats["settings"] = await _archive_settings(
+        session, data["settings"], user_id, fernet
+    )
+    if telegram_session:
+        stats["telegram_accounts"] = await _migrate_telegram_session(
+            session, user_id, telegram_session, fernet, **(telegram_metadata or {})
+        )
     await session.commit()
     return stats
 
@@ -330,17 +491,39 @@ async def main() -> None:
     parser.add_argument(
         "--url", default=None, help="DATABASE_URL (по умолчанию из app.config)"
     )
+    parser.add_argument(
+        "--telegram-session-path",
+        help="Legacy SQLite session; never uploaded unencrypted",
+    )
+    parser.add_argument(
+        "--verify-telegram",
+        action="store_true",
+        help="Connect briefly to get_me; old worker MUST be stopped first",
+    )
     args = parser.parse_args()
+    if args.telegram_session_path and not args.verify_telegram:
+        parser.error(
+            "--telegram-session-path requires --verify-telegram after stopping the old worker"
+        )
+    encoded = (
+        _read_telegram_session(args.telegram_session_path)
+        if args.telegram_session_path
+        else None
+    )
 
     settings = get_settings()
     url = args.url or settings.database_url
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     if not url.startswith("postgresql"):
         sys.exit(
-            f"Перенос возможен только в Postgres, а database_url = {url!r}. "
+            "Перенос возможен только в Postgres. "
             "Задайте DATABASE_URL (Railway: ${{Postgres.DATABASE_URL}})."
         )
 
-    engine = create_async_engine(url)
+    _encryptor()
+    _read_sqlite(args.sqlite_path)
+    engine = create_async_engine(url, hide_parameters=True)
     Session = async_sessionmaker(engine, expire_on_commit=False)
 
     async with Session() as session:
@@ -356,8 +539,16 @@ async def main() -> None:
         _os.environ["DATABASE_URL"] = url
         command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
 
+        await session.execute(select(1))
+        metadata = await _verify_telegram_session(encoded) if encoded else None
         user = await _get_or_create_user(session, args.user_email)
-        stats = await migrate(args.sqlite_path, session, user.id)
+        stats = await migrate(
+            args.sqlite_path,
+            session,
+            user.id,
+            telegram_session=encoded,
+            telegram_metadata=metadata,
+        )
         print(
             f"Перенесено для {user.email}: "
             + ", ".join(f"{k}={v}" for k, v in stats.items())
@@ -370,4 +561,12 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as exc:
+        # DB exception repr/traceback can contain plaintext legacy secrets.
+        print(
+            f"Migration failed ({type(exc).__name__}); transaction not confirmed. No source files changed.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
