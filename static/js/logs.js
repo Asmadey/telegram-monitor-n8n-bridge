@@ -8,18 +8,25 @@ const tabLogsCount = document.getElementById('tabLogsCount');
 const logsTableBody = document.getElementById('logsTableBody');
 const filterLogStatus = document.getElementById('filterLogStatus');
 const refreshLogsBtn = document.getElementById('refreshLogsBtn');
+const loadMoreLogsBtn = document.getElementById('loadMoreLogsBtn');
 const clearLogsBtn = document.getElementById('clearLogsBtn');
 
 let currentLogs = [];
+const LOGS_PAGE_SIZE = 150;
+let totalLogs = 0;
 
-export async function loadLogs() {
+export async function loadLogs(append = false) {
   const status = filterLogStatus ? filterLogStatus.value : 'ALL';
   try {
-    const res = await apiGet(`/api/logs?limit=150&status=${status}`);
+    const offset = append ? currentLogs.length : 0;
+    const res = await apiGet(`/api/logs?limit=${LOGS_PAGE_SIZE}&offset=${offset}&status=${encodeURIComponent(status)}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    currentLogs = data.logs || [];
-    if (tabLogsCount) tabLogsCount.textContent = data.total || 0;
+    const page = data.logs || [];
+    currentLogs = append ? currentLogs.concat(page) : page;
+    totalLogs = data.total || 0;
+    loadMoreLogsBtn.hidden = currentLogs.length >= totalLogs;
+    if (tabLogsCount) tabLogsCount.textContent = totalLogs;
     renderLogs();
   } catch (e) {
     console.error('Logs fetch error:', e);
@@ -60,10 +67,11 @@ function renderLogs() {
   `).join('');
 }
 
-filterLogStatus.addEventListener('change', loadLogs);
-refreshLogsBtn.addEventListener('click', loadLogs);
+filterLogStatus.addEventListener('change', () => loadLogs());
+refreshLogsBtn.addEventListener('click', () => loadLogs());
+loadMoreLogsBtn.addEventListener('click', () => loadLogs(true));
 clearLogsBtn.addEventListener('click', async () => {
-  if (!confirm('Очистить весь журнал логов в SQLite?')) return;
+  if (!confirm('Очистить весь журнал логов?')) return;
   try {
     const res = await apiFetch('/api/logs', { method: 'DELETE' });
     if (res.ok) {

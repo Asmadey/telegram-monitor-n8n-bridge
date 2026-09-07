@@ -1,57 +1,55 @@
-"""Верификация Google ID-токенов (Фаза 6 PLAN.md).
+"""Firebase ID-token verification using Google's public certificate verifier.
 
-Firebase — провайдер идентичности, НЕ система сессий: verify_id_token
-проверяет подпись/aud/exp, пользователь ищется или создаётся в СВОЕЙ
-таблице, сессия — своя cookie. Так остаётся контроль над отзывом
-(блокировка юзера убивает сессии), работает админка, и GitHub/Apple
-добавятся без переписывания аутентификации.
-
-Верификатор — инъектируемая зависимость (как Telethon-клиент в 3.3):
-тесты (test_60) подменяют её фейком, живой Firebase в CI не нужен.
-
-firebase_admin импортируется ЛЕНИВО при первом обращении: web-процесс
-без единого POST /auth/google не должен требовать конфигурации
-Firebase (локальная разработка). Но сама верификация без конфигурации
-падает ГРОМКО (RuntimeError → 500, не маскировка под 401): урок
-2026-09-02 — misconfiguration не должна выглядеть успехом/отказом входа.
+Google-auth checks signature, expiry, issued-at and audience. Firebase's
+additional issuer, subject and auth_time constraints are checked below.
+No administrative Firebase operations are used: identity becomes a local
+revocable cookie session. No service-account private key is required.
 """
 
+import time
 from collections.abc import Callable
+from functools import partial
 
-# Контракт верификатора: строка токена → dict claims; невалидный/
-# просроченный/чужой aud — ЛЮБОЕ исключение (живой firebase_admin
-# поднимает InvalidIdTokenError, подкласс ValueError)
+from google.auth import jwt
+from google.auth.transport.requests import Request
+from google.oauth2 import id_token
+
+from app.config import get_settings
+
 IdTokenVerifier = Callable[[str], dict]
-
-_initialized = False
-
-
-def _ensure_initialized() -> None:
-    """Ленивая инициализация firebase_admin (один раз за процесс).
-    GOOGLE_APPLICATION_CREDENTIALS читает библиотека сама."""
-    global _initialized
-    if _initialized:
-        return
-    import firebase_admin
-
-    if not firebase_admin.apps:
-        firebase_admin.initialize_app()
-    _initialized = True
 
 
 def _live_verifier(token: str) -> dict:
-    try:
-        _ensure_initialized()
-    except Exception as e:  # noqa: BLE001 — нет кредов/проекта: громко, не 401
-        raise RuntimeError(
-            "Firebase не сконфигурирован (GOOGLE_APPLICATION_CREDENTIALS): "
-            f"verify_id_token невозможен — {e}"
-        ) from e
-    from firebase_admin import auth as fb_auth
-
-    return fb_auth.verify_id_token(token)
+    project_id = get_settings().firebase_project_id
+    if not project_id:
+        raise RuntimeError("FIREBASE_PROJECT_ID не задан")
+    # Inspect only header constraints before cryptographic verification.
+    # No claims from this step are trusted or used as identity.
+    header = jwt.decode_header(token)
+    if header.get("alg") != "RS256" or not header.get("kid"):
+        raise ValueError("Invalid Firebase token header")
+    claims = dict(
+        id_token.verify_firebase_token(
+            token, partial(Request(), timeout=10), audience=project_id
+        )
+    )
+    subject = claims.get("sub")
+    auth_time = claims.get("auth_time")
+    firebase = claims.get("firebase")
+    if (
+        not isinstance(firebase, dict)
+        or firebase.get("sign_in_provider") != "google.com"
+        or claims.get("iss") != f"https://securetoken.google.com/{project_id}"
+        or not isinstance(subject, str)
+        or not 1 <= len(subject) <= 128
+        or not isinstance(auth_time, (int, float))
+        or isinstance(auth_time, bool)
+        or not 0 <= auth_time <= time.time()
+    ):
+        raise ValueError("Invalid Firebase token claims")
+    return claims
 
 
 def get_google_verifier() -> IdTokenVerifier:
-    """Зависимость FastAPI: живой verify_id_token; тесты подменяют."""
+    """Injectable verifier; tokens are never persisted as application sessions."""
     return _live_verifier

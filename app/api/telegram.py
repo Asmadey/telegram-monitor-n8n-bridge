@@ -19,8 +19,9 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db
-from app.deps import require_user
+from app.config import get_settings
+from app.db import TenantRepo, get_db
+from app.deps import get_tenant_repo, require_user
 from app.models import TelegramAccount, TgAuthAttempt, User
 from app.security.ratelimit import TELEGRAM_SEND_CODE_LIMIT, limiter
 from app.security.sessions import _utc
@@ -42,6 +43,29 @@ class SignInRequest(BaseModel):
     # Сюда же просачивается попытка закончить чужой вход.
     code: str
     password: str | None = None
+
+
+@router.get("/api/telegram/status")
+async def telegram_status(
+    repo: TenantRepo = Depends(get_tenant_repo),
+) -> dict:
+    """Return configuration readiness and only the current user's account metadata."""
+    settings = get_settings()
+    account = (await repo.db.scalars(repo.query(TelegramAccount).limit(1))).first()
+    return {
+        "api_id": settings.telegram_api_id,
+        "has_api_hash": bool(settings.telegram_api_hash),
+        "is_authorized": account is not None,
+        "user": (
+            {
+                "id": account.tg_user_id,
+                "username": account.tg_username,
+                "phone": account.phone,
+            }
+            if account is not None
+            else None
+        ),
+    }
 
 
 @router.post("/api/telegram/send-code")

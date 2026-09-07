@@ -13,7 +13,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
+from app.config import get_settings
 from app.db import get_db
 from app.deps import require_session, require_user
 from app.models import Session, User, UserIdentity
@@ -32,7 +34,6 @@ from app.security.sessions import (
     destroy_session,
     set_session_cookie,
 )
-from app.config import get_settings
 from app.services.google_auth import get_google_verifier
 from app.services.mailer import send_password_reset_email
 
@@ -193,8 +194,8 @@ async def google_config() -> dict[str, Any]:
     проекта оператора, и иначе смена проекта требовала бы пересборки
     фронтенда. `apiKey` Firebase ПУБЛИЧЕН по устройству — он идентифицирует
     проект, доступ дают правила и список разрешённых доменов в консоли;
-    приватный ключ сервисного аккаунта сюда не попадает никогда (его читает
-    firebase_admin из GOOGLE_APPLICATION_CREDENTIALS).
+    приватный ключ сервисного аккаунта не нужен: проверка использует
+    публичные сертификаты Google.
 
     Не настроено — `{"enabled": false}` и ничего больше: клиент прячет
     кнопку. Пустой объект или 404 не дали бы ему решения.
@@ -226,7 +227,7 @@ async def google_login(
     сессия — своя cookie. Существующий email → ПРИВЯЗКА (строка
     identities), а не второй аккаунт."""
     try:
-        claims = verifier(req.id_token)
+        claims = await run_in_threadpool(verifier, req.id_token)
     except RuntimeError:
         # Firebase не сконфигурирован — громкий 500, не маскировка под 401
         raise

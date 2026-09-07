@@ -59,11 +59,22 @@ closeAddChannelBtn.addEventListener('click', () => {
   toggleAddChannelBtn.className = 'btn btn-primary btn-sm';
 });
 
-// Load Monitors from SQLite
+// Load monitors from the server database.
 export async function loadConfig() {
   try {
-    const res = await apiGet('/api/monitors');
-    const data = await res.json();
+    const data = { monitors: [] };
+    const pageSize = 200;
+    for (let offset = 0; ; offset += pageSize) {
+      const res = await apiGet(`/api/monitors?limit=${pageSize}&offset=${offset}`);
+      if (!res.ok) throw new Error('Не удалось загрузить каналы');
+      const page = await res.json();
+      if (offset === 0) {
+        data.webhook_url = page.webhook_url;
+        data.auto_webhook_enabled = page.auto_webhook_enabled;
+      }
+      data.monitors.push(...(page.monitors || []));
+      if ((page.monitors || []).length < pageSize) break;
+    }
     webhookUrlInput.value = data.webhook_url || '';
     autoWebhookInput.checked = data.auto_webhook_enabled ?? true;
     currentMonitors = data.monitors || [];
@@ -204,8 +215,8 @@ saveEditBtn.addEventListener('click', async () => {
   const limit = parseInt(editMsgLimit.value);
   const promptVal = document.getElementById('editMonitorPrompt').value.trim();
 
-  if (!limit || limit < 1 || limit > 100) {
-    showToast('Лимит должен быть от 1 до 100', true);
+  if (!limit || limit < 1) {
+    showToast('Количество сообщений должно быть не меньше 1', true);
     return;
   }
 
@@ -257,11 +268,11 @@ async function toggleMonitor(id, isActive) {
 window.toggleMonitor = toggleMonitor;
 
 async function resetDedup(id) {
-  if (!confirm('Сбросить историю отправленных ID для этого канала в SQLite?')) return;
+  if (!confirm('Сбросить историю отправленных ID для этого канала?')) return;
   try {
     const res = await apiFetch(`/api/monitors/${id}/reset-dedup`, { method: 'POST' });
     if (res.ok) {
-      showToast('История дедубликации сброшена в SQLite!');
+      showToast('История дедубликации сброшена!');
       loadConfig();
     }
   } catch (e) {
@@ -296,7 +307,10 @@ async function runMonitor(id) {
     const data = await res.json();
     if (card) card.style.opacity = '1';
 
-    if (data.messages) {
+    if (res.ok && data.status === 'queued') {
+      showToast('Опрос поставлен в очередь');
+      loadConfig();
+    } else if (data.messages) {
       if (data.new_messages_count > 0 && data.sent_to_webhook) {
         showToast(`✅ Отправлено ${data.new_messages_count} новых постов в n8n (${data.duplicates_filtered} дублей отфильтровано)`);
       } else if (data.duplicates_filtered > 0 && data.new_messages_count === 0) {
@@ -312,6 +326,8 @@ async function runMonitor(id) {
       });
 
       loadConfig();
+    } else {
+      showToast(data.detail || 'Не удалось поставить опрос в очередь', true);
     }
   } catch (e) {
     if (card) card.style.opacity = '1';
@@ -361,7 +377,7 @@ addMonitorForm.addEventListener('submit', async (e) => {
     }
 
     const data = await res.json();
-    showToast(`Канал "${data.chat_title}" добавлен в SQLite!`);
+    showToast(`Канал "${data.chat_title}" добавлен!`);
     document.getElementById('chatTarget').value = '';
     document.getElementById('channelPrompt').value = '';
     addChannelDrawer.classList.remove('open');
@@ -398,7 +414,7 @@ saveWebhookBtn.addEventListener('click', async () => {
       method: 'POST',
       body: { webhook_url: url, auto_webhook_enabled: auto }
     });
-    if (res.ok) showToast('Настройки Webhook сохранены в SQLite');
+    if (res.ok) showToast('Настройки Webhook сохранены');
   } catch (e) {
     showToast('Ошибка сохранения', true);
   }
@@ -424,7 +440,7 @@ document.getElementById('openDialogsModalBtn').addEventListener('click', async (
   dialogsModal.classList.add('active');
   dialogsModalBody.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--mute);">Загрузка диалогов...</div>';
   try {
-    const res = await apiGet('/dialogs?limit=30');
+    const res = await apiGet('/api/telegram/dialogs?limit=30');
     const data = await res.json();
     if (data.dialogs) {
       dialogsModalBody.innerHTML = data.dialogs.map(d => html`

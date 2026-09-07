@@ -53,7 +53,7 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-async def _default_bot_sender(token: str, chat_id: str, text: str) -> bool:
+async def send_telegram_bot_message(token: str, chat_id: str, text: str) -> bool:
     """Порт server.py:854: HTML, при ошибке разметки — повтор без parse_mode.
 
     Пользователь пишет заголовки каналов, а не мы: несбалансированный тег в
@@ -111,7 +111,10 @@ async def _run_bot(
     text = analysis or _summary_text(chat_title, messages)
     try:
         for chunk in _chunks(text):
-            sent = await (sender or _default_bot_sender)(token, chat_id, chunk)
+            # Имя публичное (8.3): ту же отправку переиспользует живая
+            # проверка бота в app/api/checks.py. Отказ Bot API — False, а не
+            # исключение: без этой ветки сбой доставки выглядел бы SUCCESS (9.1).
+            sent = await (sender or send_telegram_bot_message)(token, chat_id, chunk)
             if sent is False:
                 raise RuntimeError("Telegram bot rejected delivery")
     except Exception as exc:  # noqa: BLE001 — доставка не роняет опрос

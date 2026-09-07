@@ -49,8 +49,8 @@ FAKE_CLAIMS = {
         "email_verified": False,
         "sub": "google-uid-unverified",
     },
-    # чужой aud / подпись — firebase_admin.raise InvalidIdTokenError;
-    # фейк поднимает то же исключение контракта (любое)
+    # чужой aud / подпись - google-auth поднимает ValueError;
+    # фейк поднимает то же исключение контракта
 }
 
 
@@ -145,7 +145,7 @@ def test_migration_creates_identities():
 
 def test_google_service_exposes_injectable_verifier():
     """Верификатор — зависимость FastAPI (подменяемая в тестах), а не
-    зашитый вызов firebase_admin внутри эндпоинта."""
+    зашитый вызов библиотеки внутри эндпоинта."""
     import importlib
 
     try:
@@ -175,7 +175,7 @@ async def test_invalid_token_is_401(anon_client, db, fake_google):
 
 @pytest.mark.asyncio
 async def test_forged_aud_token_is_401(anon_client, db, fake_google):
-    """Подделанный токен с чужим aud/firebase-admin отверг его — 401.
+    """Подделанный токен с чужим aud/google-auth отверг его — 401.
     Фейк поднимает то же исключение, что живой verify_id_token."""
     r = await anon_client.post("/auth/google", json={"id_token": "forged-aud"})
     assert r.status_code == 401, f"подделанный aud → {r.status_code}, должен 401"

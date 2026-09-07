@@ -1,8 +1,8 @@
 // auth.js — статус Telegram-аккаунта, визард входа (телефон → код →
 // 2FA), настройки MTProto (задача 5.1, разрез index.html).
 //
-// Состояние визарда (currentPhone/phone_code_hash) — локальное для
-// модуля: другим вкладкам оно не нужно.
+// Состояние попытки авторизации хранится в БД на сервере. Клиент хранит
+// только номер для подписи текущего шага формы.
 
 import { apiFetch, apiGet } from './api.js';
 import { showToast } from './render.js';
@@ -32,15 +32,15 @@ const backToPhoneBtn = document.getElementById('backToPhoneBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const phoneDisplay = document.getElementById('phoneDisplay');
 
-let currentPhone = '';
-let currentPhoneCodeHash = '';
-
 export async function checkHealth() {
   try {
-    const res = await apiGet('/health');
+    const res = await apiGet('/api/telegram/status');
+    if (!res.ok) throw new Error('Telegram status unavailable');
     const data = await res.json();
-    if (data.authorized && data.user) {
-      statusUser.textContent = `${data.user.first_name} (@${data.user.username || 'id' + data.user.id})`;
+    if (data.is_authorized && data.user) {
+      statusUser.textContent = data.user.username
+        ? `@${data.user.username}`
+        : `ID ${data.user.id}`;
       statusBadge.classList.remove('offline');
     } else {
       statusUser.textContent = 'Требуется авторизация';
@@ -54,19 +54,20 @@ export async function checkHealth() {
 
 export async function loadSettings() {
   try {
-    const res = await apiGet('/api/settings');
+    const res = await apiGet('/api/telegram/status');
+    if (!res.ok) throw new Error('Telegram status unavailable');
     const data = await res.json();
     settingsApiId.value = data.api_id || '';
-    // Задача 1.2 (PLAN.md): сырой hash не приходит и не сохраняется из UI,
-    // показываем только маску (или предупреждение, если ключа нет).
+    // Сырой hash не приходит в браузер и не сохраняется из UI.
     settingsApiHash.value = data.has_api_hash
-      ? `API HASH: ${data.api_hash_masked}`
+      ? 'API HASH настроен'
       : 'не задан (TELEGRAM_API_HASH)';
 
     if (data.is_authorized && data.user) {
       authStatusBox.style.display = 'block';
       authWizardBox.style.display = 'none';
-      authUserDetails.textContent = `${data.user.first_name} ${data.user.last_name || ''} (@${data.user.username || 'нет юзернейма'}) • ID: ${data.user.id}`;
+      const username = data.user.username ? `@${data.user.username}` : 'нет юзернейма';
+      authUserDetails.textContent = `${data.user.phone} (${username}) • ID: ${data.user.id}`;
     } else {
       authStatusBox.style.display = 'none';
       authWizardBox.style.display = 'block';
@@ -83,8 +84,7 @@ function setAuthStep(step) {
   step2fa.classList.toggle('active', step === 3);
 }
 
-// Задача 1.2 (PLAN.md): кнопка «Сохранить в .env» и POST /api/settings
-// удалены — ключи задаются только переменными окружения.
+// Ключи задаются только переменными окружения.
 
 sendCodeBtn.addEventListener('click', async () => {
   const phone = authPhone.value.trim();
@@ -92,12 +92,11 @@ sendCodeBtn.addEventListener('click', async () => {
     showToast('Введите номер телефона', true);
     return;
   }
-  currentPhone = phone;
   sendCodeBtn.disabled = true;
   sendCodeBtn.textContent = 'Отправка...';
 
   try {
-    const res = await apiFetch('/api/auth/send-code', {
+    const res = await apiFetch('/api/telegram/send-code', {
       method: 'POST',
       body: { phone: phone }
     });
@@ -106,7 +105,6 @@ sendCodeBtn.addEventListener('click', async () => {
     sendCodeBtn.textContent = 'Получить код в Telegram';
 
     if (res.ok && data.status === 'code_sent') {
-      currentPhoneCodeHash = data.phone_code_hash;
       phoneDisplay.textContent = phone;
       setAuthStep(2);
       showToast(data.message);
@@ -130,13 +128,9 @@ submitCodeBtn.addEventListener('click', async () => {
   submitCodeBtn.textContent = 'Проверка...';
 
   try {
-    const res = await apiFetch('/api/auth/sign-in', {
+    const res = await apiFetch('/api/telegram/sign-in', {
       method: 'POST',
-      body: {
-        phone: currentPhone,
-        code: code,
-        phone_code_hash: currentPhoneCodeHash
-      }
+      body: { code: code }
     });
     const data = await res.json();
     submitCodeBtn.disabled = false;
@@ -169,12 +163,10 @@ submit2faBtn.addEventListener('click', async () => {
   submit2faBtn.textContent = 'Проверка 2FA...';
 
   try {
-    const res = await apiFetch('/api/auth/sign-in', {
+    const res = await apiFetch('/api/telegram/sign-in', {
       method: 'POST',
       body: {
-        phone: currentPhone,
         code: authCode.value.trim(),
-        phone_code_hash: currentPhoneCodeHash,
         password: pwd
       }
     });
@@ -201,7 +193,7 @@ backToPhoneBtn.addEventListener('click', () => setAuthStep(1));
 logoutBtn.addEventListener('click', async () => {
   if (!confirm('Выйти из Telegram-аккаунта и сбросить сессию?')) return;
   try {
-    const res = await apiFetch('/api/auth/logout', { method: 'POST' });
+    const res = await apiFetch('/api/telegram/logout', { method: 'POST' });
     if (res.ok) {
       showToast('Сессия сброшена');
       checkHealth();

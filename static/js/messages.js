@@ -1,11 +1,11 @@
-// messages.js — вкладка «Сообщения»: таблица, фильтры, JSON-модалка,
-// выгрузка в n8n (задача 5.1, разрез index.html).
+// messages.js — вкладка «Сообщения»: таблица, фильтры и JSON-модалка
+// (задача 5.1, разрез index.html).
 //
 // currentMessages живёт здесь: каналам (runMonitor) отдаются
 // mergeMessages и setFilterChatOptions — ребро channels → messages,
 // без цикла импортов.
 
-import { apiFetch, apiGet } from './api.js';
+import { apiGet } from './api.js';
 import { html, raw, formatTelegramText, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 
 const tabMessagesCount = document.getElementById('tabMessagesCount');
@@ -13,6 +13,7 @@ const messagesTableBody = document.getElementById('messagesTableBody');
 const tableSearch = document.getElementById('tableSearch');
 const filterChatSelect = document.getElementById('filterChatSelect');
 const viewJsonBtn = document.getElementById('viewJsonBtn');
+const loadMoreMessagesBtn = document.getElementById('loadMoreMessagesBtn');
 const jsonModal = document.getElementById('jsonModal');
 const jsonViewerCode = document.getElementById('jsonViewerCode');
 
@@ -21,6 +22,8 @@ const filterMinReactions = document.getElementById('filterMinReactions');
 const sortMessagesSelect = document.getElementById('sortMessagesSelect');
 
 let currentMessages = [];
+const MESSAGES_PAGE_SIZE = 100;
+let totalMessages = 0;
 
 export function getFilteredMessages() {
   const query = tableSearch.value.toLowerCase();
@@ -134,79 +137,29 @@ export function mergeMessages(messages, meta) {
   renderTable();
 }
 
-export async function loadSavedMessages() {
+export async function loadSavedMessages(append = false) {
   try {
-    const res = await apiGet('/api/messages?limit=100');
+    const offset = append ? currentMessages.length : 0;
+    const res = await apiGet(`/api/messages?limit=${MESSAGES_PAGE_SIZE}&offset=${offset}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    if (data.messages && data.messages.length > 0) {
-      currentMessages = data.messages;
-      renderTable();
-    }
+    const page = data.messages || [];
+    currentMessages = append ? currentMessages.concat(page) : page;
+    totalMessages = data.total || 0;
+    loadMoreMessagesBtn.hidden = currentMessages.length >= totalMessages;
+    renderTable();
   } catch (e) {
     console.error('Error loading saved messages:', e);
   }
 }
+
+loadMoreMessagesBtn.addEventListener('click', () => loadSavedMessages(true));
 
 tableSearch.addEventListener('input', renderTable);
 filterChatSelect.addEventListener('change', renderTable);
 filterMinViews.addEventListener('input', renderTable);
 filterMinReactions.addEventListener('input', renderTable);
 sortMessagesSelect.addEventListener('change', renderTable);
-
-document.getElementById('sendTableToN8nBtn').addEventListener('click', async () => {
-  const filtered = getFilteredMessages();
-
-  if (filtered.length === 0) {
-    showToast('Нет сообщений для отправки!', true);
-    return;
-  }
-
-  // Группируем сообщения по уникальным каналам (chat_id)
-  const groupedByChat = {};
-  filtered.forEach(msg => {
-    const cId = msg.chat_id || 'unknown';
-    if (!groupedByChat[cId]) {
-      groupedByChat[cId] = {
-        chat_id: msg.chat_id,
-        chat_title: msg.chat_title,
-        chat_username: msg.chat_username,
-        messages: []
-      };
-    }
-    groupedByChat[cId].messages.push(msg);
-  });
-
-  const chatEntries = Object.values(groupedByChat);
-  showToast(`Отправка ${chatEntries.length} отдельн. вебхуков по каждому каналу в n8n...`);
-
-  let successCount = 0;
-  for (const entry of chatEntries) {
-    try {
-      const res = await apiFetch('/api/webhook/send-payload', {
-        method: 'POST',
-        body: {
-          source: "telethon_monitor",
-          event: "telegram_messages_batch",
-          timestamp: new Date().toISOString(),
-          chat_id: entry.chat_id,
-          chat_title: entry.chat_title,
-          chat_username: entry.chat_username,
-          messages_count: entry.messages.length,
-          messages: entry.messages
-        }
-      });
-      if (res.ok) successCount++;
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  if (successCount === chatEntries.length) {
-    showToast(`✅ Отправлено ${successCount} отдельных вебхуков по каналам в n8n!`);
-  } else {
-    showToast(`Отправлено ${successCount} из ${chatEntries.length} вебхуков`, true);
-  }
-});
 
 viewJsonBtn.addEventListener('click', () => {
   const payload = {

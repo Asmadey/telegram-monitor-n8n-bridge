@@ -8,7 +8,7 @@
                                                               Railway: Postgres
 ```
 
-Два процесса Railway из одного образа — `web` (`uvicorn app.main:app`) и
+Два процесса Railway из одного образа - `web` (`uvicorn app.main:app`) и
 `worker` (`python -m app.worker`), общий Postgres. Фронтенд — статические файлы
 из `static/`, без сборки.
 
@@ -34,7 +34,7 @@ origin, cookie остаются первой стороной, CORS не нуж�
 
 ## Настройка
 
-### Railway — сервис `web`
+### Railway - сервис `web`
 
 | Переменная | Значение |
 |---|---|
@@ -48,18 +48,31 @@ origin, cookie остаются первой стороной, CORS не нуж�
 | `FRONTEND_ORIGINS` | **пусто** в режиме переписывания; список origin через запятую в прямом режиме |
 | `API_ORIGIN` | публичный адрес API — по нему определяется, межсайтовый ли запрос |
 
-Миграции применяет только `web` (`preDeployCommand` в `railway.json`): если их
-запустят оба сервиса, они пойдут одновременно.
+Для существующего сервиса `web` задайте в Railway:
 
-### Railway — сервис `worker`
+- Build: Dockerfile из корня репозитория;
+- Pre-deploy command: `alembic upgrade head`;
+- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`;
+- Healthcheck path: `/health`.
 
-Те же переменные, команда `python -m app.worker`, **без** `preDeployCommand`.
+`/railway.json` сохраняет те же настройки как конфигурацию по умолчанию, но у
+фактически созданного сервиса Config File Path не задан. После деплоя сверяйте
+применённые команды в Deployment Details, а не считайте наличие файла
+подтверждением настройки облачного сервиса. Миграции должен применять только
+`web`: если их запустят оба сервиса, они пойдут одновременно.
+
+### Railway - сервис `worker`
+
+Те же переменные, команда `python -m app.worker`, **без** `preDeployCommand`
+и HTTP healthcheck. Команда задаётся прямо в Settings сервиса `worker`.
+После деплоя проверьте в Deployment Details, что Railway применил именно её.
 
 ### Vercel
 
 1. Корень проекта — каталог `FastAPI` (или переместите `static/` в отдельный
    репозиторий фронтенда).
-2. В `vercel.json` заменить `REPLACE-WITH-RAILWAY-HOST` на адрес сервиса `web`.
+2. `vercel.json` уже направляет `/api`, `/auth` и `/health` на сервис `web`:
+   `https://web-production-d2e997.up.railway.app`.
 3. Build Command пустой, Output Directory — `static`.
 
 ### Вход через Google (необязательно)
@@ -80,8 +93,7 @@ origin, cookie остаются первой стороной, CORS не нуж�
 
    Это публичные значения: `apiKey` идентифицирует проект, а не даёт доступ —
    защищают правила и список разрешённых доменов. Приватный ключ **сервисного
-   аккаунта** сюда не попадает: его читает `firebase_admin` из
-   `GOOGLE_APPLICATION_CREDENTIALS`.
+   аккаунта** для проверки входа не нужен: используются публичные сертификаты Google.
 
 2. **Firebase console → Authentication → Settings → Authorized domains** —
    добавить домен Vercel. Без этого popup входа закроется с ошибкой.
@@ -124,3 +136,21 @@ MTProto-сессии пользователей: новая пара ключе�
 **Выдавать `Access-Control-Allow-Origin: *`.** Вместе с учётными данными
 браузер такое сочетание отвергает, а если бы принимал — API с сессионными
 cookie был бы открыт любому сайту. Список origin задаётся поимённо.
+
+## Конфигурации первого релиза
+
+- Для GitHub-репозитория, в корне которого уже находятся `vercel.json` и
+  `static/`, Root Directory оставляется пустым. Framework Preset: Other;
+  `framework: null` в конфигурации исключает автоматическое определение FastAPI.
+- В текущих сервисах Railway команды заданы прямо в Settings: `web` запускает
+  Uvicorn и применяет миграции перед деплоем, `worker` запускает
+  `python -m app.worker` без HTTP healthcheck и команды миграций. Запускайте
+  worker после успешного применения миграций сервисом `web`.
+- Обычный `${{Postgres.DATABASE_URL}}` преобразуется в URL драйвера asyncpg
+  одинаково в приложении и Alembic. Пароли с URL-кодированием сохраняются.
+- CSP уже разрешает Firebase-проект `mtproto-ai`. При смене проекта обновите
+  `frame-src` вместе с `FIREBASE_AUTH_DOMAIN`.
+- Google-вход проверяет Firebase ID-токены официальным `google-auth` по
+  публичным сертификатам Google. `FIREBASE_PROJECT_ID=mtproto-ai` обязателен;
+  сервисный аккаунт и `GOOGLE_APPLICATION_CREDENTIALS` для этого входа не нужны.
+  Проверяются подпись, срок, audience, issuer, subject и auth_time.

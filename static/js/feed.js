@@ -25,20 +25,36 @@ const copyFeedSummaryBtn = document.getElementById('copyFeedSummaryBtn');
 const reanalyzeFeedItemBtn = document.getElementById('reanalyzeFeedItemBtn');
 const deleteFeedItemBtn = document.getElementById('deleteFeedItemBtn');
 const refreshFeedBtn = document.getElementById('refreshFeedBtn');
+const loadMoreFeedBtn = document.getElementById('loadMoreFeedBtn');
 
 let currentFeed = [];
 let selectedFeedId = null;
+const FEED_PAGE_SIZE = 50;
+let totalFeed = 0;
 
-export async function loadFeed(silent = false) {
+export async function loadFeed(silent = false, append = false) {
   try {
-    const res = await apiGet('/api/feed?limit=50');
+    const offset = append ? currentFeed.length : 0;
+    const res = await apiGet(`/api/feed?limit=${FEED_PAGE_SIZE}&offset=${offset}`);
     if (!res.ok) return;
     const data = await res.json();
-    const prevCount = currentFeed.length;
-    currentFeed = data.feed || [];
+    const previousTotal = totalFeed;
+    const page = data.feed || [];
+    const reportedTotal = Number.isInteger(data.total) ? data.total : page.length;
+    if (append) {
+      currentFeed = currentFeed.concat(page);
+    } else if (silent) {
+      const latestIds = new Set(page.map(item => item.id));
+      currentFeed = page.concat(currentFeed.filter(item => !latestIds.has(item.id)));
+      currentFeed = currentFeed.slice(0, reportedTotal);
+    } else {
+      currentFeed = page;
+    }
+    totalFeed = reportedTotal;
+    loadMoreFeedBtn.hidden = currentFeed.length >= totalFeed;
 
-    if (tabFeedCount) tabFeedCount.textContent = currentFeed.length;
-    if (feedTotalCount) feedTotalCount.textContent = currentFeed.length;
+    if (tabFeedCount) tabFeedCount.textContent = totalFeed;
+    if (feedTotalCount) feedTotalCount.textContent = totalFeed;
 
     renderFeedList();
 
@@ -52,8 +68,8 @@ export async function loadFeed(silent = false) {
       if (feedDetailContent) feedDetailContent.style.display = 'none';
     }
 
-    if (!silent && prevCount > 0 && currentFeed.length > prevCount) {
-      showToast(`Получено новых отчетов: ${currentFeed.length - prevCount}`);
+    if (silent && previousTotal > 0 && totalFeed > previousTotal) {
+      showToast(`Получено новых отчетов: ${totalFeed - previousTotal}`);
     }
   } catch (e) {
     console.error('Error loading feed:', e);
@@ -237,6 +253,10 @@ if (refreshFeedBtn) {
   });
 }
 
+if (loadMoreFeedBtn) {
+  loadMoreFeedBtn.addEventListener('click', () => loadFeed(false, true));
+}
+
 if (reanalyzeFeedItemBtn) {
   reanalyzeFeedItemBtn.addEventListener('click', async () => {
     if (!selectedFeedId) return;
@@ -250,14 +270,8 @@ if (reanalyzeFeedItemBtn) {
       reanalyzeFeedItemBtn.disabled = false;
       reanalyzeFeedItemBtn.textContent = '🔄 Обновить анализ';
 
-      if (res.ok && data.status === 'success') {
-        showToast('✨ AI Анализ успешно сформирован и сохранен!');
-        const idx = currentFeed.findIndex(f => f.id === selectedFeedId);
-        if (idx >= 0) {
-          currentFeed[idx] = data.feed_item;
-        }
-        renderFeedList();
-        selectFeedItem(selectedFeedId);
+      if (res.ok && data.status === 'queued') {
+        showToast('Задача повторного анализа поставлена в очередь');
       } else {
         showToast(data.detail || 'Ошибка выполнения анализа', true);
       }

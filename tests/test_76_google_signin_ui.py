@@ -94,10 +94,25 @@ async def test_config_exposes_only_public_web_values(anon_client, google_configu
 
 @pytest.mark.asyncio
 async def test_csp_stays_narrow_when_google_is_not_configured(anon_client):
-    """Выключенная функция не должна стоить ослабления политики."""
+    """Выключенная функция не должна стоить ослабления политики.
+
+    Проверка сузилась с подстроки по всей CSP до конкретных директив
+    (2026-09-07). Причина — не смягчение контракта, а его уточнение:
+    страницы грузят шрифты с `fonts.gstatic.com`, и это **font-src**.
+    Подстрочный поиск "gstatic" считал шрифтовый origin скриптовым и
+    запрещал бы то, к чему задача не имеет отношения. Предмет теста —
+    именно origin входа через Google: SDK в script-src, обмен токенами
+    в connect-src, окно согласия во frame-src.
+    """
     csp = _csp(await anon_client.get("/login"))
-    assert "gstatic" not in csp, (
+    assert GSTATIC not in _directive(csp, "script-src"), (
         "CSP пускает сторонний скриптовый origin при выключенном входе через Google"
+    )
+    assert IDENTITY not in _directive(csp, "connect-src"), (
+        "CSP разрешает обмен токенами с Google при выключенном входе"
+    )
+    assert "frame-src" not in csp, (
+        "CSP открывает frame-src ради popup, которого при выключенном входе нет"
     )
 
 
