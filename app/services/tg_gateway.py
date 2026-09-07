@@ -12,8 +12,7 @@
 
 import logging
 
-from sqlalchemy import select
-
+from app.db import TenantRepo
 from app.models import TelegramAccount
 from app.security.crypto import decrypt
 from app.services.messages import fetch_channel_messages
@@ -32,9 +31,7 @@ class TelegramGateway:
         ошибка: цикл просто пропускает такого пользователя.
         """
         account = (
-            await db.scalars(
-                select(TelegramAccount).where(TelegramAccount.user_id == user_id)
-            )
+            await db.scalars(TenantRepo(db, user_id).query(TelegramAccount))
         ).first()
         if account is None or account.status != "active":
             return None
