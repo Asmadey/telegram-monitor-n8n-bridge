@@ -35,8 +35,6 @@ from typing import Protocol
 from telethon import TelegramClient, errors
 from telethon.sessions import StringSession
 
-from app.config import get_settings
-
 FLOOD_WAIT_SKIP_THRESHOLD = 300
 
 
@@ -48,14 +46,15 @@ class SupportsLifecycle(Protocol):
     async def disconnect(self) -> None: ...
 
 
-def _default_client_factory(user_id: int, session_string: str) -> TelegramClient:
-    """Живая фабрика: клиент на StringSession (сессия уже расшифрована)."""
-    settings = get_settings()
-    return TelegramClient(
-        StringSession(session_string),
-        settings.telegram_api_id,
-        settings.telegram_api_hash,
-    )
+def _default_client_factory(
+    user_id: int, session_string: str, *, api_id: int, api_hash: str
+) -> TelegramClient:
+    """Живая фабрика: клиент на StringSession (сессия уже расшифрована).
+
+    Ключи приложения приходят снаружи и принадлежат ВЛАДЕЛЬЦУ сессии
+    (открытый вопрос №1): пул не знает ни про ENV, ни про базу.
+    """
+    return TelegramClient(StringSession(session_string), api_id, api_hash)
 
 
 class _Entry:
@@ -73,9 +72,7 @@ class TelegramClientPool:
     def __init__(
         self,
         *,
-        client_factory: Callable[
-            [int, str], SupportsLifecycle
-        ] = _default_client_factory,
+        client_factory: Callable[..., SupportsLifecycle] = _default_client_factory,
         limit: int = 20,
         idle_timeout: float = 600.0,
         clock: Callable[[], float] = time.monotonic,
@@ -99,7 +96,14 @@ class TelegramClientPool:
             lock = self._locks[user_id] = asyncio.Lock()
         return lock
 
-    async def get(self, user_id: int, session_string: str):
+    async def get(
+        self,
+        user_id: int,
+        session_string: str,
+        *,
+        api_id: int | None = None,
+        api_hash: str | None = None,
+    ):
         """Клиент пользователя: живой — переиспользуется, иначе создаётся.
 
         Сессия изменилась (перелогин) — старый клиент отключается,
@@ -115,7 +119,9 @@ class TelegramClientPool:
         if entry is not None:
             await self._drop(user_id)  # старая сессия: клиента — вон
 
-        client = self._factory(user_id, session_string)
+        client = self._factory(
+            user_id, session_string, api_id=api_id, api_hash=api_hash
+        )
         await client.connect()
         self._entries[user_id] = _Entry(client, session_string, now)
         await self._evict_over_limit()

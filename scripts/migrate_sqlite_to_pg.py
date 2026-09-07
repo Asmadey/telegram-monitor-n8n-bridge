@@ -383,17 +383,30 @@ def _read_telegram_session(path: str) -> str:
     return converted.save()
 
 
-async def _verify_telegram_session(encoded: str) -> dict:
-    """Operator must stop every prior session owner before this short verification."""
+async def _verify_telegram_session(encoded: str, session, user_id: int) -> dict:
+    """Operator must stop every prior session owner before this short verification.
+
+    Ключи приложения берутся из кабинета ВЛАДЕЛЬЦА (открытый вопрос №1,
+    решён 2026-09-07): переносимая сессия создана его приложением, ими же
+    её и проверяем. ENV остаётся запасным путём для оператора, у которого
+    кабинет ещё пуст, — иначе перенос упирается в курицу и яйцо.
+    """
     from telethon import TelegramClient
     from telethon.sessions import StringSession
 
-    settings = get_settings()
-    if not settings.telegram_api_id or not settings.telegram_api_hash:
-        raise ValueError("TELEGRAM_API_ID and TELEGRAM_API_HASH are required")
-    client = TelegramClient(
-        StringSession(encoded), settings.telegram_api_id, settings.telegram_api_hash
-    )
+    from app.services.tg_credentials import load_credentials
+
+    pair = await load_credentials(session, user_id)
+    if pair is None:
+        settings = get_settings()
+        if not settings.telegram_api_id or not settings.telegram_api_hash:
+            raise ValueError(
+                "нет ключей приложения: внесите api_id/api_hash в кабинет "
+                "или задайте TELEGRAM_API_ID и TELEGRAM_API_HASH оператору"
+            )
+        pair = (settings.telegram_api_id, settings.telegram_api_hash)
+    api_id, api_hash = pair
+    client = TelegramClient(StringSession(encoded), api_id, api_hash)
     try:
         await client.connect()
         me = await client.get_me()
@@ -550,8 +563,13 @@ async def main() -> None:
         command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
 
         await session.execute(select(1))
-        metadata = await _verify_telegram_session(encoded) if encoded else None
+        # Владелец определяется ДО проверки: его ключами она и делается.
         user = await _get_or_create_user(session, args.user_email)
+        metadata = (
+            await _verify_telegram_session(encoded, session, user.id)
+            if encoded
+            else None
+        )
         stats = await migrate(
             args.sqlite_path,
             session,

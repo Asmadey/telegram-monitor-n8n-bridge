@@ -106,6 +106,36 @@ class TelegramAccount(Base):
     )
 
 
+class TelegramCredential(Base):
+    """Ключи приложения MTProto, принадлежащие ПОЛЬЗОВАТЕЛЮ, а не сервису.
+
+    Решение владельца 2026-09-07 по открытому вопросу №1 плана: каждый
+    регистрирует своё приложение на my.telegram.org и вносит ключи в свой
+    кабинет. Общий `api_id` на всех означал бы, что ограничение Telegram
+    на одно приложение выключает вход сразу у всех.
+
+    Отдельная таблица, а не колонки в `telegram_accounts`: ключи вносятся
+    ДО подключения аккаунта и переживают отключение — при повторном входе
+    вводить их заново не нужно.
+    """
+
+    __tablename__ = "telegram_credentials"
+
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, unique=True, index=True
+    )
+    api_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # api_hash — секрет уровня ключа OpenRouter: только зашифрованным (3.4)
+    api_hash_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, onupdate=_now
+    )
+
+
 class TgAuthAttempt(Base):
     __tablename__ = "tg_auth_attempts"
     # заменяет глобальный auth_state-словарь в server.py

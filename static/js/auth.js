@@ -15,6 +15,8 @@ const openSettingsModalBtn = document.getElementById('openSettingsModalBtn');
 const closeSettingsModal = document.getElementById('closeSettingsModal');
 const settingsApiId = document.getElementById('settingsApiId');
 const settingsApiHash = document.getElementById('settingsApiHash');
+const saveApiKeysBtn = document.getElementById('saveApiKeysBtn');
+const apiKeysHint = document.getElementById('apiKeysHint');
 
 const authStatusBox = document.getElementById('authStatusBox');
 const authUserDetails = document.getElementById('authUserDetails');
@@ -58,10 +60,11 @@ export async function loadSettings() {
     if (!res.ok) throw new Error('Telegram status unavailable');
     const data = await res.json();
     settingsApiId.value = data.api_id || '';
-    // Сырой hash не приходит в браузер и не сохраняется из UI.
-    settingsApiHash.value = data.has_api_hash
-      ? 'API HASH настроен'
-      : 'не задан (TELEGRAM_API_HASH)';
+    // Сырой hash в браузер не возвращается никогда: показываем только
+    // признак наличия, поле остаётся пустым (правило 0.3).
+    settingsApiHash.value = '';
+    settingsApiHash.placeholder = data.has_api_hash ? '•••••••• (сохранён)' : 'ваш api_hash';
+    apiKeysHint.textContent = data.has_api_hash ? '' : 'Ключи ещё не заданы';
 
     if (data.is_authorized && data.user) {
       authStatusBox.style.display = 'block';
@@ -84,7 +87,33 @@ function setAuthStep(step) {
   step2fa.classList.toggle('active', step === 3);
 }
 
-// Ключи задаются только переменными окружения.
+// Ключи приложения принадлежат пользователю: сохраняются в его кабинет,
+// api_hash шифруется на сервере и обратно не приходит.
+saveApiKeysBtn.addEventListener('click', async () => {
+  const apiId = Number.parseInt(settingsApiId.value.trim(), 10);
+  if (!Number.isInteger(apiId) || apiId <= 0) {
+    showToast('API ID — целое число с my.telegram.org', true);
+    return;
+  }
+  const apiHash = settingsApiHash.value.trim();
+  saveApiKeysBtn.disabled = true;
+  try {
+    // Пустой api_hash не передаётся вовсе: так сохранение одного лишь
+    // API ID не затирает уже сохранённый секрет.
+    const body = apiHash ? { api_id: apiId, api_hash: apiHash } : { api_id: apiId };
+    const res = await apiFetch('/api/telegram/credentials', { method: 'POST', body });
+    if (!res.ok) {
+      const problem = await res.json().catch(() => ({}));
+      throw new Error(problem.detail || 'Не удалось сохранить ключи');
+    }
+    showToast('Ключи сохранены');
+    await loadSettings();
+  } catch (e) {
+    showToast(e.message, true);
+  } finally {
+    saveApiKeysBtn.disabled = false;
+  }
+});
 
 sendCodeBtn.addEventListener('click', async () => {
   const phone = authPhone.value.trim();

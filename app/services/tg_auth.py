@@ -5,31 +5,38 @@ Web-процесс поднимает КОРОТКОЖИВУЩИЙ клиент 
 процесса на одном auth-key → AUTH_KEY_DUPLICATED, Telegram может убить
 сессию). Сессия — StringSession (файла больше нет, задача 3.2).
 
-Ключи приложения — свои, из ENV (telegram_api_id/hash); тесты подменяют
+Ключи приложения принадлежат ПОЛЬЗОВАТЕЛЮ (открытый вопрос №1 решён
+2026-09-07): они берутся из его кабинета, а не из ENV. Ключа сервиса нет —
+подставлять вместо чужого нечего, и отказ поэтому громкий. Тесты подменяют
 эту зависимость фейком, живого Telegram в юнит-прогонах нет.
 """
 
 from collections.abc import AsyncIterator
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
-from app.config import get_settings
+from app.db import get_db
+from app.deps import require_user
+from app.models import User
+from app.services.tg_credentials import CredentialsMissing, require_credentials
 
 
-async def get_telegram_auth_client() -> AsyncIterator[TelegramClient]:
-    settings = get_settings()
-    if not settings.telegram_api_id or not settings.telegram_api_hash:
-        # громко: «вход в Telegram недоступен» лучше молчаливой заглушки
-        raise HTTPException(
-            status_code=503,
-            detail="Telegram API не настроен (TELEGRAM_API_ID/TELEGRAM_API_HASH)",
-        )
+async def get_telegram_auth_client(
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> AsyncIterator[TelegramClient]:
+    try:
+        api_id, api_hash = await require_credentials(db, user.id)
+    except CredentialsMissing as exc:
+        # 400, а не 503: не сервис сломан — пользователю нечем подключаться
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     client = TelegramClient(
         StringSession(),
-        settings.telegram_api_id,
-        settings.telegram_api_hash,
+        api_id,
+        api_hash,
     )
     await client.connect()
     try:
