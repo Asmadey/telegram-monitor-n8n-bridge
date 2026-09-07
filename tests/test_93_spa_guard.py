@@ -111,3 +111,36 @@ def test_interface_offers_a_way_out_of_the_cabinet():
     )
     source = _js("auth.js")
     assert "/auth/logout" in source, "кнопка выхода ни к чему не подключена"
+
+
+def test_hidden_attribute_actually_hides():
+    """`hidden` в разметке обязан работать, а не выглядеть работающим.
+
+    Найдено 7 сентября сразу после первой версии этой задачи: у `.btn` и
+    `.status-pill` задан `display: inline-flex`, а правило браузера для
+    `[hidden]` идёт без класса и проигрывает по специфичности. Кнопка
+    выхода из кабинета и почта показывались анониму, хотя в разметке
+    стояло `hidden`. Тест, проверяющий наличие атрибута (как test_76 для
+    кнопки Google), такого не видит — нужен именно тест эффекта.
+    """
+    import re
+
+    css = (STATIC / "css" / "main.css").read_text(encoding="utf-8")
+    # Ищется само правило, а не первое упоминание строки «[hidden]»:
+    # первая версия теста натыкалась на комментарий выше правила.
+    rule = re.search(r"\[hidden\]\s*\{([^}]*)\}", css)
+    assert rule, "в стилях нет правила для [hidden] — атрибут бессилен"
+    assert "display: none !important" in rule.group(1), (
+        "правило для [hidden] не перебивает display у .btn/.status-pill"
+    )
+
+
+def test_shell_is_not_shown_before_the_session_is_known():
+    """Аноним не должен видеть чужую панель даже мгновение до перехода."""
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    assert (
+        'id="appShell"' in html and "hidden" in html.split('id="appShell"', 1)[1][:60]
+    ), "оболочка отрисовывается до проверки сессии — мелькает чужая панель"
+    assert "shell.hidden = false" in _js("main.js"), (
+        "оболочку никто не показывает — приложение останется невидимым"
+    )
