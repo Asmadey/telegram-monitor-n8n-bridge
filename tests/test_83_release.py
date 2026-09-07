@@ -1,6 +1,7 @@
 """Release regression scenarios: static visitor, Railway and Firebase startup."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,36 @@ def test_vercel_serves_existing_page_assets_and_google_sdk():
     assert "https://mtproto-ai.firebaseapp.com" in csp
     assert "https://fonts.googleapis.com" in csp
     assert "https://fonts.gstatic.com" in csp
+
+
+def test_pages_never_load_a_script_the_policy_forbids():
+    """Страница не должна грузить скрипт, который CSP всё равно заблокирует.
+
+    Найдено живой проверкой 2026-09-07: `index.html` подключал GSAP с
+    cdnjs.cloudflare.com, а `script-src` не содержал этот origin ни в одном
+    режиме — браузер молча отказывался исполнять файл. Тесты CSP проверяли
+    политику, тесты страниц — разметку; стык между ними не проверял никто.
+
+    Сравнение идёт с САМОЙ ШИРОКОЙ политикой (Google включён): если origin
+    не разрешён даже в ней, он заблокирован при любой конфигурации.
+    """
+    from urllib.parse import urlparse
+
+    from app.security.headers import build_csp
+
+    csp = build_csp(google_auth_domain="example.firebaseapp.com")
+    allowed = set(csp.split("script-src", 1)[1].split(";", 1)[0].split())
+    external = re.compile(r'<script[^>]+src="(https?://[^"]+)"')
+    checked = 0
+    for page in sorted((ROOT / "static").glob("*.html")):
+        for url in external.findall(page.read_text(encoding="utf-8")):
+            checked += 1
+            origin = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+            assert origin in allowed, (
+                f"{page.name} грузит скрипт с {origin}, которого нет в "
+                f"script-src: браузер его заблокирует. script-src = {sorted(allowed)}"
+            )
+    assert checked or True  # страниц без внешних скриптов быть не запрещено
 
 
 def test_spa_routes_survive_clean_urls():
