@@ -11,7 +11,9 @@
 </head>
 <body>
 
-  <div class="container">
+  <!-- Скрыт до проверки сессии: аноним не должен видеть чужую панель даже
+       на мгновение перед переходом на вход (start() в main.js). -->
+  <div class="container" id="appShell" hidden>
     <!-- Unified Header with Tabs -->
     <header>
       <div class="brand-group">

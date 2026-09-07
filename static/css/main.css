@@ -297,6 +297,14 @@
     }
 
     /* Buttons */
+    /* Атрибут hidden обязан скрывать. Без этого правила он бессилен на
+       .btn и .status-pill: у них display: inline-flex, а правило браузера
+       для [hidden] — без класса и проигрывает по специфичности. Найдено
+       7 сентября: кнопка выхода из кабинета показывалась анониму. */
+    [hidden] {
+      display: none !important;
+    }
+
     .btn {
       display: inline-flex;
       align-items: center;
