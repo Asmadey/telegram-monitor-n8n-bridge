@@ -32,7 +32,13 @@ from app.models import Base
 # alembic.ini доступен только при запуске из CLI; при программном — не обязателен
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False обязателен. По умолчанию fileConfig
+    # ОТКЛЮЧАЕТ все логгеры, созданные раньше, — а alembic вызывается не
+    # только отдельной командой: скрипт переноса поднимает миграции в своём
+    # процессе, и после них логи приложения замолкали бы целиком. Поймано
+    # прогоном CI: там, где alembic отрабатывает, тест лога воркера получал
+    # пустой буфер, хотя запись в журнал происходила.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # DATABASE_URL обязан быть задан ЯВНО (os.environ). Урок 2026-09-01:
 # неэкспортированная переменная + дефолт «sqlite storage.db» в app.config

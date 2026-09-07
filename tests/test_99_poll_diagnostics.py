@@ -98,3 +98,26 @@ async def test_worker_log_carries_the_reason_too(db, user):
     assert "ConnectionError" in buffer.getvalue(), (
         f"лог процесса не называет причину падения опроса: {buffer.getvalue()!r}"
     )
+
+
+def test_migrations_do_not_silence_application_loggers():
+    """Alembic не имеет права выключать логгеры приложения.
+
+    `logging.config.fileConfig` по умолчанию отключает ВСЕ логгеры,
+    созданные до него. Отдельной командой это безобидно, но скрипт
+    переноса поднимает миграции в своём процессе — и после них
+    диагностика самого переноса замолкала бы целиком.
+
+    Поймано прогоном CI: тест выше получал пустой буфер там, где alembic
+    успел отработать, хотя запись в журнал происходила. Локально тесты
+    миграций пропускаются, и расхождение было невидимо.
+    """
+    import pathlib
+
+    env = (
+        pathlib.Path(__file__).resolve().parents[1] / "alembic" / "env.py"
+    ).read_text(encoding="utf-8")
+    assert "disable_existing_loggers=False" in env, (
+        "fileConfig отключит логгеры приложения — диагностика замолчит "
+        "после первого же запуска миграций в этом процессе"
+    )
