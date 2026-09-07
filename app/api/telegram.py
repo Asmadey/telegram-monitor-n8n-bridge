@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import TenantRepo, get_db
 from app.deps import get_tenant_repo, require_user
 from app.models import TelegramAccount, TgAuthAttempt, User
+from app.security.crypto import encrypt
 from app.security.ratelimit import TELEGRAM_SEND_CODE_LIMIT, limiter
 from app.security.sessions import _utc
 from app.services.tg_account import save_tg_session
@@ -131,6 +132,9 @@ async def send_code(
             user_id=user.id,
             phone=phone,
             phone_code_hash=sent.phone_code_hash,
+            # Сессия, ЗАПРОСИВШАЯ код: подтверждать его обязана она же,
+            # иначе Telegram отвечает PHONE_CODE_EXPIRED (2026-09-07).
+            session_string_encrypted=encrypt(client.session.save()),
             expires_at=expires_at,
         )
     )

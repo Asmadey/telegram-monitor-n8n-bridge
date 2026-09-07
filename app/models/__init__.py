@@ -146,6 +146,12 @@ class TgAuthAttempt(Base):
     )
     phone: Mapped[str] = mapped_column(String(32), nullable=False)
     phone_code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Сессия, ЗАПРОСИВШАЯ код. Telegram привязывает попытку входа к auth-key
+    # той сессии, что вызвала send_code_request: подтверждать код обязана
+    # она же, иначе ответ — PHONE_CODE_EXPIRED (найдено 2026-09-07 на живом
+    # Telegram). Строка — секрет: по ней можно завершить чужой вход,
+    # поэтому хранится зашифрованной, как и сессия аккаунта (3.4).
+    session_string_encrypted: Mapped[str | None] = mapped_column(Text)
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
