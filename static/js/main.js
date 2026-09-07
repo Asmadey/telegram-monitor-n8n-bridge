@@ -5,7 +5,8 @@
 // из модулей вкладок, сами модули друг про друга не знают (кроме
 // ребра channels → messages и integration → logs).
 
-import { checkHealth } from './auth.js';
+import { apiGet } from './api.js';
+import { checkHealth, showAccount } from './auth.js';
 import { loadFeed } from './feed.js';
 import { loadConfig, refreshMonitorTimers } from './channels.js';
 import { loadSavedMessages } from './messages.js';
@@ -80,22 +81,43 @@ function initTabFromUrl() {
   }
 }
 
-checkHealth();
-loadConfig();
-loadFeed();
-loadLogs();
-loadCleanupConfig();
-loadSavedMessages();
-loadOpenRouterConfig();
-loadTgForwardConfig();
-initTabFromUrl();
+// Оболочка не поднимается, пока не известно, кто пришёл. Аноним уходит на
+// страницу входа, а не получает пустое приложение с восемью 401 в консоли:
+// API закрыт по умолчанию с задачи 2.3, интерфейс — с этой.
+async function start() {
+  let me;
+  try {
+    const res = await apiGet('/auth/me');
+    if (!res.ok) return; // 401 уже увёл на /login (api.js)
+    me = await res.json();
+  } catch (e) {
+    // Сеть недоступна: приложение без API бесполезно, но и врать про
+    // «войдите» нельзя — показываем оболочку, модули покажут свои отказы.
+    me = null;
+  }
+  if (me && me.email) {
+    showAccount(me.email);
+  }
 
-// Фоновое авто-обновление ленты (каждые 8 секунд)
-setInterval(() => {
-  loadFeed(true);
-}, 8000);
+  checkHealth();
+  loadConfig();
+  loadFeed();
+  loadLogs();
+  loadCleanupConfig();
+  loadSavedMessages();
+  loadOpenRouterConfig();
+  loadTgForwardConfig();
+  initTabFromUrl();
 
-// Периодический пересчет таймеров обратного отсчета (каждые 15 секунд)
-setInterval(() => {
-  refreshMonitorTimers();
-}, 15000);
+  // Фоновое авто-обновление ленты (каждые 8 секунд)
+  setInterval(() => {
+    loadFeed(true);
+  }, 8000);
+
+  // Периодический пересчет таймеров обратного отсчета (каждые 15 секунд)
+  setInterval(() => {
+    refreshMonitorTimers();
+  }, 15000);
+}
+
+start();
