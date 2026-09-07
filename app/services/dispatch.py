@@ -27,7 +27,7 @@ import logging
 import uuid
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 from app.db import TenantRepo
 from app.models import ChatAvatar, FeedItem, Integration, SentMessage
@@ -91,9 +91,7 @@ def _chunks(text: str) -> list[str]:
 
 
 async def _integration(db, user_id: int) -> Integration | None:
-    return (
-        await db.scalars(select(Integration).where(Integration.user_id == user_id))
-    ).first()
+    return (await db.scalars(TenantRepo(db, user_id).query(Integration))).first()
 
 
 async def _run_bot(

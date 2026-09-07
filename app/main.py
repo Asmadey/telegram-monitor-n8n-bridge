@@ -1,8 +1,7 @@
 """Сборка FastAPI (Фаза 2, целевая структура PLAN.md раздел 2).
 
-server.py остаётся точкой входа локальной разработки, пока его код не
-перенесён в модули (Фазы 3–4); редактировать его после Фазы 1 нельзя —
-переносить. Эта сборка — та, что уедет на Railway.
+Единственная точка входа web-процесса: монолит server.py удалён задачей 7.4.
+Второй процесс того же образа — воркер (app/worker.py).
 """
 
 from pathlib import Path
@@ -34,12 +33,17 @@ from app.security.csrf import (
     verify_csrf,
 )
 from app.security.headers import add_security_headers
+from app.security.log_redaction import install_log_redaction
 from app.security.ratelimit import limiter
 
 # Стартовый барьер (задача 3.4): без валидного APP_ENCRYPTION_KEY приложение
 # не поднимается вовсе — иначе однажды прод заведётся с ключом «по умолчанию»,
 # и MTProto-сессии чужих аккаунтов окажутся под ним.
 validate_encryption_key()
+
+# Затирание секретов во всех логах процесса (9.4). Ставится ДО создания
+# приложения: иначе первые же записи uvicorn пройдут мимо.
+install_log_redaction()
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 

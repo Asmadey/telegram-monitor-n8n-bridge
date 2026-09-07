@@ -86,6 +86,44 @@ def _seed_row(model, user_id: int):
     return model(**values)
 
 
+def test_background_modules_scope_through_the_repo():
+    """Фон ходит за чужими данными так же, как роутеры — через TenantRepo.
+
+    Задача 9.4. Воркер — единственное место проекта, где владелец данных
+    берётся не из сессии пользователя, а из строки задачи. Ручной фильтр
+    `Model.user_id == ...` тут не утечка (значение берётся из той же
+    строки), но он выводит запрос из-под слоя, в котором фильтр забыть
+    невозможно, — а именно на это правило опирается вся Фаза 3.
+
+    Свип структурный: он ловит не сегодняшние четыре запроса, а завтрашний
+    пятый, написанный по образцу соседнего кода.
+
+    Глобальные запросы планировщика (разобрать очередь, найти просроченные
+    мониторы ВСЕХ тенантов) под правило не попадают: они сознательно не
+    фильтруют по владельцу и ключевого слова `user_id ==` не содержат.
+    """
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    manual = re.compile(r"\.user_id\s*==")
+    offenders = []
+    for name in (
+        "app/worker.py",
+        "app/services/dispatch.py",
+        "app/services/tg_gateway.py",
+    ):
+        for number, line in enumerate(
+            (root / name).read_text(encoding="utf-8").splitlines(), 1
+        ):
+            if manual.search(line):
+                offenders.append(f"{name}:{number}: {line.strip()}")
+    assert not offenders, (
+        "запрос мимо TenantRepo — фильтр по владельцу написан руками:\n"
+        + "\n".join(offenders)
+    )
+
+
 @pytest.mark.asyncio
 async def test_tenant_repo_scopes_every_user_id_model(db, user_a, user_b):
     """Репозиторий юзера A не возвращает ни одной строки юзера B —

@@ -49,6 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.db import TenantRepo, get_sessionmaker
 from app.models import FeedItem, Integration, Job, Monitor, TelegramAccount
 from app.security.crypto import validate_encryption_key
+from app.security.log_redaction import install_log_redaction
 from app.services.cleanup import purge_older_than
 from app.services.dedup import filter_new
 from app.services.dispatch import dispatch, store_avatar
@@ -237,14 +238,15 @@ class Worker:
                     "Delivery temporarily failed; saved result awaits retry"
                 )
         elif job.kind == KIND_POLL:
+            # Владелец берётся из строки задачи — единственное место
+            # проекта, где он не из сессии; фильтр всё равно ставит репозиторий.
+            # public_id уникален только в пределах пользователя, поэтому один
+            # он бы указал на чужой канал.
             monitor = (
                 await db.scalars(
-                    select(Monitor).where(
-                        # пара, а не один public_id: он уникален только в
-                        # пределах пользователя — иначе чужой канал
-                        Monitor.user_id == job.user_id,
-                        Monitor.public_id == payload.get("monitor_public_id"),
-                    )
+                    TenantRepo(db, job.user_id)
+                    .query(Monitor)
+                    .where(Monitor.public_id == payload.get("monitor_public_id"))
                 )
             ).first()
             if monitor is None:
@@ -267,9 +269,9 @@ class Worker:
     async def _reanalyze(self, db, user_id: int, feed_item_id) -> None:
         item = (
             await db.scalars(
-                select(FeedItem).where(
-                    FeedItem.user_id == user_id, FeedItem.id == feed_item_id
-                )
+                TenantRepo(db, user_id)
+                .query(FeedItem)
+                .where(FeedItem.id == feed_item_id)
             )
         ).first()
         if item is None:
@@ -536,6 +538,7 @@ async def _amain() -> None:
     # стартовые барьеры те же, что у web (3.4): без ключа шифрования
     # воркер не расшифрует сессии; без базы нечего опрашивать.
     validate_encryption_key()
+    install_log_redaction()  # 9.4: секрет не уйдёт в stdout ни из чьего лога
     get_sessionmaker()  # громкий отказ без DATABASE_URL (урок 2026-09-02)
 
     worker = Worker()
