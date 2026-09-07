@@ -78,11 +78,24 @@ def test_vercel_never_proxies_over_plain_http():
 
 
 def test_vercel_spa_tabs_fall_back_to_the_shell():
-    """Перезагрузка на вкладке не должна давать 404 на Vercel."""
+    """Перезагрузка на вкладке не должна давать 404 на Vercel.
+
+    Требование к назначению исправлено 2026-09-07. Раньше тест требовал
+    буквально «/index.html» — и был неправ: при `cleanUrls: true` Vercel не
+    отдаёт пути с расширением, поэтому именно такое назначение и давало 404
+    на живом деплое, пока тест оставался зелёным. Проверяется то, что имели
+    в виду: вкладка откатывается к ОБОЛОЧКЕ приложения, а не уходит на API
+    и не пропадает.
+    """
     cfg = json.loads(VERCEL.read_text(encoding="utf-8"))
+    clean_urls = cfg.get("cleanUrls") is True
     rules = {r["source"]: r["destination"] for r in cfg["rewrites"]}
+    shell = {"/", "/index"} if clean_urls else {"/index.html"}
     for tab in ("/feed", "/channels", "/messages", "/integration", "/logs"):
-        assert rules.get(tab) == "/index.html", f"вкладка {tab} без отката к оболочке"
+        assert rules.get(tab) in shell, (
+            f"вкладка {tab} без отката к оболочке: {rules.get(tab)!r}, "
+            f"ожидалось одно из {sorted(shell)}"
+        )
 
 
 def test_placeholder_is_obvious_until_replaced():

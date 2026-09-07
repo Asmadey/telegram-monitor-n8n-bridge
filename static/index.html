@@ -692,7 +692,10 @@
   </div>
 
   <!-- GSAP Animation Suite (3.12.5) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <!-- GSAP лежит рядом, а не на cdnjs: script-src в CSP — только 'self'.
+       Сторонний origin пришлось бы туда вписать, то есть дать чужому
+       хосту право исполнять скрипты в приложении с MTProto-сессиями. -->
+  <script src="/static/js/vendor/gsap.min.js"></script>
   <script type="module" src="/static/js/main.js"></script>
 </body>
 </html>
