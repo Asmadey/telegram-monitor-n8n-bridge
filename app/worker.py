@@ -61,6 +61,7 @@ from app.services.jobs import (
 )
 from app.services.journal import add_log, redact
 from app.services.llm import process_messages_batch_with_llm
+from app.services.ops import WORKER_NAME, record_heartbeat
 from app.services.tg_gateway import TelegramGateway
 from app.services.tg_pool import TelegramClientPool, flood_guarded_call
 
@@ -114,7 +115,8 @@ def _retry_deadline(exc: Exception) -> datetime.datetime:
 
 
 class JobDeferred(Exception):
-    """A durable queue item cannot run before an external deadline."""
+    """Задача из очереди не может выполниться раньше внешнего срока
+    (FloodWait, отсрочка провайдера) — она откладывается, а не падает."""
 
     def __init__(self, retry_after: datetime.datetime):
         super().__init__("job deferred")
@@ -162,6 +164,12 @@ class Worker:
 
         maker = self._sessionmaker or get_sessionmaker()
         async with maker() as db:
+            # Отметка живости — первым делом в тике (10.2): по ней снаружи
+            # видно, что воркер не просто запущен, а доходит до работы.
+            # leader=True не допущение: цикл вызывает тик только после
+            # успешной проверки лидерства (или когда её нет вовсе — один
+            # процесс). Отметиться, не будучи лидером, здесь нельзя.
+            await record_heartbeat(db, WORKER_NAME, leader=True)
             await requeue_hung_jobs(db)
             await self.run_jobs(db)
             await self.run_schedule(db)
@@ -596,7 +604,8 @@ async def _amain() -> None:
 
 
 class PostgresLeadership:
-    """One active worker per database; connection loss fails closed."""
+    """Один активный воркер на базу. Потеря соединения трактуется как
+    потеря лидерства: отказ в сторону остановки, а не двойной работы."""
 
     LOCK_ID = 846352910
 
@@ -607,11 +616,12 @@ class PostgresLeadership:
     async def acquire(
         self, stop: asyncio.Event, *, retry_interval: float = LEADER_RETRY_INTERVAL
     ) -> bool:
-        """Wait for exclusive ownership before Worker.run can start.
+        """Дождаться исключительного владения — до этого Worker.run не стартует.
 
-        The lock is bound to this dedicated PostgreSQL session. A rolling
-        deployment therefore leaves the replacement process idle until the old
-        worker has disconnected every Telegram client and released the lock.
+        Блокировка привязана к этому выделенному соединению PostgreSQL.
+        Поэтому при выкатке новый процесс простаивает, пока старый воркер
+        не отключит все Telegram-клиенты и не отпустит блокировку — двух
+        владельцев одного auth-key не возникает даже на секунду.
         """
         while not stop.is_set():
             self.acquired = bool(
@@ -637,7 +647,7 @@ class PostgresLeadership:
         return True
 
     async def release(self) -> None:
-        """Explicitly release before returning the physical connection."""
+        """Явно освободить блокировку до возврата физического соединения."""
         if not self.acquired:
             return
         try:

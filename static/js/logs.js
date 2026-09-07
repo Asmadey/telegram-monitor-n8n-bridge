@@ -15,6 +15,46 @@ let currentLogs = [];
 const LOGS_PAGE_SIZE = 150;
 let totalLogs = 0;
 
+const opsDb = document.getElementById('opsDb');
+const opsWorker = document.getElementById('opsWorker');
+const opsQueue = document.getElementById('opsQueue');
+
+function age(seconds) {
+  if (seconds === null || seconds === undefined) return '';
+  if (seconds < 90) return `${seconds} с назад`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} мин назад`;
+  return `${Math.round(seconds / 3600)} ч назад`;
+}
+
+export async function loadOpsStatus() {
+  if (!opsDb) return;
+  try {
+    const res = await apiGet('/api/ops/health');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const s = await res.json();
+
+    opsDb.textContent = s.database.ok ? 'доступна' : 'НЕДОСТУПНА';
+    opsDb.style.color = s.database.ok ? '' : '#d33';
+
+    if (!s.worker.seen) {
+      opsWorker.textContent = 'не запускался';
+    } else {
+      opsWorker.textContent = (s.worker.alive ? 'жив' : 'МОЛЧИТ') + ', ' + age(s.worker.seconds_since_beat);
+    }
+    // Молчащий воркер — самый вероятный отказ: лента пуста, задача висит,
+    // ошибок нет нигде. Поэтому он выделен, а не спрятан в общий текст.
+    opsWorker.style.color = s.worker.alive ? '' : '#d33';
+
+    const oldest = s.jobs.oldest_pending_seconds;
+    opsQueue.textContent = s.jobs.pending === 0
+      ? 'пусто'
+      : `${s.jobs.pending} в ожидании, старшей ${age(oldest)}`;
+    opsQueue.style.color = s.jobs.pending > 0 && oldest > 600 ? '#d33' : '';
+  } catch (e) {
+    opsDb.textContent = opsWorker.textContent = opsQueue.textContent = 'нет связи';
+  }
+}
+
 export async function loadLogs(append = false) {
   const status = filterLogStatus ? filterLogStatus.value : 'ALL';
   try {

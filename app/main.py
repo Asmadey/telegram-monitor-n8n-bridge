@@ -21,6 +21,7 @@ from app.api import (
     integrations,
     journal,
     monitors,
+    ops,
     public,
     telegram,
 )
@@ -76,6 +77,7 @@ app.include_router(journal.router)  # К2: сохранённые посты и 
 app.include_router(integrations.router)  # К2: n8n / OpenRouter / бот
 app.include_router(checks.router)  # К2: проверочные кнопки интеграций
 app.include_router(cleanup.router)  # К2: автоочистка базы
+app.include_router(ops.router)  # 10.2: база, воркер, возраст очереди
 
 app.add_middleware(CorsMiddleware)  # раздельный деплой: Vercel ↔ Railway
 
