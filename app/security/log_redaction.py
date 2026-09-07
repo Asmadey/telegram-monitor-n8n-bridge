@@ -34,12 +34,23 @@ def _redacting_factory(factory: RecordFactory) -> RecordFactory:
     def make_record(*args, **kwargs) -> logging.LogRecord:
         record = factory(*args, **kwargs)
         # Секрет приезжает и в шаблоне, и в аргументах: logger.warning("%s", exc).
-        # getMessage() склеивает их, после чего аргументы больше не нужны.
-        if record.args:
-            record.msg = redact(record.getMessage())
-            record.args = ()
-        elif isinstance(record.msg, str):
+        # Затирается содержимое, СТРУКТУРА сохраняется: склеивание через
+        # getMessage() с обнулением args ломало access-логгер uvicorn, который
+        # получает пятёрку (адрес, метод, путь, версия, код) и раскладывает её
+        # сам — на каждый запрос в лог печатался трейсбек. Найдено на живом
+        # деплое 2026-09-07; ответы при этом отдавались верно, поэтому ни
+        # тесты, ни healthcheck дефекта не показывали.
+        if isinstance(record.msg, str):
             record.msg = redact(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                redact(item) if isinstance(item, str) else item for item in record.args
+            )
+        elif isinstance(record.args, dict):
+            record.args = {
+                key: redact(value) if isinstance(value, str) else value
+                for key, value in record.args.items()
+            }
         # Трейсбек форматируется здесь и подставляется готовой строкой:
         # Formatter возьмёт exc_text как есть и второй раз форматировать
         # исключение не станет.

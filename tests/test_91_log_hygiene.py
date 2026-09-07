@@ -117,3 +117,62 @@ def test_both_entry_points_install_redaction():
         assert "install_log_redaction()" in source, (
             f"{entry} не включает затирание логов — секрет уйдёт в stdout"
         )
+
+
+def test_structured_arguments_survive_for_formatters_that_need_them():
+    """Затирание не имеет права ломать чужой форматтер.
+
+    Найдено на живом деплое 2026-09-07: access-логгер uvicorn получает
+    args пятёркой (адрес, метод, путь, версия, код) и раскладывает её сам.
+    Первая версия затирания склеивала сообщение через getMessage() и
+    обнуляла args — форматтер падал, и на КАЖДЫЙ запрос в лог печатался
+    трейсбек `--- Logging error ---`. Ответы при этом отдавались верно, то
+    есть тесты и healthcheck молчали: дефект видно только в логах.
+
+    Контракт: структура args сохраняется, затирается содержимое строк.
+    """
+    from app.security.log_redaction import install_log_redaction, reset_log_redaction
+
+    install_log_redaction()
+    try:
+        factory = logging.getLogRecordFactory()
+        record = factory(
+            "uvicorn.access",
+            logging.INFO,
+            "h11_impl.py",
+            482,
+            '%s - "%s %s HTTP/%s" %d',
+            ("100.64.0.5:43194", "GET", "/api/telegram/status", "1.1", 401),
+            None,
+        )
+        assert isinstance(record.args, tuple), (
+            f"args перестали быть кортежем: {type(record.args).__name__}"
+        )
+        assert len(record.args) == 5, (
+            f"форматтер uvicorn ждёт пять аргументов, получит {len(record.args)}"
+        )
+        assert record.getMessage().endswith("401")
+    finally:
+        reset_log_redaction()
+
+
+def test_secret_inside_one_argument_is_still_redacted():
+    """Сохранение структуры не должно стоить самой защиты."""
+    from app.security.log_redaction import install_log_redaction, reset_log_redaction
+
+    install_log_redaction()
+    try:
+        factory = logging.getLogRecordFactory()
+        record = factory(
+            "telethon",
+            logging.INFO,
+            "x.py",
+            1,
+            "auth: %s (%d)",
+            (FAKE_BOT_TOKEN, 7),
+            None,
+        )
+        assert FAKE_BOT_TOKEN not in record.getMessage()
+        assert record.args[1] == 7, "нестроковый аргумент испорчен затиранием"
+    finally:
+        reset_log_redaction()
