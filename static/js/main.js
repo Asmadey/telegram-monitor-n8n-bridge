@@ -98,6 +98,10 @@ async function start() {
   if (me && me.email) {
     showAccount(me.email);
   }
+  // Оболочку показываем только теперь: до этого мига неизвестно, есть ли
+  // кому её показывать.
+  const shell = document.getElementById('appShell');
+  if (shell) shell.hidden = false;
 
   checkHealth();
   loadConfig();
