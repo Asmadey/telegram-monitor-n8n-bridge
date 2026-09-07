@@ -19,7 +19,6 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.db import TenantRepo, get_db
 from app.deps import get_tenant_repo, require_user
 from app.models import TelegramAccount, TgAuthAttempt, User
@@ -27,6 +26,12 @@ from app.security.ratelimit import TELEGRAM_SEND_CODE_LIMIT, limiter
 from app.security.sessions import _utc
 from app.services.tg_account import save_tg_session
 from app.services.tg_auth import get_telegram_auth_client
+from app.services.tg_credentials import (
+    CredentialsMissing,
+    require_credentials,
+    save_credentials,
+)
+from app.services.tg_credentials import get_row as get_credentials_row
 
 router = APIRouter(dependencies=[Depends(require_user)])
 
@@ -36,6 +41,18 @@ ATTEMPT_TTL = datetime.timedelta(minutes=10)
 
 class PhoneRequest(BaseModel):
     phone: str
+
+
+class CredentialsRequest(BaseModel):
+    """Ключи приложения пользователя с my.telegram.org.
+
+    `api_hash=None` — «поле не передано»: сохранённый хеш не затирается
+    (правило 0.3). Пустая строка тоже не затирает: ключи без хеша
+    бессмысленны, очистка делается отключением аккаунта.
+    """
+
+    api_id: int
+    api_hash: str | None = None
 
 
 class SignInRequest(BaseModel):
@@ -49,12 +66,12 @@ class SignInRequest(BaseModel):
 async def telegram_status(
     repo: TenantRepo = Depends(get_tenant_repo),
 ) -> dict:
-    """Return configuration readiness and only the current user's account metadata."""
-    settings = get_settings()
+    """Ключи и аккаунт ТЕКУЩЕГО пользователя; api_hash наружу не уходит."""
     account = (await repo.db.scalars(repo.query(TelegramAccount).limit(1))).first()
+    credentials = await get_credentials_row(repo.db, repo.user_id)
     return {
-        "api_id": settings.telegram_api_id,
-        "has_api_hash": bool(settings.telegram_api_hash),
+        "api_id": credentials.api_id if credentials is not None else None,
+        "has_api_hash": credentials is not None,
         "is_authorized": account is not None,
         "user": (
             {
@@ -66,6 +83,26 @@ async def telegram_status(
             else None
         ),
     }
+
+
+@router.post("/api/telegram/credentials")
+async def save_telegram_credentials(
+    req: CredentialsRequest,
+    repo: TenantRepo = Depends(get_tenant_repo),
+) -> dict:
+    """Сохранить СВОИ ключи приложения Telegram.
+
+    Наружу возвращается только признак наличия хеша: сам он не уходит
+    отсюда никогда — ни в ответе, ни в статусе (0.3).
+    """
+    try:
+        row = await save_credentials(
+            repo.db, repo.user_id, api_id=req.api_id, api_hash=req.api_hash
+        )
+    except CredentialsMissing as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await repo.db.commit()
+    return {"api_id": row.api_id, "has_api_hash": True}
 
 
 @router.post("/api/telegram/send-code")
@@ -189,22 +226,20 @@ async def get_dialog_lister(
     from telethon import TelegramClient
     from telethon.sessions import StringSession
 
-    from app.config import get_settings
     from app.security.crypto import decrypt
 
-    account = (
-        await db.scalars(
-            select(TelegramAccount).where(TelegramAccount.user_id == user.id)
-        )
-    ).first()
+    account = (await db.scalars(TenantRepo(db, user.id).query(TelegramAccount))).first()
     if account is None:
         raise HTTPException(status_code=400, detail="Telegram-аккаунт не подключён")
 
-    settings = get_settings()
+    try:
+        api_id, api_hash = await require_credentials(db, user.id)
+    except CredentialsMissing as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     client = TelegramClient(
         StringSession(decrypt(account.session_string_encrypted)),
-        settings.telegram_api_id,
-        settings.telegram_api_hash,
+        api_id,
+        api_hash,
     )
 
     async def lister(limit: int = 50):

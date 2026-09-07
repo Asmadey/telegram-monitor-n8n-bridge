@@ -51,7 +51,18 @@ class ClientFactory:
     def __init__(self):
         self.created: list[FakeClient] = []
 
-    def __call__(self, user_id: int, session_string: str) -> FakeClient:
+    def __call__(
+        self,
+        user_id: int,
+        session_string: str,
+        *,
+        api_id: int | None = None,
+        api_hash: str | None = None,
+    ) -> FakeClient:
+        # Ключи приложения приходят от ВЛАДЕЛЬЦА сессии (открытый вопрос №1,
+        # решён 2026-09-07). Пулу они безразличны — он их только передаёт, —
+        # но подпись двойника обязана совпадать с живой фабрикой, иначе
+        # тест зелёный там, где рантайм упадёт на TypeError.
         client = FakeClient(f"client-{len(self.created)}")
         self.created.append(client)
         return client

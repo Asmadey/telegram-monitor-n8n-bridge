@@ -390,12 +390,13 @@ async def test_telegram_status_is_private_and_scoped_to_current_user(
 ):
     from conftest import act_as
 
-    from app.config import get_settings
     from app.models import TelegramAccount
+    from app.services.tg_credentials import save_credentials
 
-    monkeypatch.setenv("TELEGRAM_API_ID", "123456")
-    monkeypatch.setenv("TELEGRAM_API_HASH", "configured-hash")
-    get_settings.cache_clear()
+    # Ключи приложения переехали из ENV в кабинет пользователя (открытый
+    # вопрос №1, решён владельцем 2026-09-07). Предмет теста прежний —
+    # статус приватен и показывает только СВОЁ; изменился источник ключей.
+    await save_credentials(db, user_a.id, api_id=123456, api_hash="configured-hash")
     for owner, suffix in ((user_a.id, "a"), (user_b.id, "b")):
         db.add(
             TelegramAccount(
@@ -425,7 +426,6 @@ async def test_telegram_status_is_private_and_scoped_to_current_user(
     assert "secret-session" not in raw
     assert "configured-hash" not in raw
     assert "telegram-b" not in raw
-    get_settings.cache_clear()
 
 
 @pytest.mark.asyncio

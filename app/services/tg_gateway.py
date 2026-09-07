@@ -16,6 +16,7 @@ from app.db import TenantRepo
 from app.models import TelegramAccount
 from app.security.crypto import decrypt
 from app.services.messages import fetch_channel_messages
+from app.services.tg_credentials import require_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,15 @@ class TelegramGateway:
         ).first()
         if account is None or account.status != "active":
             return None
-        return await self.pool.get(user_id, decrypt(account.session_string_encrypted))
+        # Ключи приложения — владельца, а не сервиса (открытый вопрос №1):
+        # без них клиент поднимать нечем, и это не молчаливый пропуск.
+        api_id, api_hash = await require_credentials(db, user_id)
+        return await self.pool.get(
+            user_id,
+            decrypt(account.session_string_encrypted),
+            api_id=api_id,
+            api_hash=api_hash,
+        )
 
     async def resolve(self, client, target: str):
         return await client.get_entity(target)
