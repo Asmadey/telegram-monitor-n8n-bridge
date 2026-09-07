@@ -10,10 +10,20 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # .env лежит в корне приложения (FastAPI/), а не в cwd, откуда запущен pytest.
 _ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
+
+
+def normalize_database_url(value: str) -> str:
+    """Railway supplies plain PostgreSQL URLs; runtime and migrations use asyncpg."""
+    value = value.strip()
+    for prefix in ("postgresql://", "postgres://"):
+        if value.startswith(prefix):
+            return "postgresql+asyncpg://" + value[len(prefix) :]
+    return value
 
 
 class Settings(BaseSettings):
@@ -30,6 +40,12 @@ class Settings(BaseSettings):
     # Инфраструктура. database_url БЕЗ дефолта: забыли URL — падаем громко,
     # а не молча уходим в боевую storage.db (урок 2026-09-01).
     database_url: str = ""
+
+    @field_validator("database_url")
+    @classmethod
+    def _database_driver(cls, value: str) -> str:
+        return normalize_database_url(value)
+
     secret_key: str = ""  # подпись сессий (Phase 2)
     app_encryption_key: str = (
         ""  # Fernet-ключ для шифрования секретов тенантов (Phase 2)
@@ -63,8 +79,7 @@ class Settings(BaseSettings):
     # Вход через Google. Значения ПУБЛИЧНЫ по устройству Firebase: apiKey
     # идентифицирует проект, а не даёт доступ — защищают правила доступа и
     # список разрешённых доменов в консоли. Приватный ключ сервисного
-    # аккаунта здесь не появляется никогда: его читает firebase_admin сам
-    # из GOOGLE_APPLICATION_CREDENTIALS.
+    # аккаунта не нужен: проверка использует публичные сертификаты Google.
     # Пусто = вход через Google выключен: кнопка скрыта, а CSP не пускает
     # сторонние origin — за выключенную функцию не платят политикой.
     firebase_api_key: str = ""

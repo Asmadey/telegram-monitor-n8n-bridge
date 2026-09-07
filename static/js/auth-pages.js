@@ -19,6 +19,15 @@
   }
 
   async function postJson(url, payload) {
+    // Static pages on Vercel do not run the API cookie middleware.
+    if (!csrfToken()) {
+      const bootstrap = await fetch(apiBase() + '/auth/google/config', {
+        credentials: 'include', cache: 'no-store'
+      });
+      if (!bootstrap.ok || !csrfToken()) {
+        return { ok: false, data: { detail: 'Не удалось подключиться к серверу. Обновите страницу.' } };
+      }
+    }
     const res = await fetch(apiBase() + url, {
       method: 'POST',
       // include, а не same-origin: при отдельном домене фронтенда cookie
@@ -103,6 +112,10 @@
       const r = await postJson('/auth/password-reset', {
         email: document.getElementById('email').value
       });
+      if (!r.ok) {
+        showError(requestForm, detailText(r.data, 'Не удалось отправить запрос'));
+        return;
+      }
       // Ответ одинаков для существующего и несуществующего адреса (2.5) —
       // сообщение безличное, показывает его всегда.
       const msg = requestForm.querySelector('.form-success');

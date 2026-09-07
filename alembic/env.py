@@ -10,7 +10,7 @@
 import asyncio
 import os
 import sys
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from logging.config import fileConfig
 from pathlib import Path
 
@@ -26,6 +26,7 @@ _ROOT = str(Path(__file__).resolve().parents[1])
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from app.config import normalize_database_url
 from app.models import Base
 
 # alembic.ini доступен только при запуске из CLI; при программном — не обязателен
@@ -44,7 +45,9 @@ if not _url:
         "случайный прогон миграций уйдёт в боевую БД. "
         "Задайте DATABASE_URL явно (Railway: ${{Postgres.DATABASE_URL}})."
     )
-config.set_main_option("sqlalchemy.url", _url)
+config.set_main_option(
+    "sqlalchemy.url", normalize_database_url(_url).replace("%", "%%")
+)
 
 target_metadata = Base.metadata
 
@@ -93,9 +96,9 @@ def run_migrations_online() -> None:
     except RuntimeError:
         asyncio.run(run_async_migrations())
         return
-    worker = threading.Thread(target=asyncio.run, args=(run_async_migrations(),))
-    worker.start()
-    worker.join()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        # result() propagates migration failure to the CLI/import caller.
+        executor.submit(lambda: asyncio.run(run_async_migrations())).result()
 
 
 if context.is_offline_mode():

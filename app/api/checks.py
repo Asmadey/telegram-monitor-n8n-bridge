@@ -18,17 +18,20 @@
 одного места покрывает все три кнопки.
 """
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.db import TenantRepo
 from app.deps import get_tenant_repo, require_user
+from app.models import Integration
 from app.services.integrations import integration_secrets
 from app.services.journal import add_log
 from app.services.webhook import UnsafeWebhookURL, send_webhook, validate_webhook_url
 
 router = APIRouter(dependencies=[Depends(require_user)])
+logger = logging.getLogger(__name__)
 
 TEST_PAYLOAD = {
     "source": "telethon_monitor",
@@ -44,41 +47,92 @@ async def get_outbound():
         if kind == "webhook":
             await validate_webhook_url(target)
             return await send_webhook(target, payload or TEST_PAYLOAD)
+        if kind == "openrouter":
+            from app.services import llm
+
+            options = payload or {}
+            base_url = str(options.get("base_url") or "https://openrouter.ai/api/v1")
+            model = str(options.get("model") or "")
+            await validate_webhook_url(base_url)
+            caller = llm.openrouter_caller(
+                api_key=target,
+                base_url=base_url,
+                model=model,
+            )
+            response, tokens = await caller(
+                {
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": "Reply with OK to verify this connection.",
+                        }
+                    ],
+                }
+            )
+            if not response:
+                raise RuntimeError("OpenRouter returned an empty response")
+            return {"model": model, "response": response, "tokens": tokens}
+        if kind == "telegram_bot":
+            from app.services import dispatch
+
+            chat_id = str((payload or {}).get("chat_id") or "").strip()
+            if not chat_id:
+                raise ValueError("Telegram recipient is empty")
+            await dispatch.send_telegram_bot_message(
+                target,
+                chat_id,
+                "✅ Teleton: тестовое сообщение доставлено.",
+            )
+            return {"chat_id": chat_id}
         raise NotImplementedError(kind)
 
     return outbound
 
 
-async def _secrets(repo: TenantRepo) -> dict[str, str]:
-    from sqlalchemy import select
+async def _secrets(repo: TenantRepo) -> tuple[Integration | None, dict[str, str]]:
+    """Строка интеграций тенанта и её расшифрованные секреты.
 
-    from app.models import Integration
-
-    row = (
-        await repo.db.scalars(
-            select(Integration).where(Integration.user_id == repo.user_id)
-        )
-    ).first()
-    return integration_secrets(row) if row is not None else {}
+    Возвращается пара, а не один словарь: проверке OpenRouter нужны ещё и
+    открытые поля строки (base_url, model), а проверке бота — telegram_sender_id.
+    Второй запрос за той же строкой ради них — лишний круг к базе.
+    """
+    row = (await repo.db.scalars(repo.query(Integration))).first()
+    return row, (integration_secrets(row) if row is not None else {})
 
 
 async def _run_check(
-    repo: TenantRepo, outbound, kind: str, target: str, missing: str
+    repo: TenantRepo,
+    outbound,
+    kind: str,
+    target: str,
+    missing: str,
+    payload: dict | None = None,
 ) -> dict:
     if not target:
         raise HTTPException(status_code=400, detail=missing)
     try:
-        result = await outbound(kind, target)
+        result = await outbound(kind, target, payload)
     except UnsafeWebhookURL as exc:
         raise HTTPException(
             status_code=400, detail=f"Небезопасный адрес: {exc}"
         ) from exc
     except Exception as exc:  # сбой внешнего сервиса — не наша 500
+        provider = {
+            "webhook": "n8n",
+            "openrouter": "OpenRouter",
+            "telegram_bot": "Telegram Bot API",
+        }.get(kind, "Внешний сервис")
         await add_log(
-            repo.db, repo.user_id, "CHECK_FAILED", f"Проверка {kind}: {exc}", "ERROR"
+            repo.db,
+            repo.user_id,
+            "CHECK_FAILED",
+            f"Проверка {provider} не прошла",
+            "ERROR",
         )
+        logger.warning("Проверка %s не прошла: %s", provider, type(exc).__name__)
         raise HTTPException(
-            status_code=502, detail=f"Проверка не прошла: {exc}"
+            status_code=502, detail=f"{provider} не ответил. Повторите проверку позже."
         ) from exc
     await add_log(
         repo.db, repo.user_id, "CHECK_OK", f"Проверка {kind} прошла", "SUCCESS"
@@ -90,7 +144,7 @@ async def _run_check(
 async def test_webhook(
     repo: TenantRepo = Depends(get_tenant_repo), outbound=Depends(get_outbound)
 ) -> dict:
-    secrets = await _secrets(repo)
+    _, secrets = await _secrets(repo)
     return await _run_check(
         repo,
         outbound,
@@ -104,13 +158,17 @@ async def test_webhook(
 async def test_openrouter(
     repo: TenantRepo = Depends(get_tenant_repo), outbound=Depends(get_outbound)
 ) -> dict:
-    secrets = await _secrets(repo)
+    row, secrets = await _secrets(repo)
     return await _run_check(
         repo,
         outbound,
         "openrouter",
         secrets.get("openrouter_api_key", ""),
         "Ключ OpenRouter не задан",
+        {
+            "base_url": row.openrouter_base_url if row else "",
+            "model": row.openrouter_model if row else "",
+        },
     )
 
 
@@ -118,11 +176,15 @@ async def test_openrouter(
 async def test_telegram_forward(
     repo: TenantRepo = Depends(get_tenant_repo), outbound=Depends(get_outbound)
 ) -> dict:
-    secrets = await _secrets(repo)
+    row, secrets = await _secrets(repo)
+    sender_id = (row.telegram_sender_id if row else "").strip()
+    if not sender_id:
+        raise HTTPException(status_code=400, detail="ID получателя Telegram не задан")
     return await _run_check(
         repo,
         outbound,
         "telegram_bot",
         secrets.get("telegram_bot_token", ""),
         "Токен бота не задан",
+        {"chat_id": sender_id},
     )

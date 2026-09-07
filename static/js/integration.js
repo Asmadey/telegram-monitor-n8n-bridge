@@ -342,7 +342,7 @@ saveOpenRouterBtn.addEventListener('click', async () => {
     saveOpenRouterBtn.textContent = 'Сохранить настройки OpenRouter';
 
     if (res.ok) {
-      showToast('Настройки OpenRouter сохранены в SQLite');
+      showToast('Настройки OpenRouter сохранены');
       loadOpenRouterConfig();
     } else {
       const err = await res.json();
@@ -371,9 +371,9 @@ testOpenRouterBtn.addEventListener('click', async () => {
     testOpenRouterBtn.disabled = false;
     testOpenRouterBtn.textContent = 'Тест OpenRouter';
 
-    if (res.ok && data.status === 'success') {
-      showToast(`Тест успешен (${data.model})!`);
-      openrouterTestResultText.textContent = data.response;
+    if (res.ok && data.status === 'ok') {
+      showToast(`Тест успешен (${data.result.model})!`);
+      openrouterTestResultText.textContent = data.result.response;
       openrouterTestResultBox.style.display = 'block';
     } else {
       showToast(data.detail || 'Ошибка тестирования OpenRouter', true);
@@ -443,7 +443,7 @@ saveTgForwardBtn.addEventListener('click', async () => {
     saveTgForwardBtn.textContent = 'Сохранить настройки бота';
 
     if (res.ok) {
-      showToast('Настройки Telegram-бота сохранены в SQLite');
+      showToast('Настройки Telegram-бота сохранены');
       loadTgForwardConfig();
     } else {
       const err = await res.json();
@@ -466,7 +466,7 @@ testTgForwardBtn.addEventListener('click', async () => {
     testTgForwardBtn.disabled = false;
     testTgForwardBtn.textContent = '⚡ Отправить тестовое сообщение';
 
-    if (res.ok && data.status === 'success') {
+    if (res.ok && data.status === 'ok') {
       showToast('✅ Тестовое сообщение успешно доставлено в Telegram!');
     } else {
       showToast(data.detail || 'Ошибка отправки тестового сообщения', true);

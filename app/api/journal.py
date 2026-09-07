@@ -72,34 +72,47 @@ def _log(entry: LogEntry) -> dict[str, Any]:
 @router.get("/api/messages")
 async def list_messages(
     limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     repo: TenantRepo = Depends(get_tenant_repo),
 ) -> dict:
+    base = repo.query(SentMessage)
+    total = await repo.db.scalar(
+        base.with_only_columns(func.count(), maintain_column_froms=True)
+    )
     rows = (
         await repo.db.scalars(
-            repo.query(SentMessage).order_by(SentMessage.id.desc()).limit(limit)
+            base.order_by(SentMessage.id.desc()).offset(offset).limit(limit)
         )
     ).all()
     items = [_message(m) for m in rows]
-    return {"total": len(items), "messages": items}
+    return {"total": total or 0, "messages": items}
 
 
 @router.get("/api/logs")
 async def list_logs(
     limit: int = Query(150, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     status: str = Query(ANY_STATUS),
     repo: TenantRepo = Depends(get_tenant_repo),
 ) -> dict:
     stmt = repo.query(LogEntry)
     if status and status != ANY_STATUS:
         stmt = stmt.where(LogEntry.status == status)
-    rows = (await repo.db.scalars(stmt.order_by(LogEntry.id.desc()).limit(limit))).all()
+    total = await repo.db.scalar(
+        stmt.with_only_columns(func.count(), maintain_column_froms=True)
+    )
+    rows = (
+        await repo.db.scalars(
+            stmt.order_by(LogEntry.id.desc()).offset(offset).limit(limit)
+        )
+    ).all()
 
     sent_total = await repo.db.scalar(
         repo.query(SentMessage).with_only_columns(func.count())
     )
     entries = [_log(e) for e in rows]
     return {
-        "total": len(entries),
+        "total": total or 0,
         "total_sent_messages_db": sent_total or 0,
         "logs": entries,
     }

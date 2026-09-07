@@ -43,7 +43,7 @@ POLL_MONITOR = "poll_monitor"
 class MonitorCreate(BaseModel):
     chat_target: str = Field(min_length=1, max_length=255)
     interval_minutes: int = Field(default=60, ge=1, le=10080)
-    limit: int = Field(default=20, ge=1, le=100)
+    limit: int = Field(default=20, ge=1)
     offset_hours: int = Field(default=24, ge=1, le=8760)
     is_active: bool = True
     prompt: str | None = None
@@ -51,7 +51,7 @@ class MonitorCreate(BaseModel):
 
 class MonitorUpdate(BaseModel):
     interval_minutes: int | None = Field(default=None, ge=1, le=10080)
-    limit: int | None = Field(default=None, ge=1, le=100)
+    limit: int | None = Field(default=None, ge=1)
     offset_hours: int | None = Field(default=None, ge=1, le=8760)
     is_active: bool | None = None
     prompt: str | None = None
@@ -141,11 +141,12 @@ async def _get_or_404(repo: TenantRepo, public_id: str) -> Monitor:
 @router.get("/api/monitors")
 async def list_monitors(
     limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     repo: TenantRepo = Depends(get_tenant_repo),
 ) -> dict:
     monitors = (
         await repo.db.scalars(
-            repo.query(Monitor).order_by(Monitor.id.desc()).limit(limit)
+            repo.query(Monitor).order_by(Monitor.id.desc()).offset(offset).limit(limit)
         )
     ).all()
     counts = await _sent_counts(repo, [m.chat_id for m in monitors if m.chat_id])

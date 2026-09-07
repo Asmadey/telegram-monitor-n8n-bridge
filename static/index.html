@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Telegram Monitor & n8n Bridge (SQLite Edition)</title>
+  <title>Telegram Monitor & n8n Bridge</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;500;600&display=swap" rel="stylesheet">
@@ -48,7 +48,6 @@
           <span id="statusUser">Подключение...</span>
         </div>
         <button id="openSettingsModalBtn" class="btn btn-secondary btn-sm">⚙️ MTProto</button>
-        <a href="/docs" target="_blank" class="btn btn-secondary btn-sm">API Docs</a>
       </div>
     </header>
 
@@ -70,6 +69,9 @@
               Загрузка выполненных задач...
             </div>
           </div>
+          <button id="loadMoreFeedBtn" class="btn btn-secondary btn-sm" type="button" hidden style="margin: 10px auto;">
+            Загрузить ещё
+          </button>
         </div>
 
         <!-- Right: Feed Detail View -->
@@ -158,7 +160,7 @@
           <div style="display: flex; gap: 8px; align-items: center;">
             <button id="refreshAllBtn" class="btn btn-secondary btn-sm">🔄 Обновить</button>
             <button id="viewJsonBtn" class="btn btn-secondary btn-sm">📄 JSON</button>
-            <button id="sendTableToN8nBtn" class="btn btn-primary btn-sm">📤 В n8n</button>
+            <button id="loadMoreMessagesBtn" class="btn btn-secondary btn-sm" type="button" hidden>Загрузить ещё</button>
           </div>
         </div>
 
@@ -220,7 +222,7 @@
             </div>
             <div class="form-group">
               <label for="msgLimit">Лимит постов за опрос:</label>
-              <input type="number" id="msgLimit" value="20" min="1" max="100">
+              <input type="number" id="msgLimit" value="20" min="1">
             </div>
           </div>
           <div class="form-group">
@@ -321,7 +323,7 @@
             <button type="button" id="toggleApiKeyVisibility" class="btn btn-secondary btn-sm" style="padding: 0 12px;" title="Показать/скрыть ключ">👁️</button>
           </div>
           <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
-            Ключ хранится в SQLite базе данных. Получить ключ: <a href="https://openrouter.ai/keys" target="_blank" style="color: var(--accent-blue-deep); text-decoration: underline;">openrouter.ai/keys</a>.
+            Ключ хранится в базе данных в зашифрованном виде. Получить ключ: <a href="https://openrouter.ai/keys" target="_blank" style="color: var(--accent-blue-deep); text-decoration: underline;">openrouter.ai/keys</a>.
           </p>
         </div>
 
@@ -398,6 +400,7 @@
               🧹 Автоочистка: <span id="cleanupStatusLabel" style="font-weight: 600; color: var(--body-mid); margin-left: 3px;">Выкл</span>
             </button>
             <button id="refreshLogsBtn" class="btn btn-secondary btn-sm">Обновить логи</button>
+            <button id="loadMoreLogsBtn" class="btn btn-secondary btn-sm" type="button" hidden>Загрузить ещё</button>
             <button id="clearLogsBtn" class="btn btn-danger btn-sm">Очистить журнал</button>
           </div>
         </div>
@@ -416,7 +419,7 @@
             <tbody id="logsTableBody">
               <tr>
                 <td colspan="5" style="text-align: center; padding: 48px; color: var(--mute);">
-                  Загрузка журнала логов из SQLite...
+                  Загрузка журнала...
                 </td>
               </tr>
             </tbody>
@@ -452,8 +455,8 @@
             </select>
           </div>
           <div class="form-group">
-            <label for="editMsgLimit">Лимит постов за один опрос (1 - 100):</label>
-            <input type="number" id="editMsgLimit" min="1" max="100">
+            <label for="editMsgLimit">Лимит постов за один опрос:</label>
+            <input type="number" id="editMsgLimit" min="1">
           </div>
         </div>
         <div class="form-group">

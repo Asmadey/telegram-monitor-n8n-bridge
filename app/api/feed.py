@@ -20,7 +20,7 @@ photo_base64, и raw_messages_json целиком: двести аватарок
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import delete
+from sqlalchemy import delete, func
 
 from app.db import TenantRepo, deleted_count
 from app.deps import get_tenant_repo, require_user
@@ -56,13 +56,18 @@ def _card(item: FeedItem) -> dict:
 @router.get("/api/feed")
 async def list_feed(
     limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     repo: TenantRepo = Depends(get_tenant_repo),
 ) -> dict:
     """Список карточек ленты — только метаданные (тяжёлое — детальным видом)."""
-    stmt = repo.query(FeedItem).order_by(FeedItem.id.desc()).limit(limit)
+    base = repo.query(FeedItem)
+    total = await repo.db.scalar(
+        base.with_only_columns(func.count(), maintain_column_froms=True)
+    )
+    stmt = base.order_by(FeedItem.id.desc()).offset(offset).limit(limit)
     items = (await repo.db.scalars(stmt)).all()
     cards = [_card(i) for i in items]
-    return {"total": len(cards), "feed": cards}
+    return {"total": total or 0, "feed": cards}
 
 
 @router.get("/api/feed/{id}")
