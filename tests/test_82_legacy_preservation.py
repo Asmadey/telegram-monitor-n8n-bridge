@@ -7,7 +7,7 @@ from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.models import Integration, TelegramAccount, User
+from app.models import FeedItem, Integration, TelegramAccount, User
 from scripts import migrate_sqlite_to_pg as migration
 
 
@@ -244,6 +244,50 @@ async def test_complete_legacy_import_and_repeat_preserve_counts(db_engine, tmp_
     assert Path(source).read_bytes() == before
 
 
+def _legacy_feed_row(source_id: int = 1, job_id: str = "shared-job") -> dict:
+    return dict(
+        id=source_id,
+        job_id=job_id,
+        created_at=None,
+        chat_id=None,
+        chat_title=None,
+        chat_username=None,
+        messages_count=0,
+        ai_analysis="",
+        raw_messages_json="[]",
+        model_name="",
+        delivery_status="",
+    )
+
+
+@pytest.mark.asyncio
+async def test_two_owners_import_the_same_legacy_export(db_engine):
+    """Один экспорт, перенесённый двум владельцам, не должен схлопываться.
+
+    `job_id` уникален внутри старой базы, а колонка в Postgres уникальна
+    ГЛОБАЛЬНО. Пока значение переносилось как есть, второй владелец,
+    импортирующий тот же источник, натыкался на чужую строку — и защита от
+    тихой потери справедливо поднимала ошибку вместо переноса. Найдено
+    прогоном CI на живом Postgres: там все тесты переноса делят одну базу,
+    поэтому «два владельца, один источник» получилось непреднамеренно.
+    """
+    Session = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with Session() as db:
+        one = User(email="one-source@example.com")
+        two = User(email="two-source@example.com")
+        db.add_all([one, two])
+        await db.flush()
+
+        row = _legacy_feed_row()
+        assert await migration._migrate_feed_items(db, [row], one.id) == 1
+        assert await migration._migrate_feed_items(db, [row], two.id) == 1, (
+            "второй владелец не получил свою копию строки ленты"
+        )
+
+        owners = sorted((await db.scalars(select(FeedItem.user_id))).all())
+        assert owners == sorted([one.id, two.id])
+
+
 @pytest.mark.asyncio
 async def test_feed_collision_with_another_owner_is_not_silently_dropped(db_engine):
     from app.models import FeedItem
@@ -253,20 +297,15 @@ async def test_feed_collision_with_another_owner_is_not_silently_dropped(db_engi
         one, two = User(email="one@example.com"), User(email="two@example.com")
         db.add_all([one, two])
         await db.flush()
-        db.add(FeedItem(user_id=one.id, job_id="same-job", messages_count=0))
+        # Столкновение строится на ВЫВЕДЕННОМ идентификаторе (2026-09-07):
+        # с namespacing по владельцу совпадение job_id из двух разных
+        # экспортов больше не возникает, и прежняя постановка — одинаковый
+        # legacy job_id у двух владельцев — проверяла бы уже невозможное.
+        # Сама защита нужна: тихо пропущенная строка выглядит как успешный
+        # перенос, при котором данные не приехали.
+        taken = migration._legacy_feed_job_id(two.id, "same-job")
+        db.add(FeedItem(user_id=one.id, job_id=taken, messages_count=0))
         await db.flush()
-        row = dict(
-            id=1,
-            job_id="same-job",
-            created_at=None,
-            chat_id=None,
-            chat_title=None,
-            chat_username=None,
-            messages_count=0,
-            ai_analysis="",
-            raw_messages_json="[]",
-            model_name="",
-            delivery_status="",
-        )
+        row = _legacy_feed_row(job_id="same-job")
         with pytest.raises(ValueError, match="another owner"):
             await migration._migrate_feed_items(db, [row], two.id)

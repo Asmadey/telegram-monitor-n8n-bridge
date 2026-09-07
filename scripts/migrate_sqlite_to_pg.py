@@ -199,12 +199,22 @@ async def _migrate_sent_messages(session, rows, user_id) -> int:
     return inserted
 
 
+def _legacy_feed_job_id(user_id, source_key) -> str:
+    """Идентификатор строки ленты, выведенный из владельца и ключа источника."""
+    return str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"teleton:legacy:{user_id}:feed:{source_key}")
+    )
+
+
 async def _migrate_feed_items(session, rows, user_id) -> int:
     inserted = 0
     for r in rows:
-        job_id = r["job_id"] or str(
-            uuid.uuid5(uuid.NAMESPACE_URL, f"teleton:legacy:{user_id}:feed:{r['id']}")
-        )
+        # job_id старой базы уникален ВНУТРИ неё, а колонка в Postgres —
+        # глобально. Поэтому значение не переносится как есть, а всегда
+        # выводится из пары (владелец, строка источника): два тенанта могут
+        # перенести один и тот же экспорт, не сталкиваясь, а повторный
+        # запуск остаётся идемпотентным — идентификатор детерминирован.
+        job_id = _legacy_feed_job_id(user_id, r["job_id"] or r["id"])
         # photo_base64 сознательно НЕ переносится (задача 5.4 — объектное хранилище)
         stmt = (
             pg_insert(FeedItem)

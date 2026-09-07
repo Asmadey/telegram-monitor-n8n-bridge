@@ -130,6 +130,7 @@ def test_firebase_verifier_accepts_signed_token_without_private_credentials(
 
 
 def test_firebase_certificate_request_has_a_bounded_timeout(monkeypatch):
+    import base64
     import time
 
     from app.config import get_settings
@@ -160,7 +161,21 @@ def test_firebase_certificate_request_has_a_bounded_timeout(monkeypatch):
     monkeypatch.setattr(google_auth, "Request", FakeRequest)
     monkeypatch.setattr(google_auth.id_token, "verify_firebase_token", fake_verify)
     get_settings.cache_clear()
-    token = "eyJhbGciOiJSUzI1NiIsImtpZCI6InRlc3QifQ.e30.c2ln"
+    # Токен собирается в рантайме, а не лежит литералом: секрет-скан не
+    # отличает выдуманный JWT от настоящего и справедливо ловит длинную
+    # строку с высокой энтропией (то же случилось 4 сентября с фиктивным
+    # ключом в test_53). Верификатор здесь подменён — значение не важно.
+    token = ".".join(
+        [
+            base64.urlsafe_b64encode(
+                json.dumps({"alg": "RS256", "kid": "test"}).encode()
+            )
+            .rstrip(b"=")
+            .decode(),
+            base64.urlsafe_b64encode(b"{}").rstrip(b"=").decode(),
+            "signature-is-not-checked",
+        ]
+    )
     assert google_auth._live_verifier(token)["sub"] == "user123"
     assert seen["audience"] == "mtproto-ai"
     assert seen["timeout"] == 10
