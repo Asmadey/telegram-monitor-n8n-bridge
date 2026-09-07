@@ -52,8 +52,15 @@ origin, cookie остаются первой стороной, CORS не нуж�
 
 - Build: Dockerfile из корня репозитория;
 - Pre-deploy command: `alembic upgrade head`;
-- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`;
+- Start command: `sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"`;
 - Healthcheck path: `/health`.
+
+**Оболочка в команде запуска обязательна.** Railway исполняет Start command
+не через shell: без `sh -c` строка `$PORT` уходит в uvicorn литералом, и
+контейнер падает циклом `Invalid value for '--port': '$PORT' is not a valid
+integer`. Снаружи это выглядит как «сервис не поднялся» — healthcheck просто
+не отвечает, причина видна только в логах деплоя. Проверено первым живым
+деплоем 2026-09-07; правило держит `test_70_deploy.py`.
 
 `/railway.json` сохраняет те же настройки как конфигурацию по умолчанию, но у
 фактически созданного сервиса Config File Path не задан. После деплоя сверяйте
