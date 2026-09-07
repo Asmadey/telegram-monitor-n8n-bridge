@@ -21,6 +21,7 @@ from telethon.sessions import StringSession
 from app.db import get_db
 from app.deps import require_user
 from app.models import User
+from app.services.tg_attempts import attempt_session
 from app.services.tg_credentials import CredentialsMissing, require_credentials
 
 
@@ -28,13 +29,25 @@ async def get_telegram_auth_client(
     user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ) -> AsyncIterator[TelegramClient]:
+    """Клиент ТЕКУЩЕЙ попытки входа, а не просто новый клиент.
+
+    Telegram привязывает попытку к auth-key той сессии, которая вызвала
+    `send_code_request`. Пока каждый запрос поднимал пустую `StringSession`,
+    `sign_in` шёл с другим auth-key — и Telegram отвечал
+    `PHONE_CODE_EXPIRED`: для новой сессии код не существовал никогда.
+    Найдено на живом Telegram 2026-09-07; двойник в тестах возвращал один
+    объект на оба шага и потому этого не показывал.
+
+    Поэтому: есть незавершённая попытка — продолжаем ЕЁ сессию; нет —
+    начинаем с чистой.
+    """
     try:
         api_id, api_hash = await require_credentials(db, user.id)
     except CredentialsMissing as exc:
         # 400, а не 503: не сервис сломан — пользователю нечем подключаться
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     client = TelegramClient(
-        StringSession(),
+        StringSession(await attempt_session(db, user.id)),
         api_id,
         api_hash,
     )
