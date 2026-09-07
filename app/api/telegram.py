@@ -26,10 +26,9 @@ from app.security.crypto import encrypt
 from app.security.ratelimit import TELEGRAM_SEND_CODE_LIMIT, limiter
 from app.security.sessions import _utc
 from app.services.tg_account import save_tg_session
-from app.services.tg_auth import get_telegram_auth_client
+from app.services.tg_auth import get_account_client, get_telegram_auth_client
 from app.services.tg_credentials import (
     CredentialsMissing,
-    require_credentials,
     save_credentials,
 )
 from app.services.tg_credentials import get_row as get_credentials_row
@@ -217,41 +216,21 @@ async def sign_in(
     }
 
 
-async def get_dialog_lister(
-    user: User = Depends(require_user), db: AsyncSession = Depends(get_db)
-):
+async def get_dialog_lister(client=Depends(get_account_client)):
     """Список диалогов аккаунта пользователя.
 
-    Зависимостью — по той же причине, что и разрешение канала: тест не ходит
-    в Telegram, а веб держит клиент ровно на время запроса. В монолите
-    (server.py:1233) этот эндпоинт был открыт всему интернету и отдавал
-    список ВСЕХ чатов и переписок владельца аккаунта.
+    Клиент — общий для всех действий аккаунта (`get_account_client`):
+    сессия подключённого пользователя, открыт на время запроса. Своя копия
+    этой сборки жила здесь до 2026-09-07 и разошлась бы с резолвером
+    каналов при первой же правке — а разойтись тут значит выполнить
+    действие не той сессией.
+
+    В монолите (server.py:1233) этот эндпоинт был открыт всему интернету и
+    отдавал список ВСЕХ чатов и переписок владельца аккаунта.
     """
-    from telethon import TelegramClient
-    from telethon.sessions import StringSession
-
-    from app.security.crypto import decrypt
-
-    account = (await db.scalars(TenantRepo(db, user.id).query(TelegramAccount))).first()
-    if account is None:
-        raise HTTPException(status_code=400, detail="Telegram-аккаунт не подключён")
-
-    try:
-        api_id, api_hash = await require_credentials(db, user.id)
-    except CredentialsMissing as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    client = TelegramClient(
-        StringSession(decrypt(account.session_string_encrypted)),
-        api_id,
-        api_hash,
-    )
 
     async def lister(limit: int = 50):
-        await client.connect()
-        try:
-            return [d async for d in client.iter_dialogs(limit=limit)]
-        finally:
-            await client.disconnect()
+        return [d async for d in client.iter_dialogs(limit=limit)]
 
     return lister
 

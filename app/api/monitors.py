@@ -33,7 +33,7 @@ from app.deps import get_tenant_repo, require_user
 from app.models import Monitor, SentMessage
 from app.services.jobs import enqueue_job
 from app.services.journal import add_log
-from app.services.tg_auth import get_telegram_auth_client
+from app.services.tg_auth import get_account_client
 
 router = APIRouter(dependencies=[Depends(require_user)])
 
@@ -75,12 +75,14 @@ def clean_target(target: str) -> str | int:
     return target
 
 
-async def get_entity_resolver(client=Depends(get_telegram_auth_client)):
+async def get_entity_resolver(client=Depends(get_account_client)):
     """Разрешение канала в сущность Telegram.
 
-    Отдельная зависимость по двум причинам: тест подставляет свою и не ходит
-    в сеть, а веб держит клиент ровно на время запроса — долгоживущие клиенты
-    принадлежат воркеру.
+    Клиент — АККАУНТА, а не входа: сессия входа после успешного
+    подключения пуста, и Telegram отвечает на неё AUTH_KEY_UNREGISTERED
+    (2026-09-07). Отдельная зависимость по двум причинам: тест подставляет
+    свою и не ходит в сеть, а веб держит клиент ровно на время запроса —
+    долгоживущие клиенты принадлежат воркеру.
     """
 
     async def resolve(target: str):
