@@ -52,8 +52,8 @@ def test_interface_addresses_monitors_by_the_key_api_returns():
 @pytest.mark.asyncio
 async def test_api_answers_with_public_id_and_nothing_else(anon_client, db, user):
     """Ответ несёт ровно тот ключ, которым интерфейс потом адресует канал."""
-    from app.main import app
     from app.api.monitors import get_entity_resolver
+    from app.main import app
 
     class _Entity:
         id = -1001234567890
