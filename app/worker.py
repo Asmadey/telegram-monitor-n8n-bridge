@@ -92,6 +92,18 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def _reason(exc: BaseException) -> str:
+    """Тип и текст исключения одной строкой.
+
+    Тип обязателен: самые частые сетевые отказы (`ConnectionError`,
+    `asyncio.TimeoutError`) приходят без сообщения, и запись без типа
+    сообщает ровно ничего — а логи процесса пользователю недоступны.
+    """
+    text = str(exc).strip()
+    name = type(exc).__name__
+    return f"{name}: {text}" if text else name
+
+
 def _aware(value: datetime.datetime | None) -> datetime.datetime | None:
     """Привести время из БД к aware.
 
@@ -214,14 +226,14 @@ class Worker:
                         stale.status = "pending"
                         stale.started_at = None
                         stale.retry_after = _retry_deadline(exc)
-                        stale.error = redact(str(exc))[:MAX_ERROR_CHARS]
+                        stale.error = redact(_reason(exc))[:MAX_ERROR_CHARS]
                         await db.commit()
                     else:
                         await fail_job(
-                            db, stale, error=redact(str(exc))[:MAX_ERROR_CHARS]
+                            db, stale, error=redact(_reason(exc))[:MAX_ERROR_CHARS]
                         )
                 logger.warning(
-                    "задача %s (%s) упала: %s", job_id, job_kind, redact(str(exc))
+                    "задача %s (%s) упала: %s", job_id, job_kind, redact(_reason(exc))
                 )
             else:
                 await finish_job(db, job)
@@ -332,16 +344,24 @@ class Worker:
                     db,
                     owner_id,
                     "POLL_ERROR",
-                    f"Ошибка извлечения: {exc}",
+                    # Тип — всегда: самые частые сетевые отказы
+                    # (ConnectionError, TimeoutError) приходят БЕЗ текста, и
+                    # без типа запись выглядела как «Ошибка извлечения:» и
+                    # ничего не сообщала (найдено на живом канале 7 сентября)
+                    f"Ошибка извлечения: {_reason(exc)}",
                     status="ERROR",
                     chat_id=chat_id,
                     chat_title=chat_title,
                 )
                 logger.warning(
-                    "монитор %s тенанта %s: опрос упал",
+                    "монитор %s тенанта %s: опрос упал — %s",
                     public_id,
                     owner_id,
-                    # Do not attach raw exception tracebacks containing credentials.
+                    # Причина — тип и текст, но НЕ трейсбек: он несёт
+                    # окружение вызова, где встречаются учётные данные.
+                    # (Затирание секретов стоит на канале логов — 9.4, —
+                    # но кормить его лишним незачем.)
+                    _reason(exc),
                 )
         return polled
 
@@ -457,7 +477,7 @@ class Worker:
                 if avatar:
                     await store_avatar(db, chat_id, avatar)
             except Exception as exc:
-                logger.warning("avatar unavailable: %s", redact(str(exc)))
+                logger.warning("avatar unavailable: %s", redact(_reason(exc)))
                 await db.rollback()
                 job = await db.get(Job, job_id)
             await self._run_job(db, job)
@@ -467,10 +487,10 @@ class Worker:
             job = await db.get(Job, job_id)
             job.status = "pending"
             job.started_at = None
-            job.error = redact(str(exc))[:MAX_ERROR_CHARS]
+            job.error = redact(_reason(exc))[:MAX_ERROR_CHARS]
             job.retry_after = _retry_deadline(exc)
             await db.commit()
-            logger.warning("batch %s awaiting retry: %s", job_id, redact(str(exc)))
+            logger.warning("batch %s awaiting retry: %s", job_id, redact(_reason(exc)))
         return "dispatched"
 
     # ------------------------------------------------------------------
@@ -529,7 +549,7 @@ class Worker:
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:  # noqa: BLE001 — процесс живёт дальше
-                    logger.warning("тик воркера упал: %s", redact(str(exc)))
+                    logger.warning("тик воркера упал: %s", redact(_reason(exc)))
                 # спим, но просыпаемся от SIGTERM немедленно
                 try:
                     await asyncio.wait_for(

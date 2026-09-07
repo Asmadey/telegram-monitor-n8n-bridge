@@ -205,13 +205,27 @@ function openEditModal(id) {
 // Слушатели висят на документе — строки перерисовываются, они остаются.
 document.addEventListener('change', (event) => {
   const toggle = event.target.closest('[data-action="toggle"][data-monitor-id]');
-  if (toggle) toggleMonitor(toggle.dataset.monitorId, toggle.checked);
+  if (!toggle) return;
+  const toggleId = toggle.dataset.monitorId;
+  if (!toggleId || toggleId === 'undefined') {
+    showToast('Не удалось определить канал — обновите страницу', true);
+    return;
+  }
+  toggleMonitor(toggleId, toggle.checked);
 });
 
 document.addEventListener('click', (event) => {
   const el = event.target.closest('[data-action][data-monitor-id]');
   if (!el) return;
   const id = el.dataset.monitorId;
+  // Пустой или "undefined" идентификатор — не повод отправлять запрос.
+  // Такой адрес схлопывается в /api/monitors/run, попадает в маршрут
+  // PATCH/DELETE и возвращает загадочное «Method Not Allowed» вместо
+  // внятного объяснения (найдено владельцем 7 сентября).
+  if (!id || id === 'undefined') {
+    showToast('Не удалось определить канал — обновите страницу', true);
+    return;
+  }
   if (el.dataset.action === 'run') runMonitor(id);
   else if (el.dataset.action === 'edit') openEditModal(id);
   else if (el.dataset.action === 'reset') resetDedup(id);
