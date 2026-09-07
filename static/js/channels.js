@@ -99,7 +99,7 @@ function renderMonitors() {
   }
 
   monitorsList.innerHTML = currentMonitors.map(m => html`
-    <div class="monitor-row-card ${m.is_active ? '' : 'inactive'}" id="monitor-${m.id}">
+    <div class="monitor-row-card ${m.is_active ? '' : 'inactive'}" id="monitor-${m.public_id}">
 
       <!-- Column 1: Channel Info -->
       <div class="channel-main-info">
@@ -150,17 +150,17 @@ function renderMonitors() {
       <!-- Column 3: Actions & Toggle -->
       <div class="channel-actions-group" style="display: flex; align-items: center; gap: 8px;">
         <label class="switch" title="Включить / Приостановить мониторинг">
-          <input type="checkbox" ${m.is_active ? 'checked' : ''} data-action="toggle" data-monitor-id="${m.id}">
+          <input type="checkbox" ${m.is_active ? 'checked' : ''} data-action="toggle" data-monitor-id="${m.public_id}">
           <span class="slider"></span>
         </label>
-        <button class="btn btn-primary btn-sm" data-action="run" data-monitor-id="${m.id}" title="Запустить опрос сейчас">⚡ Запустить</button>
-        <button class="btn btn-secondary btn-icon-sm" data-action="edit" data-monitor-id="${m.id}" title="Редактировать параметры и промпт">
+        <button class="btn btn-primary btn-sm" data-action="run" data-monitor-id="${m.public_id}" title="Запустить опрос сейчас">⚡ Запустить</button>
+        <button class="btn btn-secondary btn-icon-sm" data-action="edit" data-monitor-id="${m.public_id}" title="Редактировать параметры и промпт">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
         </button>
-        <button class="btn btn-secondary btn-icon-sm" data-action="reset" data-monitor-id="${m.id}" title="Сбросить историю дубликатов">
+        <button class="btn btn-secondary btn-icon-sm" data-action="reset" data-monitor-id="${m.public_id}" title="Сбросить историю дубликатов">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
         </button>
-        <button class="btn btn-danger btn-icon-sm" data-action="delete" data-monitor-id="${m.id}" title="Удалить канал из мониторинга">
+        <button class="btn btn-danger btn-icon-sm" data-action="delete" data-monitor-id="${m.public_id}" title="Удалить канал из мониторинга">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
         </button>
       </div>
@@ -190,10 +190,10 @@ export function refreshMonitorTimers() {
 
 // Modal Edit Functions
 function openEditModal(id) {
-  const m = currentMonitors.find(item => item.id === id);
+  const m = currentMonitors.find(item => item.public_id === id);
   if (!m) return;
 
-  editMonitorId.value = m.id;
+  editMonitorId.value = m.public_id;
   editModalTitle.textContent = `Редактирование: ${m.chat_title}`;
   editIntervalMin.value = String(m.interval_minutes || 60);
   editMsgLimit.value = m.limit || 20;
@@ -363,7 +363,7 @@ refreshAllBtn.addEventListener('click', async () => {
   showToast('Обновление всех активных каналов...');
   for (const m of currentMonitors) {
     if (m.is_active) {
-      await runMonitor(m.id);
+      await runMonitor(m.public_id);
     }
   }
 });
@@ -402,7 +402,7 @@ addMonitorForm.addEventListener('submit', async (e) => {
     toggleAddChannelBtn.textContent = '➕ Добавить канал';
     toggleAddChannelBtn.className = 'btn btn-primary btn-sm';
     loadConfig();
-    runMonitor(data.id);
+    runMonitor(data.public_id);
   } catch (e) {
     showToast(e.message, true);
   }
