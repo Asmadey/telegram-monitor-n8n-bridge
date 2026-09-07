@@ -60,6 +60,27 @@ def test_railway_json_web_service_config():
     )
 
 
+def test_start_command_expands_port_through_a_shell():
+    """$PORT в команде запуска обязан кем-то раскрываться.
+
+    Найдено первым живым деплоем (2026-09-07): Railway исполняет
+    startCommand НЕ через оболочку, поэтому строка с `$PORT` уходит в
+    uvicorn литералом, и контейнер падает циклом
+    `Invalid value for '--port': '$PORT' is not a valid integer`.
+    Healthcheck при этом просто не отвечает — по симптому «сервис не
+    поднялся» причина не видна, она только в логах деплоя.
+
+    Требование безусловное: команда обязана и слушать порт Railway,
+    и проходить через оболочку, которая его подставит.
+    """
+    cfg = json.loads((ROOT / "railway.json").read_text(encoding="utf-8"))
+    start = cfg.get("deploy", {}).get("startCommand") or ""
+    assert "PORT" in start, f"порт Railway не пробрасывается: {start!r}"
+    assert "sh -c" in start, (
+        f"$PORT некому раскрыть — команда исполняется без оболочки: {start!r}"
+    )
+
+
 def test_worker_is_module_runnable_same_image():
     """worker — тот же образ, команда `python -m app.worker` (задача 4.1):
     модуль обязан сохранять точку входа __main__ (тест subprocess-запуска
