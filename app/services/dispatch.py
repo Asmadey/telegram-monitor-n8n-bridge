@@ -27,9 +27,10 @@ import logging
 import uuid
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 
-from app.models import ChatAvatar, FeedItem, Integration
+from app.db import TenantRepo
+from app.models import ChatAvatar, FeedItem, Integration, SentMessage
 from app.services.integrations import integration_secrets
 from app.services.journal import add_log
 from app.services.llm import process_messages_batch_with_llm
@@ -97,20 +98,22 @@ async def _integration(db, user_id: int) -> Integration | None:
 
 async def _run_bot(
     db, user_id, integration, payload, messages, analysis, sender
-) -> bool:
+) -> str:
     if integration is None or not integration.telegram_forward_enabled:
-        return False
+        return "skipped"
     token = integration_secrets(integration).get("telegram_bot_token", "").strip()
     chat_id = (integration.telegram_sender_id or "").strip()
     # гейт оригинала: пустой токен или чат — тихий отказ БЕЗ запроса
     if not token or not chat_id:
-        return False
+        return "failed"
 
     chat_title = payload.get("chat_title") or "Источник"
     text = analysis or _summary_text(chat_title, messages)
     try:
         for chunk in _chunks(text):
-            await (sender or _default_bot_sender)(token, chat_id, chunk)
+            sent = await (sender or _default_bot_sender)(token, chat_id, chunk)
+            if sent is False:
+                raise RuntimeError("Telegram bot rejected delivery")
     except Exception as exc:  # noqa: BLE001 — доставка не роняет опрос
         await add_log(
             db,
@@ -121,7 +124,7 @@ async def _run_bot(
             chat_title=chat_title,
         )
         logger.warning("тенант %s: бот не отправил сообщение", user_id)
-        return False
+        return "failed"
 
     await add_log(
         db,
@@ -132,7 +135,7 @@ async def _run_bot(
         status="SUCCESS",
         chat_title=chat_title,
     )
-    return True
+    return "sent"
 
 
 async def _run_webhook(db, user_id, integration, payload, messages, sender) -> str:
@@ -211,60 +214,97 @@ async def dispatch(
 
     integration = await _integration(db, user_id)
 
-    # 1. AI. Гейты (выключен / нет ключа / исчерпан лимит) — внутри llm.py,
-    # включая автоотключение при пересечении месячного потолка.
-    analysis = await process_messages_batch_with_llm(
-        db, user_id, messages, custom_prompt=channel_prompt, caller=llm_caller
-    )
-    if analysis:
-        payload["ai_analysis"] = analysis
-        await add_log(
-            db,
-            user_id,
-            "AI_ANALYSIS",
-            f"Сгенерирован AI-анализ ({len(analysis)} симв.): {analysis[:250]}",
-            status="SUCCESS",
+    # job_id is the durable batch identity shared by retries and n8n dedup.
+    batch_id = payload.get("job_id") or str(uuid.uuid4())
+    payload["job_id"] = batch_id
+    repo = TenantRepo(db, user_id)
+    item = (
+        await db.scalars(repo.query(FeedItem).where(FeedItem.job_id == batch_id))
+    ).first()
+    if item is None:
+        item = FeedItem(
+            user_id=user_id,
+            job_id=batch_id,
             chat_id=payload.get("chat_id"),
             chat_title=payload.get("chat_title"),
+            chat_username=payload.get("chat_username") or "",
+            messages_count=len(messages),
+            ai_analysis="",
+            raw_messages_json=json.dumps(messages, ensure_ascii=False),
+            model_name=(
+                integration.openrouter_model
+                if integration is not None and integration.openrouter_enabled
+                else MODEL_DIRECT
+            ),
+            delivery_status="ANALYZING",
+            analysis_progress_json="[]",
+            bot_status="pending",
+            webhook_status="pending",
         )
+        db.add(item)
+        await db.commit()
+    if item.delivery_status == "ANALYZING":
 
-    # 2. Пересылка ботом, 3. вебхук — независимы: падение одного не отменяет
-    # другого и не отменяет ленту (дефект оригинала — см. модуль-докстринг)
-    bot_sent = await _run_bot(
-        db, user_id, integration, payload, messages, analysis, bot_sender
-    )
-    webhook = await _run_webhook(
-        db, user_id, integration, payload, messages, webhook_sender
-    )
+        async def checkpoint(analyses):
+            item.analysis_progress_json = json.dumps(analyses, ensure_ascii=False)
+            await db.commit()
 
-    # 4. Лента — ВСЕГДА
-    model_name = (
-        integration.openrouter_model
-        if (integration is not None and integration.openrouter_enabled)
-        else MODEL_DIRECT
-    )
-    item = FeedItem(
-        user_id=user_id,
-        # полный uuid, а не первые 8 символов оригинала: job_id уникален
-        # глобально, и на 8 hex-символах коллизии начинаются на десятках
-        # тысяч строк — то есть чужая запись ломала бы вставку
-        job_id=str(uuid.uuid4()),
-        chat_id=payload.get("chat_id"),
-        chat_title=payload.get("chat_title"),
-        chat_username=payload.get("chat_username") or "",
-        messages_count=len(messages),
-        ai_analysis=analysis or "",
-        raw_messages_json=json.dumps(messages, ensure_ascii=False),
-        model_name=model_name,
-        delivery_status="ERROR" if webhook == "failed" else "SUCCESS",
-    )
-    db.add(item)
+        analysis = await process_messages_batch_with_llm(
+            db,
+            user_id,
+            messages,
+            custom_prompt=channel_prompt,
+            caller=llm_caller,
+            require_success=True,
+            completed=json.loads(item.analysis_progress_json or "[]"),
+            checkpoint=checkpoint,
+        )
+        item.ai_analysis = analysis or ""
+        item.delivery_status = "PENDING"
+        await db.execute(
+            update(SentMessage)
+            .where(
+                SentMessage.id.in_(
+                    repo.query(SentMessage).with_only_columns(SentMessage.id)
+                ),
+                SentMessage.chat_id == payload.get("chat_id"),
+                SentMessage.message_id.in_([m["id"] for m in messages if m.get("id")]),
+            )
+            .values(processed=True)
+        )
+        # The result and processed markers become durable BEFORE sending.
+        await db.commit()
+        if analysis:
+            await add_log(
+                db,
+                user_id,
+                "AI_ANALYSIS",
+                f"Сгенерирован AI-анализ ({len(analysis)} симв.)",
+                status="SUCCESS",
+                chat_id=payload.get("chat_id"),
+                chat_title=payload.get("chat_title"),
+            )
+    analysis = item.ai_analysis or ""
+    if analysis:
+        payload["ai_analysis"] = analysis
+    if item.bot_status not in ("sent", "skipped"):
+        item.bot_status = await _run_bot(
+            db, user_id, integration, payload, messages, analysis, bot_sender
+        )
+        await db.commit()
+    if item.webhook_status not in ("sent", "skipped"):
+        item.webhook_status = await _run_webhook(
+            db, user_id, integration, payload, messages, webhook_sender
+        )
+        await db.commit()
+    retry = "failed" in (item.bot_status, item.webhook_status)
+    item.delivery_status = "ERROR" if retry else "SUCCESS"
     await db.commit()
-
     return {
         "status": "dispatched",
         "ai": bool(analysis),
-        "bot_sent": bot_sent,
-        "webhook": webhook,
+        "bot_sent": item.bot_status == "sent",
+        "webhook": item.webhook_status,
         "feed_item_id": item.id,
+        "retry": retry,
     }

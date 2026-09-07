@@ -18,7 +18,8 @@ auth-key это AUTH_KEY_DUPLICATED, Telegram может убить сессию
 
 FloodWait (правило AGENTS.md: НЕ ретраить сразу):
 flood_guarded_call ловит FloodWaitError, отдаёт retry_after в
-on_flood_wait (монитор запишет) и возвращает None — цикл опроса
+on_flood_wait (воркер запишет его для Telegram-аккаунта) и возвращает
+None — цикл опроса
 пропускается целиком. Guard НИКОГДА не спит: Telethon сам умеет ждать
 после FloodWait, но при seconds > 300 это вешает воркер на десятки
 минут — потому порог FLOOD_WAIT_SKIP_THRESHOLD и «пропустить цикл»

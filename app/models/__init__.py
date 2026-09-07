@@ -99,6 +99,7 @@ class TelegramAccount(Base):
     session_string_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     tg_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     tg_username: Mapped[str | None] = mapped_column(String(64))
+    retry_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
@@ -177,6 +178,7 @@ class SentMessage(Base):
     forwards: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     has_media: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     reactions_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     __table_args__ = (UniqueConstraint("user_id", "chat_id", "message_id"),)
 
@@ -201,6 +203,9 @@ class FeedItem(Base):
     raw_messages_json: Mapped[str | None] = mapped_column(Text)
     model_name: Mapped[str | None] = mapped_column(String(128))
     delivery_status: Mapped[str | None] = mapped_column(String(32))
+    analysis_progress_json: Mapped[str | None] = mapped_column(Text)
+    bot_status: Mapped[str | None] = mapped_column(String(32))
+    webhook_status: Mapped[str | None] = mapped_column(String(32))
 
 
 class LogEntry(Base):
@@ -285,6 +290,7 @@ class Job(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
 
 

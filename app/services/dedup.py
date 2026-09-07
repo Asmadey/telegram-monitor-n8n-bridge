@@ -82,7 +82,13 @@ def _insert_for(dialect_name: str) -> Callable[..., Any]:
 
 
 async def filter_new(
-    db: AsyncSession, user_id: int, chat_id: int, messages: list[dict]
+    db: AsyncSession,
+    user_id: int,
+    chat_id: int,
+    messages: list[dict],
+    *,
+    commit: bool = True,
+    processed: bool = True,
 ) -> list[dict]:
     """Вернуть (и пометить) только НОВЫЕ сообщения — исходные словари в
     порядке входа, данные для диспетчера Фазы 5."""
@@ -93,6 +99,8 @@ async def filter_new(
     if not rows:
         return []
 
+    for row in rows:
+        row["processed"] = processed
     insert = _insert_for(db.bind.dialect.name)
     stmt = (
         insert(SentMessage)
@@ -102,7 +110,8 @@ async def filter_new(
     )
     result = await db.execute(stmt)
     inserted_ids = set(result.scalars())
-    await db.commit()
+    if commit:
+        await db.commit()
 
     # исходный порядок входа; дубль внутри батча встречается один раз
     fresh: list[dict] = []

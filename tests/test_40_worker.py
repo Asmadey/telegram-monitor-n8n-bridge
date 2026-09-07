@@ -230,6 +230,35 @@ async def test_worker_sigterm_exits_cleanly(tmp_path):
         proc.stderr.close()
 
 
+@pytest.mark.asyncio
+async def test_production_worker_refuses_sqlite_without_leader_lock(tmp_path):
+    """SQLite is useful for local tests, but cannot serialize two Railway
+    processes. Production must fail before any polling can start."""
+    from cryptography.fernet import Fernet
+
+    db_path = tmp_path / "production-worker.db"
+    await _prepare_worker_db(db_path)
+    env = dict(os.environ)
+    env.update(
+        {
+            "APP_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+            "DATABASE_URL": f"sqlite+aiosqlite:///{db_path}",
+            "SECRET_KEY": "worker-test",
+            "ENVIRONMENT": "production",
+        }
+    )
+    proc = subprocess.run(
+        [sys.executable, "-m", "app.worker"],
+        cwd=_REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert proc.returncode != 0
+    assert "requires PostgreSQL advisory leader lock" in proc.stderr
+
+
 async def _read_tail(proc: subprocess.Popen) -> str:
     """Хвост stderr упавшего воркера — для диагностики в assert."""
     try:

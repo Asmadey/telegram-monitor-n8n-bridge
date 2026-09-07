@@ -185,7 +185,13 @@ async def test_private_webhook_url_is_never_requested(db, user):
     await _enable_all(
         db, user.id, webhook_url="http://169.254.169.254/latest/meta-data/"
     )
-    await dispatch(db, user.id, dict(PAYLOAD), bot_sender=Recorder(result=True))
+    await dispatch(
+        db,
+        user.id,
+        dict(PAYLOAD),
+        bot_sender=Recorder(result=True),
+        llm_caller=Recorder(result=("analysis", 1)),
+    )
 
     events = {log.event_type for log in await _logs(db, user.id)}
     assert "WEBHOOK_ERROR" in events, (

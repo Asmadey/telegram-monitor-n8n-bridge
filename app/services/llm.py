@@ -3,8 +3,9 @@
 Оригинал (server.py:795) шлёт ПОЛНЫЕ тексты постов без потолка: канал с
 длинными постами и интервалом 15 минут — неограниченный счёт. Три защиты:
 
-1. Потолок символов на запрос (`truncate_posts`): батч обрезается по
-   хвост (голова — свежие посты — обязана уйти), а не уходит целиком.
+1. Потолок символов на один запрос (`truncate_posts`). Надёжный путь
+   воркера режет полный текст на несколько запросов и сохраняет прогресс
+   после каждого, поэтому этот технический предел не теряет сообщения.
 2. Месячный счётчик токенов на тенанта (`llm_usage`, период YYYY-MM),
    списание — атомарный upsert (воркер + ручной запуск одновременно).
 3. Гейт и автоотключение: лимит уже превышен → к API НЕ обращаемся,
@@ -28,7 +29,7 @@ from sqlalchemy.dialects import postgresql, sqlite
 
 from app.models import Integration, LLMUsage
 from app.services.integrations import integration_secrets
-from app.services.journal import add_log
+from app.services.journal import add_log, redact
 
 MAX_REQUEST_CHARS = 48_000
 MONTHLY_TOKEN_LIMIT = 2_000_000
@@ -39,12 +40,41 @@ DEFAULT_SYSTEM_PROMPT = (
 logger = logging.getLogger(__name__)
 
 
+class MonthlyTokenBudgetExhausted(RuntimeError):
+    """The current batch remains durable until the next monthly period."""
+
+    def __init__(self, retry_after: datetime.datetime):
+        super().__init__("monthly token budget exhausted")
+        self.retry_after = retry_after
+
+
 def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
 def _period(now: datetime.datetime) -> str:
     return now.strftime("%Y-%m")
+
+
+def _next_period(now: datetime.datetime) -> datetime.datetime:
+    if now.month == 12:
+        return now.replace(
+            year=now.year + 1,
+            month=1,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+    return now.replace(
+        month=now.month + 1,
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
 
 
 def truncate_posts(
@@ -87,7 +117,9 @@ async def monthly_tokens_used(
     return result.scalar_one_or_none() or 0
 
 
-async def _add_tokens(db, user_id: int, tokens: int, *, now: datetime.datetime) -> None:
+async def _add_tokens(
+    db, user_id: int, tokens: int, *, now: datetime.datetime, commit: bool = True
+) -> None:
     """Атомарное списание: upsert с инкрементом — конкурентные списания
     (воркер + ручной запуск) не теряют токены."""
     insert = sqlite.insert if db.bind.dialect.name == "sqlite" else postgresql.insert
@@ -99,7 +131,8 @@ async def _add_tokens(db, user_id: int, tokens: int, *, now: datetime.datetime) 
         set_={"tokens": LLMUsage.__table__.c.tokens + stmt.excluded.tokens},
     )
     await db.execute(stmt)
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
 async def _log_limit(db, user_id: int, *, disabled: bool) -> None:
@@ -120,10 +153,17 @@ async def process_messages_batch_with_llm(
     custom_prompt: str | None = None,
     caller=None,
     now: datetime.datetime | None = None,
+    require_success: bool = False,
+    completed: list[str] | None = None,
+    checkpoint=None,
 ) -> str | None:
-    """Анализ батча с гейтами: выключенный AI → None; превышенный лимит →
-    None БЕЗ обращения к API; пересечение лимита этим запросом → списание,
-    автоотключение openrouter_enabled, журнал."""
+    """Анализ батча с гейтами и устойчивыми checkpoints.
+
+    Старые прямые вызовы сохраняют прежний контракт с одним ограниченным
+    запросом. `require_success=True` используется durable job: весь текст
+    уходит чанками, успешные чанки не повторяются, а месячный бюджет
+    переносит непрочитанный остаток на следующий период.
+    """
     now = now or _utcnow()
     integration = (
         await db.execute(select(Integration).where(Integration.user_id == user_id))
@@ -133,13 +173,46 @@ async def process_messages_batch_with_llm(
         return None
     api_key = integration_secrets(integration).get("openrouter_api_key", "").strip()
     if not api_key or not messages:
+        if require_success and not api_key:
+            raise RuntimeError("LLM enabled without API key")
         return None
 
     items = truncate_posts(messages)
+    batches = [items]
+    if require_success:
+        # Technical request size, not a quota: every character is processed.
+        batches = []
+        current: list[dict] = []
+        size = 0
+        for message in messages:
+            text = message.get("text") or ""
+            for offset in range(0, len(text), MAX_REQUEST_CHARS):
+                part = text[offset : offset + MAX_REQUEST_CHARS]
+                if current and size + len(part) > MAX_REQUEST_CHARS:
+                    batches.append(current)
+                    current, size = [], 0
+                current.append(
+                    {
+                        "ID": str(message.get("id", "")),
+                        "пост": part,
+                        "ссылка": message.get("post_url", "")
+                        or (
+                            f"https://t.me/{message.get('chat_username', 'c')}"
+                            f"/{message.get('id', '')}"
+                        ),
+                    }
+                )
+                size += len(part)
+        if current:
+            batches.append(current)
+        items = batches[0] if batches else []
     if not items:
         return None
 
-    if await monthly_tokens_used(db, user_id, now=now) >= MONTHLY_TOKEN_LIMIT:
+    if (
+        not require_success
+        and await monthly_tokens_used(db, user_id, now=now) >= MONTHLY_TOKEN_LIMIT
+    ):
         await _log_limit(db, user_id, disabled=False)
         return None
 
@@ -163,7 +236,35 @@ async def process_messages_batch_with_llm(
     }
 
     try:
-        analysis, tokens = await caller(payload)
+        analyses = list(completed or [])
+        tokens = 0
+        for batch in batches[len(analyses) :]:
+            if (
+                require_success
+                and await monthly_tokens_used(db, user_id, now=now)
+                >= MONTHLY_TOKEN_LIMIT
+            ):
+                await _log_limit(db, user_id, disabled=False)
+                raise MonthlyTokenBudgetExhausted(_next_period(now))
+            payload["messages"][1]["content"] = json.dumps(
+                {"post": batch}, ensure_ascii=False, indent=2
+            )
+            result, used = await caller(payload)
+            if require_success and not result:
+                raise RuntimeError("LLM returned empty analysis")
+            if result:
+                analyses.append(result)
+            if require_success:
+                await _add_tokens(
+                    db, user_id, used or 0, now=now, commit=checkpoint is None
+                )
+                if checkpoint is not None:
+                    await checkpoint(analyses)
+            else:
+                tokens += used or 0
+        analysis = "\n\n".join(analyses)
+    except MonthlyTokenBudgetExhausted:
+        raise
     except Exception as e:  # noqa: BLE001 — падение API не роняет воркера
         # через add_log (4.6): текст исключения несёт заголовки с Bearer —
         # redact затирает ДО записи
@@ -174,15 +275,23 @@ async def process_messages_batch_with_llm(
             f"Ошибка обработки батча через LLM: {e}",
             status="ERROR",
         )
-        logger.exception("ошибка OpenRouter для тенанта %s", user_id)
+        logger.warning("ошибка OpenRouter для тенанта %s: %s", user_id, redact(str(e)))
+        if require_success:
+            raise RuntimeError(
+                "LLM analysis failed; original messages retained for retry"
+            ) from None
         return None
 
     if not analysis:
         return None
-    await _add_tokens(db, user_id, tokens or 0, now=now)
+    if not require_success:
+        await _add_tokens(db, user_id, tokens or 0, now=now)
 
     # пересечение лимита ЭТИМ запросом: токены уже списаны — отключаем
-    if await monthly_tokens_used(db, user_id, now=now) >= MONTHLY_TOKEN_LIMIT:
+    if (
+        not require_success
+        and await monthly_tokens_used(db, user_id, now=now) >= MONTHLY_TOKEN_LIMIT
+    ):
         integration.openrouter_enabled = False
         await _log_limit(db, user_id, disabled=True)
     return analysis

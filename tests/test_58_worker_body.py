@@ -252,7 +252,8 @@ async def test_failed_job_does_not_stop_the_queue(db, user):
 
     await _worker(db, dispatcher=dispatcher)._default_tick()
 
-    statuses = sorted(job.status for job in await _jobs(db))
+    # Durable process_batch jobs are internal child work, not manual requests.
+    statuses = sorted(job.status for job in await _jobs(db) if job.kind == POLL)
     assert statuses == [STATUS_DONE, STATUS_FAILED], statuses
     assert dispatcher.calls, "вторая задача не выполнена после падения первой"
 

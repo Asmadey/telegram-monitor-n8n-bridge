@@ -11,18 +11,17 @@
    данных, и он же обязательный элемент политики хранения для публичного
    сервиса.
 
-Дедупликация: `sent_messages` чистится вместе с прочим, и это осознанно —
-пост, удалённый из истории, снова считается новым. Поэтому срок хранения
-имеет смысл держать заметно больше интервала опроса.
+Дедупликационные ключи сохраняются: очистка истории не делает прочитанный
+пост новым. Незавершённый анализ и доставка остаются доступными для повтора.
 """
 
 import datetime
 
-from sqlalchemy import delete
+from sqlalchemy import delete, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import deleted_count
-from app.models import FeedItem, LogEntry, SentMessage
+from app.db import TenantRepo, deleted_count
+from app.models import FeedItem, Job, LogEntry, SentMessage
 
 
 def _utcnow() -> datetime.datetime:
@@ -35,14 +34,43 @@ async def purge_older_than(
     """Удалить данные пользователя старше `days` дней; вернуть счётчики."""
     cutoff = (now or _utcnow()) - datetime.timedelta(days=days)
     removed: dict[str, int] = {}
+    repo = TenantRepo(db, user_id)
     for name, model, column in (
         ("logs", LogEntry, LogEntry.timestamp),
-        ("messages", SentMessage, SentMessage.sent_at),
         ("feed", FeedItem, FeedItem.created_at),
     ):
-        result = await db.execute(
-            delete(model).where(model.user_id == user_id, column < cutoff)
+        stmt = delete(model).where(
+            model.id.in_(repo.query(model).with_only_columns(model.id)), column < cutoff
         )
+        if model is FeedItem:
+            stmt = stmt.where(
+                or_(
+                    FeedItem.delivery_status.is_(None),
+                    FeedItem.delivery_status == "SUCCESS",
+                )
+            )
+        result = await db.execute(stmt)
         removed[name] = deleted_count(result)
+    result = await db.execute(
+        update(SentMessage)
+        .where(
+            SentMessage.id.in_(
+                repo.query(SentMessage).with_only_columns(SentMessage.id)
+            ),
+            SentMessage.sent_at < cutoff,
+            SentMessage.processed.is_(True),
+            or_(SentMessage.text.is_not(None), SentMessage.sender.is_not(None)),
+        )
+        .values(text=None, sender=None, reactions_json="[]", post_url=None)
+    )
+    removed["messages"] = deleted_count(result)
+    await db.execute(
+        delete(Job).where(
+            Job.id.in_(repo.query(Job).with_only_columns(Job.id)),
+            Job.kind == "process_batch",
+            Job.status == "done",
+            Job.finished_at < cutoff,
+        )
+    )
     await db.commit()
     return removed

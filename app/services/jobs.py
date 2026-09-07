@@ -28,7 +28,7 @@ pending-строки + RETURNING:
 import datetime
 import json
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 
 from app.models import Job
 
@@ -67,7 +67,10 @@ def claim_statement(dialect_name: str, now: datetime.datetime):
     """
     subquery = (
         select(Job.id)
-        .where(Job.status == STATUS_PENDING)
+        .where(
+            Job.status == STATUS_PENDING,
+            or_(Job.retry_after.is_(None), Job.retry_after <= now),
+        )
         .order_by(Job.created_at, Job.id)
         .limit(1)
     )
