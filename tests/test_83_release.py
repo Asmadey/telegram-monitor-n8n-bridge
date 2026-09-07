@@ -29,6 +29,30 @@ def test_vercel_serves_existing_page_assets_and_google_sdk():
     assert "https://fonts.gstatic.com" in csp
 
 
+def test_spa_routes_survive_clean_urls():
+    """Прямой переход на /feed обязан открывать приложение, а не 404.
+
+    При `cleanUrls: true` Vercel не отдаёт пути с расширением `.html`,
+    поэтому назначение переписывания «/index.html» уходит в NOT_FOUND —
+    глубокая ссылка и обновление страницы ломаются. Найдено живой
+    проверкой 2026-09-07: `/` отвечал 200, а `/feed` и `/channels` — 404
+    при том, что переписывания для них в конфигурации были.
+    """
+    cfg = json.loads((ROOT / "vercel.json").read_text())
+    assert cfg.get("cleanUrls") is True, "тест написан под cleanUrls"
+    spa = [
+        r
+        for r in cfg["rewrites"]
+        if not r["destination"].startswith("http") and ":path*" not in r["source"]
+    ]
+    assert spa, "маршруты SPA пропали из переписываний"
+    for rule in spa:
+        assert not rule["destination"].endswith(".html"), (
+            f"{rule['source']} → {rule['destination']}: с cleanUrls путь "
+            "с расширением .html не отдаётся, переход даст 404"
+        )
+
+
 @pytest.mark.asyncio
 async def test_backend_csp_allows_the_fonts_used_by_index(anon_client):
     response = await anon_client.get("/")

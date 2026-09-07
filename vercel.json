@@ -22,23 +22,23 @@
     },
     {
       "source": "/feed",
-      "destination": "/index.html"
+      "destination": "/"
     },
     {
       "source": "/channels",
-      "destination": "/index.html"
+      "destination": "/"
     },
     {
       "source": "/messages",
-      "destination": "/index.html"
+      "destination": "/"
     },
     {
       "source": "/integration",
-      "destination": "/index.html"
+      "destination": "/"
     },
     {
       "source": "/logs",
-      "destination": "/index.html"
+      "destination": "/"
     }
   ],
   "headers": [
