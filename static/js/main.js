@@ -11,7 +11,7 @@ import { loadFeed } from './feed.js';
 import { loadConfig, refreshMonitorTimers } from './channels.js';
 import { loadSavedMessages } from './messages.js';
 import { loadOpenRouterConfig, loadTgForwardConfig, loadCleanupConfig } from './integration.js';
-import { loadLogs } from './logs.js';
+import { loadLogs, loadOpsStatus } from './logs.js';
 
 const VALID_TABS = ['feed', 'messages', 'channels', 'integration', 'logs'];
 
@@ -50,6 +50,7 @@ function switchTab(tabId, updateUrl = true) {
     loadSavedMessages();
   } else if (tabId === 'logs') {
     loadLogs();
+    loadOpsStatus();
   } else if (tabId === 'channels') {
     loadConfig();
   } else if (tabId === 'integration') {
@@ -117,6 +118,7 @@ async function start() {
   loadConfig();
   loadFeed();
   loadLogs();
+  loadOpsStatus();
   loadCleanupConfig();
   loadSavedMessages();
   loadOpenRouterConfig();

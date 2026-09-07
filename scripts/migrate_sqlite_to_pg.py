@@ -247,7 +247,8 @@ async def _migrate_feed_items(session, rows, user_id) -> int:
 
 
 async def _migrate_logs(session, rows, user_id) -> int:
-    """Receipts and log rows share a transaction; unrelated destination logs stay intact."""
+    """Квитанции и строки журнала пишутся одной транзакцией: повторный запуск
+    не удваивает их, а чужие записи назначения остаются нетронутыми."""
     inserted = 0
     for r in rows:
         receipt = await session.execute(
@@ -310,7 +311,8 @@ async def _migrate_integrations(session, rows, user_id, fernet: Fernet) -> int:
 
 
 def _merge_settings(rows: list[dict], settings_rows: list[dict]) -> list[dict]:
-    """Keep integration values authoritative, including intentionally empty strings."""
+    """Значения назначения главнее: осознанно пустая настройка не
+    восстанавливается устаревшей из источника."""
     settings = {r["key"]: r["value"] for r in settings_rows}
     row = dict(rows[0]) if rows else {}
     for name in (
@@ -363,7 +365,8 @@ async def _archive_settings(session, rows, user_id, fernet) -> int:
 
 
 def _read_telegram_session(path: str) -> str:
-    """Convert SQLite session offline, read-only, without constructing SQLiteSession."""
+    """Прочитать сессию из SQLite офлайн и только на чтение, не создавая
+    SQLiteSession: источник не изменяется."""
     from telethon.crypto import AuthKey
     from telethon.sessions import StringSession
 

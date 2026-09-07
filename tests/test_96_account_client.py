@@ -29,8 +29,6 @@ from conftest import act_as
 
 from app.models import TelegramAccount
 
-pytestmark = pytest.mark.asyncio
-
 ACCOUNT_SESSION = "1BQANOTEuMTA4LjU2LjE4NAG7-authorized-account-session"
 API_HASH = "c" * 32
 
@@ -83,6 +81,7 @@ def _patch_telethon(monkeypatch, module, built):
     )
 
 
+@pytest.mark.asyncio
 async def test_account_client_uses_the_connected_session(db, user, monkeypatch):
     """Клиент аккаунта строится из сохранённой сессии пользователя."""
     from app.services import tg_auth
@@ -107,6 +106,7 @@ async def test_account_client_uses_the_connected_session(db, user, monkeypatch):
     )
 
 
+@pytest.mark.asyncio
 async def test_without_a_connected_account_the_answer_is_explicit(
     db, user, monkeypatch
 ):
@@ -127,6 +127,7 @@ async def test_without_a_connected_account_the_answer_is_explicit(
     assert "не подключ" in failure.value.detail.lower(), failure.value.detail
 
 
+@pytest.mark.asyncio
 async def test_resolving_a_channel_no_longer_borrows_the_login_client(
     anon_client, db, user, monkeypatch
 ):

@@ -1,9 +1,13 @@
-"""Firebase ID-token verification using Google's public certificate verifier.
+"""Проверка Firebase ID-токена по публичным сертификатам Google (Фаза 6).
 
-Google-auth checks signature, expiry, issued-at and audience. Firebase's
-additional issuer, subject and auth_time constraints are checked below.
-No administrative Firebase operations are used: identity becomes a local
-revocable cookie session. No service-account private key is required.
+`google-auth` проверяет подпись, срок, время выпуска и аудиторию; issuer,
+subject и auth_time, которые Firebase добавляет сверх этого, проверяются
+ниже.
+
+Приватный ключ сервисного аккаунта не нужен: сертификаты публичны, а
+административные операции Firebase не используются. Firebase здесь —
+провайдер идентичности, а не система сессий: токен проверяется один раз
+при входе, дальше работает СВОЯ cookie-сессия, которую можно отозвать.
 """
 
 import time
@@ -51,5 +55,6 @@ def _live_verifier(token: str) -> dict:
 
 
 def get_google_verifier() -> IdTokenVerifier:
-    """Injectable verifier; tokens are never persisted as application sessions."""
+    """Внедряемый верификатор. ID-токен проверяется один раз при входе и
+    сессией приложения не становится: сессия — своя, отзываемая (Фаза 6)."""
     return _live_verifier

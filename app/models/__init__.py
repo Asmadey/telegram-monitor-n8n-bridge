@@ -389,8 +389,28 @@ class UserIdentity(Base):
     __table_args__ = (UniqueConstraint("provider", "provider_uid"),)
 
 
+class WorkerHeartbeat(Base):
+    """Отметка живости фонового процесса.
+
+    Таблица не тенантная: воркер обслуживает всех, и его состояние —
+    свойство сервиса, а не пользователя. Отметка ставится В ТИКЕ, а не при
+    старте: процесс, зависший внутри тика, обязан выглядеть мёртвым, иначе
+    проверка отвечает «жив» ровно тогда, когда помощь нужнее всего.
+    """
+
+    __tablename__ = "worker_heartbeats"
+
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    beat_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+    leader: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
 class LegacyImportRow(Base):
-    """Tenant-scoped receipt for repeatable imports; raw settings stay encrypted."""
+    """Квитанция переноса в разрезе тенанта: повторный запуск не удваивает
+    строки. Исходные настройки остаются зашифрованными."""
 
     __tablename__ = "legacy_import_rows"
     id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)

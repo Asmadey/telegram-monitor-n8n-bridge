@@ -18,7 +18,7 @@ _ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 
 def normalize_database_url(value: str) -> str:
-    """Railway supplies plain PostgreSQL URLs; runtime and migrations use asyncpg."""
+    """Railway отдаёт обычный postgresql://; рантайму и Alembic нужен asyncpg."""
     value = value.strip()
     for prefix in ("postgresql://", "postgres://"):
         if value.startswith(prefix):

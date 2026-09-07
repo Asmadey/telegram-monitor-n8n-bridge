@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 class MonthlyTokenBudgetExhausted(RuntimeError):
-    """The current batch remains durable until the next monthly period."""
+    """Месячный бюджет исчерпан: батч не теряется, а ждёт следующего периода."""
 
     def __init__(self, retry_after: datetime.datetime):
         super().__init__("monthly token budget exhausted")

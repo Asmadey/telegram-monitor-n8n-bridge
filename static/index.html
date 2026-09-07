@@ -391,6 +391,14 @@
 
     <!-- ==================== TAB 4: LOGS ==================== -->
     <div id="tab-logs" class="tab-pane">
+      <!-- Состояние сервиса (10.2). Web и worker — разные процессы, и
+           здоровье первого ничего не говорит о втором: молчащий воркер
+           снаружи выглядит как «ничего не происходит». -->
+      <div id="opsStatus" class="table-container" style="padding: 10px 14px; margin-bottom: 12px; display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px;">
+        <span>База: <b id="opsDb">…</b></span>
+        <span>Воркер: <b id="opsWorker">…</b></span>
+        <span>Очередь: <b id="opsQueue">…</b></span>
+      </div>
       <div class="table-container">
         <div class="table-toolbar" style="display: flex; justify-content: space-between; align-items: center;">
           <div class="toolbar-filters">
