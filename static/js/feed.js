@@ -108,7 +108,7 @@ function renderFeedList() {
       : (rawMsgs[0]?.text || 'Выборка сообщений Telegram');
 
     return html`
-      <div class="feed-card ${isActive ? 'active' : ''}" onclick="selectFeedItem(${item.id})">
+      <div class="feed-card ${isActive ? 'active' : ''}" data-feed-id="${item.id}">
         <div class="feed-card-header">
           ${raw(avatarHtml)}
           <div style="min-width: 0; flex: 1;">
@@ -243,6 +243,14 @@ async function selectFeedItem(id) {
     }
   }
 }
+
+// Делегирование, а не onclick в разметке: при script-src 'self' инлайновый
+// обработчик не исполняется, и карточка молча перестаёт нажиматься. Один
+// слушатель на документ переживает любую перерисовку списка.
+document.addEventListener('click', (event) => {
+  const card = event.target.closest('.feed-card[data-feed-id]');
+  if (card) selectFeedItem(Number(card.dataset.feedId));
+});
 
 window.selectFeedItem = selectFeedItem;
 

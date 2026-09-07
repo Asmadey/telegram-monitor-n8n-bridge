@@ -23,7 +23,7 @@ function switchTab(tabId, updateUrl = true) {
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
 
-  const selectedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick')?.includes(tabId));
+  const selectedBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
   if (selectedBtn) selectedBtn.classList.add('active');
 
   const targetPane = document.getElementById(`tab-${tabId}`);
@@ -59,6 +59,16 @@ function switchTab(tabId, updateUrl = true) {
   }
 }
 
+// Обработчики вешаются здесь, а не атрибутом onclick в разметке: при
+// script-src 'self' инлайновый обработчик — тот же инлайновый скрипт,
+// браузер молча отказывается его исполнять, и кнопка перестаёт нажиматься
+// без единого сообщения (найдено на живом деплое 7 сентября).
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// Глобальная ссылка оставлена для переходов между вкладками из других
+// модулей (канал → его сообщения).
 window.switchTab = switchTab;
 
 // Слушатель кнопок браузера «Назад» и «Вперед»
