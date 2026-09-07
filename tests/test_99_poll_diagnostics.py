@@ -27,7 +27,9 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _poll_errors(db) -> list[LogEntry]:
-    rows = list(await db.scalars(select(LogEntry).where(LogEntry.event_type == "POLL_ERROR")))
+    rows = list(
+        await db.scalars(select(LogEntry).where(LogEntry.event_type == "POLL_ERROR"))
+    )
     return rows
 
 
@@ -64,17 +66,35 @@ async def test_error_with_a_message_keeps_it(db, user):
     assert "ValueError" in details
 
 
-async def test_worker_log_carries_the_reason_too(db, user, caplog):
-    """В логе процесса причина тоже должна быть: сейчас там только
-    «опрос упал», и по нему нельзя отличить сеть от чужого канала."""
+async def test_worker_log_carries_the_reason_too(db, user):
+    """В логе процесса причина тоже должна быть: раньше там было только
+    «опрос упал», и по нему нельзя отличить сеть от чужого канала.
+
+    Обработчик вешается прямо на логгер `app.worker`, а не через caplog:
+    caplog ловит записи через корневой логгер, а на его пути в этом
+    проекте стоит установленное затирание секретов и чужие обработчики
+    соседних тестов — прогон в CI это и показал, упав там, где локально
+    было зелено.
+    """
+    import io
     import logging
 
     await _monitor(db, user, last_checked=_utc(hours=3))
     worker = _worker(db, telegram=FakeTelegram(fail=ConnectionError()))
 
-    with caplog.at_level(logging.WARNING, logger="app.worker"):
+    buffer = io.StringIO()
+    handler = logging.StreamHandler(buffer)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger = logging.getLogger("app.worker")
+    previous = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
+    try:
         await worker.run_schedule(db)
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous)
 
-    assert any("ConnectionError" in record.getMessage() for record in caplog.records), (
-        "лог процесса не называет причину падения опроса"
+    assert "ConnectionError" in buffer.getvalue(), (
+        f"лог процесса не называет причину падения опроса: {buffer.getvalue()!r}"
     )
