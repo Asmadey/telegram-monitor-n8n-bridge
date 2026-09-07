@@ -150,17 +150,17 @@ function renderMonitors() {
       <!-- Column 3: Actions & Toggle -->
       <div class="channel-actions-group" style="display: flex; align-items: center; gap: 8px;">
         <label class="switch" title="Включить / Приостановить мониторинг">
-          <input type="checkbox" ${m.is_active ? 'checked' : ''} onchange="toggleMonitor('${m.id}', this.checked)">
+          <input type="checkbox" ${m.is_active ? 'checked' : ''} data-action="toggle" data-monitor-id="${m.id}">
           <span class="slider"></span>
         </label>
-        <button class="btn btn-primary btn-sm" onclick="runMonitor('${m.id}')" title="Запустить опрос сейчас">⚡ Запустить</button>
-        <button class="btn btn-secondary btn-icon-sm" onclick="openEditModal('${m.id}')" title="Редактировать параметры и промпт">
+        <button class="btn btn-primary btn-sm" data-action="run" data-monitor-id="${m.id}" title="Запустить опрос сейчас">⚡ Запустить</button>
+        <button class="btn btn-secondary btn-icon-sm" data-action="edit" data-monitor-id="${m.id}" title="Редактировать параметры и промпт">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
         </button>
-        <button class="btn btn-secondary btn-icon-sm" onclick="resetDedup('${m.id}')" title="Сбросить историю дубликатов">
+        <button class="btn btn-secondary btn-icon-sm" data-action="reset" data-monitor-id="${m.id}" title="Сбросить историю дубликатов">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
         </button>
-        <button class="btn btn-danger btn-icon-sm" onclick="deleteMonitor('${m.id}')" title="Удалить канал из мониторинга">
+        <button class="btn btn-danger btn-icon-sm" data-action="delete" data-monitor-id="${m.id}" title="Удалить канал из мониторинга">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
         </button>
       </div>
@@ -199,6 +199,24 @@ function openEditModal(id) {
   editMsgLimit.value = m.limit || 20;
   document.getElementById('editMonitorPrompt').value = m.prompt || '';
 }
+
+// Делегирование вместо onclick/onchange в разметке: инлайновый обработчик
+// при script-src 'self' не исполняется, и кнопки строк молча мертвы.
+// Слушатели висят на документе — строки перерисовываются, они остаются.
+document.addEventListener('change', (event) => {
+  const toggle = event.target.closest('[data-action="toggle"][data-monitor-id]');
+  if (toggle) toggleMonitor(toggle.dataset.monitorId, toggle.checked);
+});
+
+document.addEventListener('click', (event) => {
+  const el = event.target.closest('[data-action][data-monitor-id]');
+  if (!el) return;
+  const id = el.dataset.monitorId;
+  if (el.dataset.action === 'run') runMonitor(id);
+  else if (el.dataset.action === 'edit') openEditModal(id);
+  else if (el.dataset.action === 'reset') resetDedup(id);
+  else if (el.dataset.action === 'delete') deleteMonitor(id);
+});
 
 window.openEditModal = openEditModal;
 

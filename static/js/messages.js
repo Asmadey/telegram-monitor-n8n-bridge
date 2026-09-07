@@ -88,7 +88,7 @@ export function renderTable() {
       </td>
       <td class="msg-text-cell">
         <div class="msg-text" id="msg-text-${msg.chat_id}-${msg.id}">${raw(formatTelegramText(msg.text))}</div>
-        ${msg.text && msg.text.length > 140 ? raw(html`<button class="expand-btn" onclick="toggleExpand('${msg.chat_id}-${msg.id}')">Развернуть / Свернуть</button>`) : ''}
+        ${msg.text && msg.text.length > 140 ? raw(html`<button class="expand-btn" data-expand="${msg.chat_id}-${msg.id}">Развернуть / Свернуть</button>`) : ''}
       </td>
       <td>
         <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
@@ -114,6 +114,13 @@ function toggleExpand(key) {
   const el = document.getElementById(`msg-text-${key}`);
   if (el) el.classList.toggle('expanded');
 }
+
+// Делегирование вместо onclick: инлайновый обработчик при script-src 'self'
+// не исполняется — кнопка «Развернуть» молча ничего не делала.
+document.addEventListener('click', (event) => {
+  const btn = event.target.closest('.expand-btn[data-expand]');
+  if (btn) toggleExpand(btn.dataset.expand);
+});
 
 window.toggleExpand = toggleExpand;
 

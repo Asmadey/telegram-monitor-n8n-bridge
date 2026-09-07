@@ -85,6 +85,13 @@ function selectModelItem(modelId) {
   showToast(`Выбрана модель: ${modelId}`);
 }
 
+// Делегирование вместо onclick: строка списка моделей при script-src 'self'
+// иначе не выбирается — обработчик в разметке не исполняется.
+document.addEventListener('click', (event) => {
+  const item = event.target.closest('.autocomplete-item[data-model-id]');
+  if (item) selectModelItem(item.dataset.modelId);
+});
+
 window.selectModelItem = selectModelItem;
 
 function hideModelsDropdown() {
@@ -160,7 +167,7 @@ function renderModelsDropdown(query = '') {
         const nameHtml = highlightText(m.name || m.id, q);
         const idHtml = highlightText(m.id, q);
         return html`
-          <div class="autocomplete-item ${isCurrent ? 'selected' : ''}" data-model-id="${m.id}" onclick="selectModelItem('${m.id}')">
+          <div class="autocomplete-item ${isCurrent ? 'selected' : ''}" data-model-id="${m.id}">
             <div>
               <div class="autocomplete-item-name">${raw(nameHtml)}</div>
               <div class="autocomplete-item-id">${raw(idHtml)}</div>

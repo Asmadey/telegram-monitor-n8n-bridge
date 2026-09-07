@@ -155,19 +155,35 @@ def test_module_imports_resolve():
     assert violations == [], f"битые импорты: {violations}"
 
 
-def test_inline_handlers_have_window_globals():
-    """Инлайн-onclick остаются в разметке/шаблонах (минимальный порт), а
-    ES-модули — file-scoped: каждая функция из onclick ОБЯЗАНА быть
-    выставлена на window в каком-то модуле, иначе кнопка молча мертва."""
-    sources = _js_sources()
-    all_js = "\n".join(sources.values())
-    called = set(re.findall(r'onclick="(\w+)\(', _index_source() + all_js))
-    called.update(re.findall(r"onchange=\"(\w+)\(", _index_source() + all_js))
-    assert called, "не найдено ни одного inline-обработчика — разметка не та"
-    exposed = set(re.findall(r"window\.(\w+)\s*=", all_js))
-    dead = called - exposed
-    assert not dead, (
-        f"inline-обработчики без window-глобала (кнопки мертвы): {sorted(dead)}"
+def test_inline_handlers_are_forbidden_by_our_own_policy():
+    """Контракт 5.1 отменён живым деплоем 2026-09-07.
+
+    Тут раньше стояло обратное требование: «инлайн-onclick остаются в
+    разметке (минимальный порт), и каждая функция обязана быть выставлена
+    на window, иначе кнопка молча мертва». Вторая половина верна, а первая
+    оказалась несовместима с задачей 7.2: `script-src 'self'` без
+    `'unsafe-inline'` запрещает инлайновые обработчики так же, как
+    инлайновые скрипты. Кнопка была мертва при любых глобалах — и это
+    обнаружил владелец, у которого не переключалась ни одна вкладка.
+
+    Тест сохранён на месте старого намеренно: иначе отмена решения
+    выглядит в истории как молча пропавшая проверка. Полный свип по
+    разметке и модулям — test_95_no_inline_handlers.py.
+    """
+    from app.security.headers import build_csp
+
+    script_src = build_csp().split("script-src", 1)[1].split(";", 1)[0]
+    assert "'unsafe-inline'" not in script_src, (
+        "политика разрешила инлайн — тогда и запрет обработчиков теряет смысл"
+    )
+
+    called = set(re.findall(r'on(?:click|change)="(\w+)\(', _index_source()))
+    called.update(
+        re.findall(r'on(?:click|change)="(\w+)\(', "\n".join(_js_sources().values()))
+    )
+    assert not called, (
+        "инлайновые обработчики вернулись — при этой политике они не "
+        f"исполняются: {sorted(called)}"
     )
 
 
