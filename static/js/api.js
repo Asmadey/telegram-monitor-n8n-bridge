@@ -35,6 +35,20 @@ export function readCookie(name) {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
+// Истёкшая или отсутствующая сессия — не ошибка загрузки данных, а повод
+// вернуть человека на вход. Перехват ОДИН на все вызовы: иначе каждый
+// модуль показывает свой тост, и вместо «войдите» получается стена ошибок
+// (ровно это увидел владелец на живом деплое 7 сентября).
+let redirecting = false;
+
+function toLogin() {
+  if (redirecting) return;
+  redirecting = true;
+  const back = window.location.pathname + window.location.search;
+  const next = back && back !== '/' ? `?next=${encodeURIComponent(back)}` : '';
+  window.location.replace(`/login${next}`);
+}
+
 export async function apiFetch(url, { method = 'GET', body } = {}) {
   const options = {
     method,
@@ -54,7 +68,11 @@ export async function apiFetch(url, { method = 'GET', body } = {}) {
     options.body = JSON.stringify(body);
   }
 
-  return fetch(apiBase() + url, options);
+  const response = await fetch(apiBase() + url, options);
+  if (response.status === 401) {
+    toLogin();
+  }
+  return response;
 }
 
 export function apiGet(url) {

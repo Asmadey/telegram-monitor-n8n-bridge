@@ -8,6 +8,8 @@ import { apiFetch, apiGet } from './api.js';
 import { showToast } from './render.js';
 
 const statusBadge = document.getElementById('statusBadge');
+const accountEmail = document.getElementById('accountEmail');
+const signOutBtn = document.getElementById('signOutBtn');
 const statusUser = document.getElementById('statusUser');
 
 const settingsModal = document.getElementById('settingsModal');
@@ -53,6 +55,26 @@ export async function checkHealth() {
     statusBadge.classList.add('offline');
   }
 }
+
+export function showAccount(email) {
+  // Почта видна всегда, пока открыт кабинет: понять, под кем ты сидишь,
+  // должно быть можно не открывая ни одной модалки.
+  accountEmail.textContent = email;
+  accountEmail.hidden = false;
+  signOutBtn.hidden = false;
+}
+
+// Выход из КАБИНЕТА (сессия сервиса), а не из Telegram-аккаунта.
+signOutBtn.addEventListener('click', async () => {
+  signOutBtn.disabled = true;
+  try {
+    await apiFetch('/auth/logout', { method: 'POST' });
+  } catch (e) {
+    // Сеть подвела — всё равно уводим на вход: остаться в оболочке,
+    // думая, что вышел, хуже честного повторного входа.
+  }
+  window.location.replace('/login');
+});
 
 export async function loadSettings() {
   try {

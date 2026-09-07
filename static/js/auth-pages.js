@@ -18,6 +18,29 @@
     return (window.__TELETON_API__ || '').replace(/\/$/, '');
   }
 
+  // Куда возвращаться после входа. api.js добавляет ?next=, когда уводит
+  // с закрытой страницы истёкшей сессией: человек должен вернуться туда,
+  // куда шёл. Принимается только ОТНОСИТЕЛЬНЫЙ путь — «//evil.example»
+  // и абсолютный адрес превратили бы страницу входа в открытый редирект.
+  function nextTarget() {
+    const raw = new URLSearchParams(window.location.search).get('next') || '';
+    return /^\/[^/\\]/.test(raw) ? raw : '/';
+  }
+
+  // Вошедший, открывший /login, должен попасть в приложение, а не смотреть
+  // на форму, которая ему уже не нужна.
+  (async function redirectSignedIn() {
+    if (!document.getElementById('googleSignIn')) return; // не экран входа
+    try {
+      const res = await fetch(apiBase() + '/auth/me', {
+        credentials: 'include', cache: 'no-store'
+      });
+      if (res.ok) window.location.replace(nextTarget());
+    } catch (e) {
+      // сеть недоступна — оставляем форму: врать про «вы уже вошли» нельзя
+    }
+  })();
+
   async function postJson(url, payload) {
     // Static pages on Vercel do not run the API cookie middleware.
     if (!csrfToken()) {
@@ -76,7 +99,7 @@
         password: document.getElementById('password').value
       });
       if (r.ok) {
-        window.location.href = '/';
+        window.location.href = nextTarget();
         return;
       }
       showError(loginForm, detailText(r.data, 'Ошибка входа'));
@@ -96,7 +119,7 @@
         timezone: tz ? tz.value : 'UTC'
       });
       if (r.ok) {
-        window.location.href = '/';
+        window.location.href = nextTarget();
         return;
       }
       showError(signupForm, detailText(r.data, 'Ошибка регистрации'));
@@ -200,7 +223,7 @@
 
       const r = await postJson('/auth/google', { id_token: idToken });
       if (r.ok) {
-        window.location.href = '/';
+        window.location.href = nextTarget();
         return;
       }
       setError(detailText(r.data, 'Не удалось войти через Google'));

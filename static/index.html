@@ -48,6 +48,12 @@
           <span id="statusUser">Подключение...</span>
         </div>
         <button id="openSettingsModalBtn" class="btn btn-secondary btn-sm">⚙️ MTProto</button>
+        <!-- Кто вошёл и как выйти. В мульти-тенанте это не украшение:
+             чужая незакрытая сессия в браузере выглядит как своя, а
+             «Выйти» в модалке MTProto отключает Telegram-аккаунт —
+             совсем другое действие. -->
+        <span id="accountEmail" class="status-pill" hidden style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+        <button id="signOutBtn" class="btn btn-secondary btn-sm" type="button" hidden>Выйти</button>
       </div>
     </header>
 
