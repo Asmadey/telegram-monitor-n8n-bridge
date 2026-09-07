@@ -20,6 +20,9 @@ monitors.json
 monitors.json.bak
 exports/
 
+# Dev-аутбокс писем (задача 2.9): внутри токены сброса
+tmp/
+
 # Python Cache
 __pycache__/
 *.py[cod]
@@ -30,3 +33,10 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Справочный Rails-шаблон, не часть проекта
+Ruby/
+
+# Тестовый кэш
+.pytest_cache/
+tests/__pycache__/

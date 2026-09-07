@@ -1,321 +1,273 @@
-# 📘 Telegram Monitor & n8n Bridge — Полное руководство по архитектуре и воссозданию проекта с нуля
+# 📘 Teleton — архитектура
 
-## 📌 1. Обзор и концепция проекта
-
-**Telegram Monitor & n8n Bridge** — это производительный сервис для мониторинга Telegram-каналов через официальный протокол **MTProto (User API)**, интеллектуальной фильтрации контента с помощью LLM (OpenRouter / DeepSeek V4 Flash), визуализации задач в интерактивной **Ленте (Live Feed)**, прямой пересылки дайджестов через Telegram-бота и оркестрации событий в сценарии **n8n**.
-
-### Ключевые возможности:
-* **MTProto Мониторинг:** Чтение любых публичных и приватных каналов, в которых состоит пользовательский аккаунт (без ограничений обычных Bot API).
-* **Сбор полных метрик постов:** Просмотры (`views`), детальные реакции (`reactions` с эмодзи и счетчиками), пересылки (`forwards`), наличие медиа (`has_media`), прямые ссылки (`post_url`).
-* **Гарантированная дедупликация:** Защита от повторной отправки одинаковых сообщений через локальную базу данных SQLite (`sent_messages`).
-* **Интерактивная «Лента» (Live Feed Master-Detail):**
-  * Двухколоночный интерфейс: слева список выполненных задач анализа с аватарами каналов, метриками и превью; справа — полный Markdown-разбор сгенерированного AI Summary и инспектор исходных постов Telegram.
-  * Кнопка **«🔄 Обновить анализ»** прямо в задаче: возможность перезапустить анализ сохраненной выборки через LLM с актуальным системным промптом канала.
-  * Фоновый Live Polling каждые 8 секунд без перезагрузки страницы.
-* **Гибкая независимая диспетчеризация:** Возможность раздельно включать/выключать:
-  1. Отправку в **n8n Webhook**.
-  2. Отправку в **Telegram-бота** (в личку или канал).
-  3. AI-обработку через **OpenRouter (по умолчанию `deepseek/deepseek-v4-flash`)**.
-* **Автономный фоновый планировщик:** Периодический опрос каналов с индивидуальными интервалами, лимитами и системными промптами.
-* **Автоматическая очистка базы:** Фоновая ежедневная очистка устаревших логов и записей сообщений по настраиваемому сроку (7, 14, 30, 60, 90 дней).
-* **Премиальный SPA UI (60 FPS, Anti-Slop):** Легкий интерфейс без тяжелых фреймворков, с микроанимациями **GSAP 3**, единой типографикой (`font-variant-numeric: tabular-nums`), поддержкой Markdown-форматирования и мгновенным автосохранением параметров в SQLite.
+Справочник по устройству приложения: модули, схема данных, пайплайн, API.
+Установка и запуск — [README.md](README.md), правила работы —
+[AGENTS.md](AGENTS.md), план и статус задач — [docs/PLAN.md](docs/PLAN.md),
+деплой — [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ---
 
-## 🛠️ 2. Технологический стек
+## 1. Что это
 
-| Слой | Технология | Назначение |
-|---|---|---|
-| **Backend Runtime** | Python 3.10+ / 3.11+ | Основной язык серверной логики |
-| **Веб-фреймворк** | FastAPI (0.115+) & Uvicorn (0.34+) | Асинхронный REST API и хостинг статики |
-| **Telegram MTProto Client** | Telethon (1.38+) | Прямое подключение к серверам Telegram по MTProto |
-| **Сетевой клиент** | HTTPX (0.28+) | Асинхронные HTTP-запросы (OpenRouter, n8n Webhook, Bot API) |
-| **База данных** | SQLite 3 (`storage.db`) | Хранение настроек, каналов, истории сообщений, ленты и логов |
-| **Валидация данных** | Pydantic (2.10+) | Типизация и валидация входящих JSON-запросов |
-| **Frontend UI** | HTML5, CSS3 Tokens, Vanilla JS (SPA) | Монолитный легковесный интерфейс управления |
-| **Анимации и микро-UX** | GSAP 3.12.5 | 60fps аппаратные анимации табов, модалок, карточек и ленты |
-| **Контейнеризация** | Docker / Docker Compose / Railway | Развертывание в изолированном контейнере |
+Мульти-тенант SaaS: пользователь регистрируется, подключает **свой**
+Telegram-аккаунт и мониторит каналы от его лица через MTProto (Telethon).
+Новые посты дедуплицируются, при желании прогоняются через LLM и
+доставляются в n8n-вебхук и Telegram-бота; история остаётся в ленте.
+
+Определяющий факт: на сервере лежат **MTProto-сессии чужих аккаунтов**. Их
+нельзя сбросить удалённо, и они дают полное чтение переписки. Поэтому
+изоляция тенантов, шифрование секретов и «закрыто по умолчанию» — не
+гигиена, а суть задачи.
 
 ---
 
-## 📁 3. Структура файлов и каталогов
+## 2. Два процесса
+
+Из одного Docker-образа поднимаются две команды. Разделение обязательно:
+второй процесс на том же MTProto auth-key даёт `AUTH_KEY_DUPLICATED`, и
+Telegram может убить сессию пользователя.
+
+| Процесс | Команда | Ответственность | Telethon |
+|---|---|---|---|
+| `web` | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` | HTTP, аутентификация, вход в Telegram | короткоживущий клиент только на время авторизации |
+| `worker` | `python -m app.worker` | очередь, расписание, доставка, автоочистка | единственный владелец пула долгоживущих клиентов |
+
+---
+
+## 3. Карта модулей
 
 ```
-Teleton/
-├── server.py                 # Центральный сервер: FastAPI, MTProto, Планировщик, Диспетчер, API
-├── requirements.txt          # Python-зависимости
-├── Dockerfile                # Сборка Docker-контейнера
-├── Procfile                  # Конфигурация для Railway / Heroku
-├── railway.json              # Деплой-конфигурация Railway
-├── .env.example              # Шаблон переменных окружения
-├── .env                      # Локальные переменные окружения (API ID, Hash)
-├── personal_account.session  # Файл сессии Telethon MTProto (генерируется при входе)
-├── storage.db                # SQLite база данных (создается автоматически)
-├── static/
-│   └── index.html            # SPA интерфейс со стилями CSS и логикой JS (GSAP 3)
-└── PROJECT_OVERVIEW.md       # Это архитектурное руководство
+app/
+├── main.py                 сборка FastAPI: middleware, роутеры, страницы
+├── config.py               pydantic-settings, ЕДИНСТВЕННАЯ точка чтения ENV
+├── db.py                   async engine, sessionmaker, TenantRepo
+├── deps.py                 require_user / require_admin / get_tenant_repo
+├── worker.py               цикл воркера: очередь → расписание → автоочистка
+├── models/                 13 таблиц; user_id NOT NULL + индекс в тенантных
+├── security/
+│   ├── passwords.py        bcrypt
+│   ├── sessions.py         сессии в БД + подписанная httpOnly-cookie
+│   ├── password_reset.py   одноразовый токен (в подпись входит password_hash)
+│   ├── crypto.py           Fernet: шифрование секретов, отказ старта без ключа
+│   ├── csrf.py             double-submit token на все не-GET
+│   ├── cookies.py          SameSite по «один ли это сайт» (Public Suffix List)
+│   ├── cors.py             список origin из настроек; `*` + credentials невозможен
+│   ├── headers.py          CSP, HSTS, nosniff, frame-options, referrer-policy
+│   └── ratelimit.py        slowapi: логин, регистрация, сброс, код Telegram
+├── api/                    роутеры: auth, admin, public, telegram, monitors,
+│                           feed, journal, integrations, checks, cleanup
+└── services/
+    ├── tg_pool.py          пул клиентов: LRU, лимит, простой, FloodWait
+    ├── tg_gateway.py       граница с Telegram для воркера (в тестах — двойник)
+    ├── tg_auth.py          вход по коду, состояние попытки в БД
+    ├── tg_account.py       сохранение StringSession зашифрованной
+    ├── messages.py         выборка постов канала с метриками
+    ├── dedup.py            INSERT ... ON CONFLICT DO NOTHING RETURNING
+    ├── jobs.py             очередь: захват SKIP LOCKED, зависшие задачи
+    ├── dispatch.py         AI → бот → n8n → лента
+    ├── llm.py              OpenRouter: обрезка, месячный лимит, автоотключение
+    ├── webhook.py          отправка с проверкой SSRF по резолвнутому IP
+    ├── integrations.py     секреты (шифрование) и настройки (белый список)
+    ├── journal.py          add_log с затиранием секретов (redact)
+    ├── cleanup.py          удаление данных старше N дней
+    ├── mailer.py           письма сброса (dev — в файл)
+    └── google_auth.py      верификация Firebase ID-токена
+
+static/                     ванильный SPA на ES-модулях, без сборки
+├── index.html              разметка без логики
+├── login.html / signup.html / password-reset.html
+├── css/main.css
+└── js/  api.js render.js auth.js main.js
+      feed.js channels.js messages.js integration.js logs.js auth-pages.js
+
+alembic/versions/           миграции — единственный способ менять схему
+scripts/migrate_sqlite_to_pg.py   разовый перенос из старой SQLite
+tests/                      статические (разбор исходников) + поведенческие
 ```
 
 ---
 
-## 🗄️ 4. Архитектура базы данных (SQLite: `storage.db`)
+## 4. Схема данных (PostgreSQL)
 
-База данных инициализируется автоматически при старте `server.py` и содержит 6 таблиц:
+Тринадцать таблиц. В каждой тенантной — `user_id NOT NULL` с индексом и
+внешним ключом; правило держит `tests/test_12_models.py`, а запросы идут
+через `TenantRepo`, где забыть фильтр невозможно.
 
-### 1. `settings` (Системные настройки)
-| Поле | Тип | Описание |
+| Таблица | Назначение | Заметки |
 |---|---|---|
-| `key` | TEXT PRIMARY KEY | Ключ параметра (`webhook_url`, `auto_webhook_enabled`, `auto_cleanup_enabled`, `auto_cleanup_days`, `auto_cleanup_last_run`) |
-| `value` | TEXT | Значение параметра |
+| `users` | учётные записи | `password_hash` nullable — вход может быть только через Google |
+| `identities` | связка с внешним провайдером | `(provider, provider_uid)`; вход через Google привязывается к существующему email, а не создаёт дубль |
+| `sessions` | сессии пользователей | отзыв = удаление строки (JWT так не умеет) |
+| `telegram_accounts` | подключённый Telegram | `session_string_encrypted` — Fernet; файлов `.session` нет |
+| `tg_auth_attempts` | незавершённый вход по коду | заменяет глобальный `auth_state`: TTL, привязка к пользователю |
+| `monitors` | каналы мониторинга | `public_id` наружу; уникален **в паре** с `user_id` |
+| `sent_messages` | история отправленного | `UNIQUE(user_id, chat_id, message_id)` — на нём стоит дедупликация |
+| `feed_items` | лента выполненных заданий | без `photo_base64`: аватарки вынесены |
+| `chat_avatars` | аватарка канала | без `user_id` — фото публичного канала одно на всех; изоляция на чтении |
+| `logs` | журнал событий | `details` проходит `redact` перед записью |
+| `integrations` | n8n / OpenRouter / бот / автоочистка | секреты только в `*_encrypted` |
+| `jobs` | очередь ручных запусков | `status`, `started_at`, `error` |
+| `llm_usage` | израсходованные токены за период | основание для месячного лимита |
 
-### 2. `monitors` (Отслеживаемые каналы)
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | TEXT PRIMARY KEY | Уникальный строковый UUID (например `e798a20d`) |
-| `chat_target` | TEXT | Юзернейм или ID канала (например `@theyseeku` или `-1001143063102`) |
-| `chat_id` | INTEGER | Числовой ID чата Telegram |
-| `chat_title` | TEXT | Название канала |
-| `chat_username` | TEXT | Юзернейм канала без `@` |
-| `interval_minutes` | INTEGER | Интервал автоопроса в минутах (по умолчанию 60) |
-| `limit_count` | INTEGER | Количество запрашиваемых постов за раз (по умолчанию 20) |
-| `offset_hours` | INTEGER | Опциональное временное окно выборки в часах (`NULL` = без отсечения) |
-| `is_active` | INTEGER | 1 = активен, 0 = на паузе |
-| `last_checked` | TEXT | ISO-дата последней проверки планировщиком |
-| `last_sent_message_id`| INTEGER | Максимальный ID отправленного сообщения |
-| `prompt` | TEXT | Индивидуальный системный промпт для LLM анализа постов этого канала |
-
-### 3. `analysis_feed` (История выполненных задач анализа)
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | ID карточки в Ленте |
-| `chat_id` | INTEGER | Числовой ID канала |
-| `chat_title` | TEXT | Название канала |
-| `chat_username` | TEXT | Юзернейм канала |
-| `messages_count` | INTEGER | Количество постов в этой выборке |
-| `raw_messages_json` | TEXT | Полный JSON-массив исходных сообщений со всеми метаданными |
-| `ai_analysis` | TEXT | Текст сводки/анализа, сгенерированный LLM |
-| `model_name` | TEXT | Использованная модель (по умолчанию `deepseek/deepseek-v4-flash`) |
-| `photo_base64` | TEXT | Аватарка канала в формате `data:image/jpeg;base64,...` |
-| `created_at` | TEXT | ISO-дата создания задачи |
-
-### 4. `sent_messages` (История сообщений и дедупликация)
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | Внутренний ID записи в SQLite |
-| `chat_id` | INTEGER | ID канала в Telegram |
-| `message_id` | INTEGER | Оригинальный ID сообщения в Telegram |
-| `date` | TEXT | Дата публикации сообщения в Telegram |
-| `sender` | TEXT | Имя автора или название канала |
-| `text` | TEXT | Полный текст сообщения |
-| `views` | INTEGER | Количество просмотров поста |
-| `forwards` | INTEGER | Количество пересылок поста |
-| `has_media` | INTEGER | 1 = есть вложение/фото/видео, 0 = только текст |
-| `reactions_count` | INTEGER | Общее количество реакций |
-| `reactions_json` | TEXT | JSON-массив объектов реакций: `[{"emoji": "🔥", "count": 5}]` |
-| `post_url` | TEXT | Прямая ссылка на пост (`https://t.me/c/.../123`) |
-| `sent_at` | TEXT | Дата сохранения и отправки в SQLite |
-
-> **Уникальный индекс:** `UNIQUE(chat_id, message_id)` — гарантирует невозможность дублирования записей одного и того же поста.
-
-### 5. `logs` (Журнал событий)
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | ID события |
-| `timestamp` | TEXT | Время события в ISO UTC |
-| `event_type` | TEXT | Тип (`AUTH`, `FETCH`, `WEBHOOK_SENT`, `AI_ANALYSIS`, `AUTO_CLEANUP` и др.) |
-| `details` | TEXT | Подробный текст описания |
-| `status` | TEXT | Статус (`SUCCESS`, `ERROR`, `SKIPPED_DEDUP`, `INFO`) |
-| `chat_title` | TEXT | Название канала (опционально) |
-| `chat_id` | INTEGER | ID чата (опционально) |
-| `messages_count` | INTEGER | Количество обработанных сообщений (опционально) |
-
-### 6. `integrations_config` (Интеграции с OpenRouter и Telegram Bot)
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | INTEGER PRIMARY KEY CHECK (id = 1) | Единственная строка конфигурации |
-| `openrouter_api_key` | TEXT | API ключ OpenRouter |
-| `openrouter_model` | TEXT | Имя модели (по умолчанию `deepseek/deepseek-v4-flash`) |
-| `openrouter_base_url` | TEXT | Base URL API (по умолчанию `https://openrouter.ai/api/v1`) |
-| `openrouter_enabled` | INTEGER | 1 = включен, 0 = выключен |
-| `tg_bot_token` | TEXT | Токен Telegram-бота из @BotFather |
-| `tg_sender_id` | TEXT | ID получателя дайджестов |
-| `tg_forward_enabled` | INTEGER | 1 = включен, 0 = выключен |
+Схема меняется **только** миграцией Alembic. `ALTER TABLE` в коде приложения
+запрещён и проверяется тестом: прежний монолит мигрировал схему шестью
+блоками `try: ALTER TABLE except: pass`, где ошибка проглатывалась молча.
 
 ---
 
-## 🔄 5. Пайплайн обработки и доставки сообщений
+## 5. Пайплайн
 
-При автоматическом срабатывании таймера или ручном нажатии кнопки **«⚡ Запустить»** выполняется следующая цепочка:
+Тик воркера — каждые 30 секунд:
 
 ```mermaid
 flowchart TD
-    A[Старт опроса: Scheduler / Ручной Run] --> B[Telethon: Получение сообщений по MTProto]
-    B --> C[Обогащение метриками: views, forwards, reactions, media, url]
-    C --> D[Дедупликация в SQLite: SELECT WHERE message_id IN sent_messages]
-    D -->|Все сообщения старые| E[Запись в лог: SKIPPED_DEDUP]
-    D -->|Есть новые сообщения| F[Сохранение в sent_messages с полными метриками]
-    F --> G{OpenRouter AI включен?}
-    G -->|Да| H[Генерация ai_analysis через DeepSeek V4 Flash / активную модель]
-    G -->|Нет| I[Пропуск AI шага]
-    H --> J[Сохранение задачи в analysis_feed с аватаром и метаданными]
-    I --> J
-    J --> K{Telegram Forward включен?}
-    K -->|Да| L[Бот отправляет AI-дайджест / посты в чат]
-    K -->|Нет| M[Пропуск Telegram-бота]
-    J --> N{n8n Webhook включен?}
-    N -->|Да| O[POST запрос с JSON пакетом в Webhook URL]
-    N -->|Нет| P[Пропуск Webhook]
-    L --> Q[Фиксация в logs: SUCCESS]
-    O --> Q
+    T[Тик] --> R[Вернуть в очередь задачи, брошенные умершим процессом]
+    R --> Q{Очередь jobs непуста?}
+    Q -->|да| J[Захват задачи одним UPDATE ... FOR UPDATE SKIP LOCKED]
+    J --> K{Вид задачи}
+    K -->|poll_monitor| P[Опрос канала]
+    K -->|reanalyze_feed_item| RA[Повторный анализ записи ленты]
+    Q -->|нет| S[Мониторы с истёкшим интервалом]
+    S --> P
+    P --> C[Суточная автоочистка по включившим её]
+    RA --> C
 ```
+
+Опрос одного канала:
+
+```mermaid
+flowchart TD
+    A[Клиент тенанта из пула] --> B[Разрешение цели и выборка постов]
+    B -->|FloodWaitError| FW[Журнал FLOOD_WAIT, цикл пропущен, без ретрая]
+    B --> D[Дедупликация: ON CONFLICT DO NOTHING RETURNING]
+    D -->|новых нет| E[Журнал SKIPPED_DEDUP]
+    D -->|есть новые| F[Аватарка канала в chat_avatars]
+    F --> G{OpenRouter включён?}
+    G -->|да| H[ai_analysis, списание токенов, лимит]
+    G -->|нет| I[Пропуск]
+    H --> K{Пересылка ботом включена?}
+    I --> K
+    K -->|да| L[Telegram Bot API, разбивка по 3900 символов]
+    K -->|нет| M[Пропуск]
+    L --> N{Автовебхук включён?}
+    M --> N
+    N -->|да| O[POST на сохранённый URL после проверки SSRF]
+    N -->|нет| P2[Пропуск]
+    O --> Z[Запись в ленту — ВСЕГДА]
+    P2 --> Z
+```
+
+Последний шаг подчёркнут намеренно: в монолите успешная отправка вебхука
+делала `return` до записи в ленту, поэтому история наполнялась только у тех,
+у кого n8n выключен или падает. Лента — журнал выполнения, а не запасной
+путь доставки.
 
 ---
 
-## 🌐 6. Спецификация REST API
+## 6. REST API
 
-### 🔑 Авторизация и профиль
-* `GET /health` — проверка статуса MTProto клиента (online/offline, авторизованный пользователь).
-* `GET /api/settings` — получение текущих API ID и API Hash.
-* `POST /api/settings` — сохранение API ID и API Hash в `.env`.
-* `POST /api/auth/send-code` — отправка SMS/кода подтверждения Telegram на номер телефона.
-* `POST /api/auth/sign-in` — ввод кода из Telegram (и пароля 2FA при наличии).
-* `POST /api/auth/logout` — завершение пользовательской сессии.
+Всё, кроме явно публичного, требует сессии: зависимость `require_user`
+висит на роутере целиком, а публичные маршруты перечисляются отдельным
+списком. Забыть закрыть эндпоинт нельзя — можно забыть открыть, и это
+видно сразу (`tests/test_22_auth_required.py` перебирает все маршруты).
+Обращение к чужому ресурсу — **404, не 403**: 403 подтверждает, что объект
+существует.
 
-### 📡 Управление мониторами (Каналами)
-* `GET /api/monitors` — список всех добавленных каналов с таймерами и параметрами.
-* `POST /api/monitors` — добавление нового канала по `@username`, ссылке или ID.
-* `PATCH /api/monitors/{id}` — обновление интервала, лимита, промпта или активности.
-* `DELETE /api/monitors/{id}` — удаление канала из мониторинга.
-* `POST /api/monitors/{id}/run` — немедленный опрос канала с доставкой новых постов.
-* `POST /api/monitors/{id}/reset-dedup` — сброс истории отправленных сообщений для этого канала.
-* `GET /dialogs` — получение списка всех доступных чатов пользовательского аккаунта.
+### Публичное
 
-### 📰 Интерактивная Лента (Live Feed)
-* `GET /api/feed?limit=50` — получение списка выполненных задач анализа с пагинацией.
-* `DELETE /api/feed/{id}` — удаление карточки задачи из ленты.
-* `POST /api/feed/{id}/reanalyze` — повторный запуск LLM анализа для сохраненной выборки задачи с индивидуальным промптом канала.
+* `GET /health` — `{"status": "ok"}` и ничего больше.
+* `GET /`, `/feed`, `/channels`, `/messages`, `/integration`, `/logs` — страницы SPA.
+* `GET /login`, `/signup`, `/password-reset` — страницы входа.
 
-### 💬 Сообщения
-* `GET /api/messages?limit=100` — получение сохраненных сообщений со всеми метриками и реакциями.
-* `POST /api/send-feed-to-n8n` — пакетная отправка отфильтрованных сообщений из таблицы в n8n.
+### Аутентификация
 
-### 🤖 Настройки интеграций
-* `GET /api/webhook` / `POST /api/webhook` — получение и сохранение URL n8n Webhook и тоггла авто-отправки.
-* `POST /api/webhook/test` — отправка тестового JSON-пакета в n8n.
-* `GET /api/openrouter` / `POST /api/openrouter` — управление API ключом, моделью и тогглом OpenRouter.
-* `GET /api/openrouter/models` — динамическая загрузка списка моделей с сервера OpenRouter.
-* `POST /api/openrouter/test` — проверка работы AI на тестовом тексте.
-* `GET /api/telegram-forward` / `POST /api/telegram-forward` — настройки бота для пересылки дайджестов в Telegram.
-* `POST /api/telegram-forward/test` — отправка тестового сообщения через Telegram-бота.
+* `POST /auth/signup` — регистрация, сразу сессия.
+* `POST /auth/login` — вход (10 попыток / 3 мин на IP).
+* `POST /auth/logout` — удаление строки сессии.
+* `GET /auth/me` — текущий пользователь или 401.
+* `POST /auth/password-reset` — запрос письма; ответ **одинаков** для
+  существующего и несуществующего email (иначе это перечислитель пользователей).
+* `POST /auth/password-reset/confirm` — смена пароля по одноразовому токену.
+* `POST /auth/google` — вход по Firebase ID-токену; выдаётся своя cookie-сессия.
 
-### 🧹 Логи и автоочистка базы
-* `GET /api/logs?limit=150&status=ALL` — получение системного журнала событий.
-* `DELETE /api/logs` — полная очистка журнала логов.
-* `GET /api/cleanup` — статус фоновой автоочистки базы.
-* `POST /api/cleanup` — сохранение параметров автоочистки (`enabled`, `days`).
-* `POST /api/cleanup/run-now` — принудительный запуск очистки базы прямо сейчас.
+### Telegram
 
----
+* `POST /api/telegram/send-code` — код на телефон (**3 / час на пользователя**:
+  это защита аккаунта клиента, Telegram ограничивает тех, кому часто шлют коды).
+* `POST /api/telegram/sign-in` — код и пароль 2FA.
+* `POST /api/telegram/logout` — отключение аккаунта.
+* `GET /api/telegram/dialogs` — список собственных чатов.
 
-## 📦 7. Пошаговая инструкция по развертыванию с нуля
+### Мониторы
 
-### Шаг 1. Клонирование репозитория и окружение
-```bash
-git clone https://github.com/Asmadey/telegram-monitor-n8n-bridge.git
-cd telegram-monitor-n8n-bridge
+* `GET /api/monitors`, `POST /api/monitors`
+* `PATCH /api/monitors/{public_id}`, `DELETE /api/monitors/{public_id}`
+* `POST /api/monitors/{public_id}/run` — **202**: задача ставится в очередь,
+  опрос делает воркер (монолит держал HTTP-запрос всё время опроса).
+* `POST /api/monitors/{public_id}/reset-dedup` — сброс истории канала.
 
-# Создание и активация виртуального окружения Python
-python3 -m venv .venv
-source .venv/bin/activate  # На Windows: .venv\Scripts\activate
+### Лента и сообщения
 
-# Установка зависимостей
-pip install -r requirements.txt
-```
+* `GET /api/feed`, `GET /api/feed/{id}`, `DELETE /api/feed/{id}`, `DELETE /api/feed`
+* `POST /api/feed/{id}/reanalyze` — **202**, повторный анализ задачей.
+* `GET /api/avatars/{chat_id}` — картинка с `Cache-Control`.
+* `GET /api/messages` — сохранённые посты с метриками.
 
-### Шаг 2. Получение Telegram API ID и API HASH
-1. Перейдите на официальный портал разработчиков Telegram: [https://my.telegram.org](https://my.telegram.org).
-2. Войдите под своим номером телефона.
-3. Откройте раздел **«API development tools»**.
-4. Создайте приложение (название любое, например `TelegramMonitor`).
-5. Скопируйте `api_id` и `api_hash`.
+### Интеграции и проверки
 
-### Шаг 3. Запуск сервера
-```bash
-python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
-```
-Откройте браузер по адресу: **`http://127.0.0.1:8000`**.
+* `GET|POST /api/webhook`, `POST /api/webhook/test`
+* `GET|POST /api/openrouter`, `GET /api/openrouter/models`, `POST /api/openrouter/test`
+* `GET|POST /api/telegram-forward`, `POST /api/telegram-forward/test`
 
-### Шаг 4. Первичная настройка через веб-интерфейс
-1. **Авторизация:** Введите номер телефона, получите код в Telegram и завершите вход (при необходимости введите пароль 2FA).
-2. **Добавление каналов:** Перейдите во вкладку «Каналы», нажмите «➕ Добавить канал» и укажите `@username` или выберите из списка диалогов.
-3. **Настройка n8n Webhook:** Вставьте URL вашего Webhook-узла в n8n во вкладке «Интеграция».
-4. **Настройка OpenRouter (опционально):** Вставьте API-ключ OpenRouter, модель по умолчанию — `deepseek/deepseek-v4-flash`.
-5. **Настройка Telegram-бота (опционально):** Вставьте токен бота из [@BotFather](https://t.me/BotFather) и ID вашего чата/канала в блоке «Отправка в Telegram».
+GET-ответы отдают **только** маску и признак `has_*` — сырых ключей в
+ответах нет (`tests/test_01_no_secret_leak.py` проверяет это разбором AST).
+Отсутствующее поле в POST не затирает сохранённый секрет, явная пустая
+строка — очищает.
+
+### Журнал и автоочистка
+
+* `GET /api/logs`, `DELETE /api/logs` — очистка **только своего** журнала.
+* `GET|POST /api/cleanup`, `POST /api/cleanup/run-now` — 7/14/30/60/90 дней.
+
+### Админка
+
+* `GET /api/admin/users`, `GET /api/admin/users/{user_id}` — обычному
+  пользователю 403, анониму 401.
+
+### Не перенесено из монолита намеренно
+
+* `GET|POST /api/settings` — ключи MTProto теперь только из окружения:
+  прежний POST переписывал `.env` целиком, а на Railway ФС эфемерна.
+* `POST /api/webhook/send-payload` — открытый прокси во внутреннюю сеть.
+  Отсутствие эндпоинта держит трипваер-тест.
 
 ---
 
-## 🐳 8. Развертывание в Docker
+## 7. Формат вебхука
 
-### `Dockerfile`:
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends gcc && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
-EXPOSE 8000
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-### Сборка и запуск контейнера:
-```bash
-docker build -t teleton-monitor .
-docker run -d -p 8000:8000 -v $(pwd)/storage.db:/app/storage.db -v $(pwd)/personal_account.session:/app/personal_account.session --name teleton teleton-monitor
-```
+См. [README.md](README.md#-формат-вебхука-в-n8n).
 
 ---
 
-## 🧩 9. Пример JSON-пакета для n8n Webhook
+## 8. Тесты
 
-При отправке в n8n на узел **Webhook** поступает валидный JSON следующей структуры:
+Два уровня. **Статический** разбирает исходники, конфиги и схему — работает
+где угодно и ловит целые классы дефектов навсегда (секрет в ответе,
+неэкранированная подстановка, DDL в коде). **Поведенческий** требует живого
+Postgres; при его отсутствии обязан писать `pytest.skip` — тест, зеленеющий
+без базы, хуже отсутствующего.
 
-```json
-{
-  "source": "telethon_monitor",
-  "event": "telegram_messages_batch",
-  "timestamp": "2026-08-29T21:00:00.000000+00:00",
-  "chat_id": -1001143063102,
-  "chat_title": "Finder.work: вакансии и удаленка",
-  "chat_username": "theyseeku",
-  "messages_count": 1,
-  "messages": [
-    {
-      "id": 38115,
-      "date": "2026-08-29T18:30:00+00:00",
-      "sender": "Finder.work",
-      "sender_id": -1001143063102,
-      "is_outgoing": false,
-      "text": "**Senior Fullstack Developer (Python + React)**\nот 350 000 ₽\nФормат: Удаленно...",
-      "has_media": false,
-      "views": 2450,
-      "forwards": 18,
-      "reactions_count": 12,
-      "reactions": [
-        { "emoji": "🔥", "count": 7 },
-        { "emoji": "👍", "count": 5 }
-      ],
-      "post_url": "https://t.me/theyseeku/38115"
-    }
-  ],
-  "ai_analysis": "📌 **Краткая выжимка постов:**\n- Открыта позиция Senior Fullstack разработчика с вилкой 350k ₽."
-}
-```
+Внешние границы инъектируются: Telegram, OpenRouter, n8n и Firebase в
+тестах заменяются двойниками, а autouse-страж в `conftest.py` режет любой
+исходящий HTTP — тест, случайно ушедший в сеть, падает, а не тратит деньги.
 
 ---
 
-## 🎯 10. Рекомендации по поддержке и масштабированию
-1. **Резервное копирование:** Регулярно сохраняйте файлы `storage.db` и `personal_account.session`.
-2. **Лимиты Telegram (FloodWait):** Telethon автоматически обрабатывает задержки `FloodWaitError`, однако рекомендуется выставлять интервал опроса не менее 15–30 минут на канал.
-3. **Безопасность:** В продакшн-среде закройте панель управления базовой HTTP-аутентификацией через Nginx или Reverse Proxy.
+## 9. Что уже стоило времени
 
+Список ограничений, каждое из которых закрыто тестом, — в
+[AGENTS.md](AGENTS.md), раздел 11. Читать до правок: там `.gitignore` ≠
+`.dockerignore`, окно между `SELECT` и `INSERT`, бесполезность проверки
+SSRF по имени хоста, пустая строка ≠ «не задано», 403 вместо 404 как
+утечка, `break` по временному окну на закреплённом посте и невозможность
+ротации ключа шифрования «на живую».
