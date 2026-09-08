@@ -10,6 +10,8 @@ validate_encryption_key вызывается при старте приложе�
 умолчанию (или «key») — и все сессии окажутся под ним.
 """
 
+import hashlib
+
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.config import get_settings
@@ -45,6 +47,21 @@ class EncryptionKeyMismatch(InvalidToken):
     InvalidToken его нет вовсе, и в журнале оставалась строка
     «Ошибка извлечения: InvalidToken», требующая знать устройство Fernet.
     """
+
+
+def key_fingerprint(key: str | None = None) -> str:
+    """Короткий отпечаток ключа: первые 8 знаков SHA-256.
+
+    Нужен, чтобы сравнивать ключи двух процессов, не показывая их. Выяснение
+    того, одинаков ли APP_ENCRYPTION_KEY у web и воркера, 7 сентября заняло
+    несколько кругов переписки: значение секретное, единственным симптомом
+    был InvalidToken в журнале раз в тридцать секунд. По восьми знакам хеша
+    ключ не восстановить, а увидеть расхождение — достаточно.
+    """
+    value = get_settings().app_encryption_key if key is None else key
+    if not value:
+        return ""
+    return hashlib.sha256(value.encode()).hexdigest()[:8]
 
 
 def _fernet() -> Fernet:

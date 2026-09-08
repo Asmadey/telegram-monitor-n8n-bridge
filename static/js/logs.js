@@ -18,6 +18,7 @@ let totalLogs = 0;
 const opsDb = document.getElementById('opsDb');
 const opsWorker = document.getElementById('opsWorker');
 const opsQueue = document.getElementById('opsQueue');
+const opsKey = document.getElementById('opsKey');
 
 function age(seconds) {
   if (seconds === null || seconds === undefined) return '';
@@ -50,8 +51,24 @@ export async function loadOpsStatus() {
       ? 'пусто'
       : `${s.jobs.pending} в ожидании, старшей ${age(oldest)}`;
     opsQueue.style.color = s.jobs.pending > 0 && oldest > 600 ? '#d33' : '';
+
+    // Отпечатки, а не ключи: по восьми знакам хеша ключ не восстановить,
+    // но видно, одним ли ключом работают web и воркер. Разные ключи —
+    // самый дорогой по времени отказ этой сборки (7 сентября).
+    const enc = s.encryption || {};
+    if (enc.match === true) {
+      opsKey.textContent = `совпадает (${enc.web})`;
+      opsKey.style.color = '';
+    } else if (enc.match === false) {
+      opsKey.textContent = `РАЗНЫЙ: web ${enc.web}, воркер ${enc.worker}`;
+      opsKey.style.color = '#d33';
+    } else {
+      opsKey.textContent = `web ${enc.web || '—'}, воркер не отмечался`;
+      opsKey.style.color = '';
+    }
   } catch (e) {
     opsDb.textContent = opsWorker.textContent = opsQueue.textContent = 'нет связи';
+    if (opsKey) opsKey.textContent = '—';
   }
 }
 

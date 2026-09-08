@@ -48,7 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db import TenantRepo, get_sessionmaker
 from app.models import FeedItem, Integration, Job, Monitor, TelegramAccount
-from app.security.crypto import validate_encryption_key
+from app.security.crypto import key_fingerprint, validate_encryption_key
 from app.security.log_redaction import install_log_redaction
 from app.services.cleanup import purge_older_than
 from app.services.dedup import filter_new
@@ -181,7 +181,9 @@ class Worker:
             # leader=True не допущение: цикл вызывает тик только после
             # успешной проверки лидерства (или когда её нет вовсе — один
             # процесс). Отметиться, не будучи лидером, здесь нельзя.
-            await record_heartbeat(db, WORKER_NAME, leader=True)
+            await record_heartbeat(
+                db, WORKER_NAME, leader=True, fingerprint=key_fingerprint()
+            )
             await requeue_hung_jobs(db)
             await self.run_jobs(db)
             await self.run_schedule(db)
