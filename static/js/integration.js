@@ -6,6 +6,7 @@
 // обязаны быть на window (ES-модули file-scoped).
 
 import { apiFetch, apiGet } from './api.js';
+import { withSecret, clearSecret, showSecretState } from './secrets.js';
 import { html, raw, escapeHtml, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 import { loadLogs } from './logs.js';
 
@@ -17,6 +18,8 @@ const modelDropdownTrigger = document.getElementById('modelDropdownTrigger');
 const refreshModelsBtn = document.getElementById('refreshModelsBtn');
 const openrouterApiKey = document.getElementById('openrouterApiKey');
 const toggleApiKeyVisibility = document.getElementById('toggleApiKeyVisibility');
+const clearApiKeyBtn = document.getElementById('clearApiKeyBtn');
+const openrouterKeyStatus = document.getElementById('openrouterKeyStatus');
 const openrouterEnabled = document.getElementById('openrouterEnabled');
 const saveOpenRouterBtn = document.getElementById('saveOpenRouterBtn');
 const testOpenRouterBtn = document.getElementById('testOpenRouterBtn');
@@ -26,6 +29,8 @@ const openrouterTestResultText = document.getElementById('openrouterTestResultTe
 // Telegram Bot Forward
 const tgBotToken = document.getElementById('tgBotToken');
 const toggleTgBotTokenVisibility = document.getElementById('toggleTgBotTokenVisibility');
+const clearTgBotTokenBtn = document.getElementById('clearTgBotTokenBtn');
+const tgBotTokenStatus = document.getElementById('tgBotTokenStatus');
 const tgSenderId = document.getElementById('tgSenderId');
 const tgForwardEnabled = document.getElementById('tgForwardEnabled');
 const saveTgForwardBtn = document.getElementById('saveTgForwardBtn');
@@ -301,12 +306,9 @@ export async function loadOpenRouterConfig() {
     const currentModel = data.model || 'deepseek/deepseek-v4-flash';
     openrouterModel.value = currentModel;
     openrouterEnabled.checked = Boolean(data.is_enabled);
-    // Сырой ключ больше не приходит с сервера: поле остаётся пустым,
-    // сохранение не затирает ключ (маска "******" игнорируется на бэкенде).
-    openrouterApiKey.value = '';
-    if (data.has_key) {
-      openrouterApiKey.placeholder = `Ключ: ${data.api_key_masked}`;
-    }
+    // Сырой ключ с сервера не приходит никогда (К3): поле пустое, а что
+    // именно лежит в базе, говорит строка состояния — обе ветки внутри.
+    showSecretState(openrouterApiKey, openrouterKeyStatus, data.has_key, data.api_key_masked, 'Ключ');
     await loadOpenRouterModels();
   } catch (e) {
     console.error('Error loading OpenRouter config:', e);
@@ -317,12 +319,11 @@ openrouterEnabled.addEventListener('change', async () => {
   try {
     const res = await apiFetch('/api/openrouter', {
       method: 'POST',
-      body: {
+      body: withSecret({
         base_url: openrouterBaseUrl.value.trim() || 'https://openrouter.ai/api/v1',
         model: openrouterModel.value.trim() || 'deepseek/deepseek-v4-flash',
-        api_key: openrouterApiKey.value.trim(),
         is_enabled: openrouterEnabled.checked
-      }
+      }, 'api_key', openrouterApiKey)
     });
     if (res.ok) {
       showToast(`AI Обработка: ${openrouterEnabled.checked ? 'Включена' : 'Отключена'}`);
@@ -338,12 +339,11 @@ saveOpenRouterBtn.addEventListener('click', async () => {
   try {
     const res = await apiFetch('/api/openrouter', {
       method: 'POST',
-      body: {
+      body: withSecret({
         base_url: openrouterBaseUrl.value.trim() || 'https://openrouter.ai/api/v1',
         model: openrouterModel.value.trim() || 'deepseek/deepseek-v4-flash',
-        api_key: openrouterApiKey.value.trim(),
         is_enabled: openrouterEnabled.checked
-      }
+      }, 'api_key', openrouterApiKey)
     });
     saveOpenRouterBtn.disabled = false;
     saveOpenRouterBtn.textContent = 'Сохранить настройки OpenRouter';
@@ -361,6 +361,25 @@ saveOpenRouterBtn.addEventListener('click', async () => {
     showToast('Ошибка: ' + e.message, true);
   }
 });
+
+// Очистка — отдельное действие, а не побочный эффект сохранения с пустым
+// полем. Пустая строка уходит на сервер только отсюда.
+if (clearApiKeyBtn) {
+  clearApiKeyBtn.addEventListener('click', async () => {
+    if (!confirm('Удалить сохранённый ключ OpenRouter? Анализ постов перестанет работать.')) return;
+    try {
+      const res = await clearSecret('/api/openrouter', 'api_key');
+      if (res.ok) {
+        showToast('Ключ OpenRouter удалён');
+        loadOpenRouterConfig();
+      } else {
+        showToast('Не удалось удалить ключ', true);
+      }
+    } catch (e) {
+      showToast('Ошибка: ' + e.message, true);
+    }
+  });
+}
 
 testOpenRouterBtn.addEventListener('click', async () => {
   testOpenRouterBtn.disabled = true;
@@ -405,12 +424,7 @@ export async function loadTgForwardConfig() {
     const data = await res.json();
     tgSenderId.value = data.sender_id || '';
     tgForwardEnabled.checked = Boolean(data.is_enabled);
-    // Сырой токен больше не приходит с сервера: поле остаётся пустым,
-    // сохранение не затирает токен (маска "******" игнорируется на бэкенде).
-    tgBotToken.value = '';
-    if (data.has_token) {
-      tgBotToken.placeholder = `Токен: ${data.bot_token_masked}`;
-    }
+    showSecretState(tgBotToken, tgBotTokenStatus, data.has_token, data.bot_token_masked, 'Токен');
   } catch (e) {
     console.error('Error loading Telegram forward config:', e);
   }
@@ -420,11 +434,10 @@ tgForwardEnabled.addEventListener('change', async () => {
   try {
     const res = await apiFetch('/api/telegram-forward', {
       method: 'POST',
-      body: {
-        bot_token: tgBotToken.value.trim(),
+      body: withSecret({
         sender_id: tgSenderId.value.trim(),
         is_enabled: tgForwardEnabled.checked
-      }
+      }, 'bot_token', tgBotToken)
     });
     if (res.ok) {
       showToast(`Отправка в Telegram: ${tgForwardEnabled.checked ? 'Включена' : 'Отключена'}`);
@@ -440,11 +453,10 @@ saveTgForwardBtn.addEventListener('click', async () => {
   try {
     const res = await apiFetch('/api/telegram-forward', {
       method: 'POST',
-      body: {
-        bot_token: tgBotToken.value.trim(),
+      body: withSecret({
         sender_id: tgSenderId.value.trim(),
         is_enabled: tgForwardEnabled.checked
-      }
+      }, 'bot_token', tgBotToken)
     });
     saveTgForwardBtn.disabled = false;
     saveTgForwardBtn.textContent = 'Сохранить настройки бота';
@@ -462,6 +474,23 @@ saveTgForwardBtn.addEventListener('click', async () => {
     showToast('Ошибка: ' + e.message, true);
   }
 });
+
+if (clearTgBotTokenBtn) {
+  clearTgBotTokenBtn.addEventListener('click', async () => {
+    if (!confirm('Удалить сохранённый токен бота? Отправка в Telegram перестанет работать.')) return;
+    try {
+      const res = await clearSecret('/api/telegram-forward', 'bot_token');
+      if (res.ok) {
+        showToast('Токен бота удалён');
+        loadTgForwardConfig();
+      } else {
+        showToast('Не удалось удалить токен', true);
+      }
+    } catch (e) {
+      showToast('Ошибка: ' + e.message, true);
+    }
+  });
+}
 
 testTgForwardBtn.addEventListener('click', async () => {
   testTgForwardBtn.disabled = true;

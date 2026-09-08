@@ -6,6 +6,7 @@
 // и компания обязаны быть на window (ES-модули file-scoped).
 
 import { apiFetch, apiGet } from './api.js';
+import { withSecret, clearSecret, showSecretState } from './secrets.js';
 import { html, raw, formatIntervalHuman, formatNextRun, showToast, closeModalAnimated } from './render.js';
 import { setFilterChatOptions, mergeMessages } from './messages.js';
 
@@ -35,6 +36,8 @@ const webhookUrlInput = document.getElementById('webhookUrl');
 const autoWebhookInput = document.getElementById('autoWebhook');
 const saveWebhookBtn = document.getElementById('saveWebhookBtn');
 const testWebhookBtn = document.getElementById('testWebhookBtn');
+const clearWebhookBtn = document.getElementById('clearWebhookBtn');
+const webhookUrlStatus = document.getElementById('webhookUrlStatus');
 
 // Dialogs Modal
 const dialogsModal = document.getElementById('dialogsModal');
@@ -68,15 +71,14 @@ export async function loadConfig() {
       const res = await apiGet(`/api/monitors?limit=${pageSize}&offset=${offset}`);
       if (!res.ok) throw new Error('Не удалось загрузить каналы');
       const page = await res.json();
-      if (offset === 0) {
-        data.webhook_url = page.webhook_url;
-        data.auto_webhook_enabled = page.auto_webhook_enabled;
-      }
       data.monitors.push(...(page.monitors || []));
       if ((page.monitors || []).length < pageSize) break;
     }
-    webhookUrlInput.value = data.webhook_url || '';
-    autoWebhookInput.checked = data.auto_webhook_enabled ?? true;
+    // Состояние вебхука спрашиваем у /api/webhook: /api/monitors адрес не
+    // отдаёт вовсе, поэтому `page.webhook_url` был undefined — поле всегда
+    // оставалось пустым, а сохранение уходило пустой строкой и стирало
+    // сохранённый адрес.
+    await loadWebhookConfig();
     currentMonitors = data.monitors || [];
     renderMonitors();
   } catch (e) {
@@ -422,35 +424,60 @@ addMonitorForm.addEventListener('submit', async (e) => {
   }
 });
 
-autoWebhookInput.addEventListener('change', async () => {
-  const url = webhookUrlInput.value.trim();
+// Адрес вебхука — такой же секрет, как ключ: наружу уходит только маска
+// (n8n-адрес это капабилити — кто его знает, тот может слать данные).
+export async function loadWebhookConfig() {
+  try {
+    const res = await apiGet('/api/webhook');
+    if (!res.ok) return;
+    const data = await res.json();
+    autoWebhookInput.checked = Boolean(data.auto_webhook_enabled);
+    showSecretState(webhookUrlInput, webhookUrlStatus, data.has_webhook, data.webhook_url_masked, 'Адрес');
+  } catch (e) {
+    console.error('Error loading webhook config:', e);
+  }
+}
+
+async function saveWebhook(quiet) {
   const auto = autoWebhookInput.checked;
   try {
     const res = await apiFetch('/api/webhook', {
       method: 'POST',
-      body: { webhook_url: url, auto_webhook_enabled: auto }
+      body: withSecret({ auto_webhook_enabled: auto }, 'webhook_url', webhookUrlInput)
     });
     if (res.ok) {
-      showToast(`Отправка в n8n Webhook: ${auto ? 'Включена' : 'Отключена'}`);
+      showToast(quiet
+        ? `Отправка в n8n Webhook: ${auto ? 'Включена' : 'Отключена'}`
+        : 'Настройки Webhook сохранены');
+      loadWebhookConfig();
+    } else {
+      const err = await res.json();
+      showToast(err.detail || 'Ошибка сохранения', true);
     }
   } catch (e) {
     showToast('Ошибка сохранения', true);
   }
-});
+}
 
-saveWebhookBtn.addEventListener('click', async () => {
-  const url = webhookUrlInput.value.trim();
-  const auto = autoWebhookInput.checked;
-  try {
-    const res = await apiFetch('/api/webhook', {
-      method: 'POST',
-      body: { webhook_url: url, auto_webhook_enabled: auto }
-    });
-    if (res.ok) showToast('Настройки Webhook сохранены');
-  } catch (e) {
-    showToast('Ошибка сохранения', true);
-  }
-});
+autoWebhookInput.addEventListener('change', () => saveWebhook(true));
+saveWebhookBtn.addEventListener('click', () => saveWebhook(false));
+
+if (clearWebhookBtn) {
+  clearWebhookBtn.addEventListener('click', async () => {
+    if (!confirm('Удалить сохранённый адрес вебхука? Отправка в n8n перестанет работать.')) return;
+    try {
+      const res = await clearSecret('/api/webhook', 'webhook_url');
+      if (res.ok) {
+        showToast('Адрес вебхука удалён');
+        loadWebhookConfig();
+      } else {
+        showToast('Не удалось удалить адрес', true);
+      }
+    } catch (e) {
+      showToast('Ошибка: ' + e.message, true);
+    }
+  });
+}
 
 testWebhookBtn.addEventListener('click', async () => {
   showToast('Отправка тестового запроса в n8n...');
