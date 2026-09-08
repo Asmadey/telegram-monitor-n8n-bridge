@@ -13,6 +13,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Job, WorkerHeartbeat
+from app.security.crypto import key_fingerprint
 
 # Тик воркера — 30 секунд. Порог с запасом на медленный тик и на паузу
 # между сменой лидера: одиночный пропуск не должен выглядеть отказом.
@@ -27,17 +28,28 @@ def _aware(value: datetime.datetime) -> datetime.datetime:
     return value
 
 
-async def record_heartbeat(db: AsyncSession, name: str, *, leader: bool) -> None:
-    """Отметиться. Вызывается в тике, а не при старте."""
+async def record_heartbeat(
+    db: AsyncSession, name: str, *, leader: bool, fingerprint: str = ""
+) -> None:
+    """Отметиться. Вызывается в тике, а не при старте.
+
+    Вместе с отметкой сохраняется отпечаток ключа шифрования: по нему
+    видно, одним ли ключом работают процессы (10.4).
+    """
     row = (
         await db.scalars(select(WorkerHeartbeat).where(WorkerHeartbeat.name == name))
     ).first()
     now = datetime.datetime.now(datetime.timezone.utc)
     if row is None:
-        db.add(WorkerHeartbeat(name=name, beat_at=now, leader=leader))
+        db.add(
+            WorkerHeartbeat(
+                name=name, beat_at=now, leader=leader, key_fingerprint=fingerprint
+            )
+        )
     else:
         row.beat_at = now
         row.leader = leader
+        row.key_fingerprint = fingerprint
     await db.flush()
 
 
@@ -90,4 +102,20 @@ async def ops_status(db: AsyncSession) -> dict:
         ),
     }
 
-    return {"database": database, "worker": worker, "jobs": jobs}
+    # Отпечатки, а не ключи: сравнить можно, восстановить — нет.
+    mine = key_fingerprint()
+    theirs = beat.key_fingerprint if beat is not None else None
+    encryption = {
+        "web": mine,
+        "worker": theirs or None,
+        # None, а не False: сравнивать нечего, пока воркер не отметился —
+        # «не совпадает» было бы утверждением, которого никто не проверял.
+        "match": (mine == theirs) if theirs else None,
+    }
+
+    return {
+        "database": database,
+        "worker": worker,
+        "jobs": jobs,
+        "encryption": encryption,
+    }

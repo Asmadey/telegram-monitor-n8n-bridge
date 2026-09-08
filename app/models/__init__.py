@@ -406,6 +406,9 @@ class WorkerHeartbeat(Base):
         DateTime(timezone=True), nullable=False, default=_now
     )
     leader: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Отпечаток ключа шифрования (не сам ключ): по нему видно, одним ли
+    # ключом работают web и воркер — иначе это выясняется перепиской.
+    key_fingerprint: Mapped[str | None] = mapped_column(String(16))
 
 
 class LegacyImportRow(Base):
