@@ -11,6 +11,7 @@ from app.models import Base
 # Таблицы с данными конкретного пользователя (PLAN.md, задача 1.3).
 TENANT_TABLES = [
     "monitors",
+    "monitor_channels",
     "sent_messages",
     "feed_items",
     "logs",

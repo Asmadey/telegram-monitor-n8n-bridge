@@ -168,7 +168,10 @@ class Monitor(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
-    chat_target: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Устаревшие поля канала: живут до ревизии 0013, пока воркер и
+    # интерфейс не переедут на monitor_channels. `chat_target` перестал
+    # быть обязательным — у источника канала нет, каналы у него в детях.
+    chat_target: Mapped[str | None] = mapped_column(String(255))
     chat_title: Mapped[str | None] = mapped_column(String(512))
     chat_username: Mapped[str | None] = mapped_column(String(255))
     chat_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -185,11 +188,81 @@ class Monitor(Base):
         DateTime(timezone=True), nullable=False, default=_now
     )
 
+    # --- Фаза 11: монитор становится ИСТОЧНИКОМ ---------------------------
+    # Каналы уезжают в monitor_channels, здесь остаётся задача поиска.
+    # Колонки выше (chat_target, prompt, limit_count, last_checked…) живут
+    # до ревизии 0013: выкладка идёт в два шага, потому что миграции
+    # поднимаются ДО старта нового кода — ревизия, которая создаёт и
+    # удаляет разом, даёт минуту 500-х у ещё живого старого процесса.
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    # промпт ОФОРМЛЕНИЯ (сведение по каналам). Пусто — значит при одном
+    # канале сводить нечего и второй запрос к модели не нужен.
+    answer_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # по строке на слово; отсев ДО обращения к модели, чтобы не жечь токены
+    stop_words: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # собственные часы источника: `last_checked` уехал в канал, и без этого
+    # поля расписание либо не сработает никогда, либо будет срабатывать
+    # каждый тик (дефект, найденный аудитом плана, а не прогоном)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # прогон идёт: второй не начинается ни по расписанию, ни по кнопке
+    running: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     # public_id уникален В ПРЕДЕЛАХ пользователя, а не глобально: старые id
     # из SQLite — это имена каналов (`theyseeku`), и при глобальной
     # уникальности канал второго пользователя молча не переносился
     # (ON CONFLICT DO NOTHING). Тихая потеря данных хуже падения.
     __table_args__ = (UniqueConstraint("user_id", "public_id"),)
+
+
+class MonitorChannel(Base):
+    """Канал внутри источника: «где искать» + «что извлекать» именно отсюда.
+
+    Промпт извлечения — свой у каждого канала (решение владельца): пять
+    каналов с вакансиями и канал с тендерами описываются по-разному, и
+    общий промпт для них был бы компромиссом в обе стороны.
+
+    Лимит сообщений тоже свой: шумный канал публикует полсотни постов в
+    день, тихий — пять, и разбирать их одинаково значит жечь токены.
+    """
+
+    __tablename__ = "monitor_channels"
+
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
+    monitor_id: Mapped[int] = mapped_column(
+        BigInteger,
+        # канал без источника не значит ничего и уезжает вместе с ним
+        ForeignKey("monitors.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
+    chat_target: Mapped[str] = mapped_column(String(255), nullable=False)
+    chat_title: Mapped[str | None] = mapped_column(String(512))
+    chat_username: Mapped[str | None] = mapped_column(String(255))
+    chat_id: Mapped[int | None] = mapped_column(BigInteger)
+    limit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    offset_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=24)
+    extract_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # порядок каналов задаёт порядок в сводке, а значит и в сообщении
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    last_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sent_message_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0
+    )
+    # сколько прогонов подряд канал не разбирается: мёртвый канал не должен
+    # вечно тратить время прогона
+    fail_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Дважды один канал в одном источнике — двойной опрос и двойной счёт.
+    # Ключей два: chat_id известен не всегда (канал мог ни разу не
+    # разрешиться), а chat_target известен с момента добавления.
+    __table_args__ = (
+        UniqueConstraint("monitor_id", "chat_target"),
+        UniqueConstraint("monitor_id", "chat_id"),
+    )
 
 
 class SentMessage(Base):
@@ -199,6 +272,14 @@ class SentMessage(Base):
     id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
+    # Дедупликация становится тенантной ПО ИСТОЧНИКУ (Фаза 11): один канал
+    # может входить в несколько источников, и каждый разбирает его посты по
+    # своим критериям. При удалении источника ссылка обнуляется, а строка
+    # остаётся: каскад означал бы, что пересозданный источник зальёт в n8n
+    # все старые посты заново — тот самый риск на 192 дубля.
+    monitor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("monitors.id", ondelete="SET NULL"), index=True
     )
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -228,6 +309,10 @@ class FeedItem(Base):
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
     job_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    # лента — история и переживает источник, поэтому SET NULL, а не каскад
+    monitor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("monitors.id", ondelete="SET NULL"), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )
@@ -327,6 +412,9 @@ class Job(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retry_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # потолок повторов: без него один навсегда сломанный канал держал бы
+    # источник вечно — это и есть «воркер ждёт бесконечно»
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error: Mapped[str | None] = mapped_column(Text)
 
 
