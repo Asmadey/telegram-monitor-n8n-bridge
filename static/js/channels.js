@@ -6,7 +6,7 @@
 // и компания обязаны быть на window (ES-модули file-scoped).
 
 import { apiFetch, apiGet } from './api.js';
-import { withSecret, clearSecret, showSecretState } from './secrets.js';
+import { withSecret, clearSecret, fillSecretField } from './secrets.js';
 import { html, raw, formatIntervalHuman, formatNextRun, showToast, closeModalAnimated } from './render.js';
 import { setFilterChatOptions, mergeMessages } from './messages.js';
 
@@ -432,7 +432,12 @@ export async function loadWebhookConfig() {
     if (!res.ok) return;
     const data = await res.json();
     autoWebhookInput.checked = Boolean(data.auto_webhook_enabled);
-    showSecretState(webhookUrlInput, webhookUrlStatus, data.has_webhook, data.webhook_url_masked, 'Адрес');
+    // Адрес вебхука приходит целиком: это конфигурация, а не
+    // удостоверение, и починить его, не видя, нельзя (9.14).
+    fillSecretField(webhookUrlInput, webhookUrlStatus, {
+      present: data.has_webhook, masked: data.webhook_url_masked,
+      value: data.webhook_url || '', noun: 'Адрес'
+    });
   } catch (e) {
     console.error('Error loading webhook config:', e);
   }
