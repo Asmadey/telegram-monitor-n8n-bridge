@@ -102,6 +102,12 @@ async def get_webhook(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
     url = secrets.get("webhook_url", "")
     return {
         "has_webhook": bool(url),
+        # Адрес вебхука — конфигурация, а не удостоверение: его задаёт сам
+        # пользователь и сам же отзывает в n8n. Пряча его, мы не защищали
+        # ничего, зато поле нельзя было ни проверить, ни починить (9.14).
+        # Наружу он уходит только владельцу строки — как и всё остальное
+        # здесь, ответ скоуплен TenantRepo.
+        "webhook_url": url,
         "webhook_url_masked": mask(url),
         "auto_webhook_enabled": bool(row.auto_webhook_enabled) if row else False,
     }
@@ -211,6 +217,38 @@ async def save_telegram_forward(
         "SUCCESS",
     )
     return await get_telegram_forward(repo)
+
+
+# --------------------------------------------------------------------------
+# Показ секрета владельцу (9.14)
+# --------------------------------------------------------------------------
+#
+# Обычный ответ настроек секрета не несёт: он приходит при каждом открытии
+# вкладки, и попадать в него удостоверению незачем. Показ — отдельный
+# вызов, и он оставляет след: секрет, показанный молча, ничем не отличается
+# от секрета, вынутого через угнанную сессию.
+#
+# Метод POST, а не GET, намеренно: у вызова есть последствие (запись в
+# журнал), он проходит проверку CSRF и не попадает ни в историю браузера,
+# ни в кэши, ни в лог доступа как «просто ссылка».
+
+
+async def _reveal(repo: TenantRepo, key: str, what: str) -> dict:
+    _, secrets = await _secrets(repo)
+    secret = secrets.get(key, "")
+    if secret:
+        await add_log(repo.db, repo.user_id, "SETTINGS", f"Показан {what}", "SUCCESS")
+    return {"secret": secret}
+
+
+@router.post("/api/openrouter/reveal")
+async def reveal_openrouter_key(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
+    return await _reveal(repo, "openrouter_api_key", "ключ OpenRouter")
+
+
+@router.post("/api/telegram-forward/reveal")
+async def reveal_bot_token(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
+    return await _reveal(repo, "telegram_bot_token", "токен Telegram-бота")
 
 
 async def get_model_lister():

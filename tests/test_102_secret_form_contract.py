@@ -90,12 +90,18 @@ def test_secret_inputs_are_only_read_through_the_helper():
     )
 
 
-def test_helper_module_exists_and_omits_empty_secrets():
+def test_helper_module_exists_and_sends_only_what_the_user_typed():
     """Поведение самой `withSecret` — на настоящем движке JS.
 
     Статическая проверка выше говорит лишь, что все ходят через помощник;
     что именно он делает — вопрос отдельный, и отвечать на него
     рассуждением о коде нельзя.
+
+    Сценариев четыре, и три из них — «не отправлять». Самый коварный —
+    поле с МАСКОЙ (задача 9.14: поля теперь заполнены, чтобы владелец
+    видел, что ключ на месте). Маска в поле выглядит как значение; уйди
+    она на сервер — ключ был бы заменён строкой вида `sk-or6...cdef`,
+    и подмена обнаружилась бы только отказом OpenRouter.
     """
     node = shutil.which("node")
     if node is None:
@@ -104,12 +110,13 @@ def test_helper_module_exists_and_omits_empty_secrets():
 
     probe = f"""
     import {{ withSecret }} from '{SECRETS_JS.as_posix()}';
-    const empty = withSecret({{ model: 'x' }}, 'api_key', {{ value: '   ' }});
-    const typed = withSecret({{ model: 'x' }}, 'api_key', {{ value: ' sk-or-v1-abc ' }});
+    const field = (value, data) => ({{ value, dataset: data }});
+    const send = (input) => withSecret({{ model: 'x' }}, 'api_key', input);
     console.log(JSON.stringify({{
-      emptyHasField: Object.prototype.hasOwnProperty.call(empty, 'api_key'),
-      emptySerialised: JSON.stringify(empty),
-      typed: typed.api_key,
+      masked:    send(field('sk-or6...cdef', {{ masked: '1' }})),
+      untouched: send(field('sk-or-v1-abc', {{}})),
+      emptied:   send(field('   ', {{ touched: '1' }})),
+      typed:     send(field(' sk-or-v1-abc ', {{ touched: '1' }})),
     }}));
     """
     result = subprocess.run(
@@ -121,14 +128,17 @@ def test_helper_module_exists_and_omits_empty_secrets():
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
 
-    assert out["emptyHasField"] is False, (
-        "пустое поле всё-таки попало в тело — сервер прочтёт это как «сотри»"
+    assert "api_key" not in out["masked"], (
+        "маска ушла на сервер — она заменила бы собой настоящий ключ"
     )
-    assert "api_key" not in out["emptySerialised"], (
-        "поле исчезает только на уровне JSON.stringify — слишком тонко, "
-        "тело запроса не должно содержать ключ вовсе"
+    assert "api_key" not in out["untouched"], (
+        "нетронутое поле ушло в тело — сервер получит команду о значении, "
+        "которого пользователь не вводил"
     )
-    assert out["typed"] == "sk-or-v1-abc", "введённое значение потерялось"
+    assert "api_key" not in out["emptied"], (
+        'пустое поле ушло как "" — сервер прочтёт это как «сотри»'
+    )
+    assert out["typed"]["api_key"] == "sk-or-v1-abc", "введённое значение потерялось"
 
 
 def test_interface_never_claims_a_secret_that_is_not_stored():
@@ -146,7 +156,7 @@ def test_interface_never_claims_a_secret_that_is_not_stored():
                     offenders.append(f"{path.name}:{number}: {line.strip()[:90]}")
     assert not offenders, (
         "плейсхолдер секретного поля выставляется вручную — состояние "
-        "рисуется одной функцией showSecretState, у которой есть обе "
+        "рисуется одной функцией fillSecretField, у которой есть обе "
         "ветки:\n" + "\n".join(offenders)
     )
 

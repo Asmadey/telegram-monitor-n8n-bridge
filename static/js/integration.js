@@ -6,7 +6,7 @@
 // обязаны быть на window (ES-модули file-scoped).
 
 import { apiFetch, apiGet } from './api.js';
-import { withSecret, clearSecret, showSecretState } from './secrets.js';
+import { withSecret, clearSecret, fillSecretField, toggleSecretVisibility } from './secrets.js';
 import { html, raw, escapeHtml, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 import { loadLogs } from './logs.js';
 
@@ -80,8 +80,7 @@ let allOpenRouterModels = [
 let highlightedModelIndex = -1;
 
 toggleApiKeyVisibility.addEventListener('click', () => {
-  openrouterApiKey.type = openrouterApiKey.type === 'password' ? 'text' : 'password';
-  toggleApiKeyVisibility.textContent = openrouterApiKey.type === 'password' ? '👁️' : '🙈';
+  toggleSecretVisibility(openrouterApiKey, toggleApiKeyVisibility, '/api/openrouter/reveal');
 });
 
 function selectModelItem(modelId) {
@@ -308,7 +307,9 @@ export async function loadOpenRouterConfig() {
     openrouterEnabled.checked = Boolean(data.is_enabled);
     // Сырой ключ с сервера не приходит никогда (К3): поле пустое, а что
     // именно лежит в базе, говорит строка состояния — обе ветки внутри.
-    showSecretState(openrouterApiKey, openrouterKeyStatus, data.has_key, data.api_key_masked, 'Ключ');
+    fillSecretField(openrouterApiKey, openrouterKeyStatus, {
+      present: data.has_key, masked: data.api_key_masked, noun: 'Ключ'
+    });
     await loadOpenRouterModels();
   } catch (e) {
     console.error('Error loading OpenRouter config:', e);
@@ -414,8 +415,7 @@ testOpenRouterBtn.addEventListener('click', async () => {
 // ==================== TELEGRAM BOT FORWARD ====================
 
 toggleTgBotTokenVisibility.addEventListener('click', () => {
-  tgBotToken.type = tgBotToken.type === 'password' ? 'text' : 'password';
-  toggleTgBotTokenVisibility.textContent = tgBotToken.type === 'password' ? '👁️' : '🙈';
+  toggleSecretVisibility(tgBotToken, toggleTgBotTokenVisibility, '/api/telegram-forward/reveal');
 });
 
 export async function loadTgForwardConfig() {
@@ -424,7 +424,9 @@ export async function loadTgForwardConfig() {
     const data = await res.json();
     tgSenderId.value = data.sender_id || '';
     tgForwardEnabled.checked = Boolean(data.is_enabled);
-    showSecretState(tgBotToken, tgBotTokenStatus, data.has_token, data.bot_token_masked, 'Токен');
+    fillSecretField(tgBotToken, tgBotTokenStatus, {
+      present: data.has_token, masked: data.bot_token_masked, noun: 'Токен'
+    });
   } catch (e) {
     console.error('Error loading Telegram forward config:', e);
   }
