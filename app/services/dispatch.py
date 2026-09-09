@@ -34,6 +34,8 @@ from app.models import ChatAvatar, FeedItem, Integration, SentMessage
 from app.services.integrations import integration_secrets
 from app.services.journal import add_log
 from app.services.llm import process_messages_batch_with_llm
+from app.services.telegram_markup import escape as tg_escape
+from app.services.telegram_markup import to_telegram_html
 from app.services.webhook import send_webhook
 
 logger = logging.getLogger(__name__)
@@ -76,18 +78,48 @@ async def send_telegram_bot_message(token: str, chat_id: str, text: str) -> bool
 
 
 def _summary_text(chat_title: str, messages: list[dict]) -> str:
-    """Текстовая сводка, когда анализа нет (порт server.py:920)."""
-    lines = [f"📢 <b>Новые посты: {chat_title}</b> ({len(messages)} шт.)\n"]
+    """Текстовая сводка, когда анализа нет (порт server.py:920).
+
+    Заголовок канала и тексты постов пишем не мы: знак `<` в чужом посте
+    ломал разбор, Bot API отвечал 400, доставка повторяла запрос без
+    parse_mode — и сообщение уходило целиком без оформления (9.17).
+    Экранируем ровно чужое: собственная разметка сводки остаётся разметкой.
+    """
+    lines = [f"📢 <b>Новые посты: {tg_escape(chat_title)}</b> ({len(messages)} шт.)\n"]
     for message in messages[:PREVIEW_POSTS]:
-        text = (message.get("text") or "")[:PREVIEW_CHARS]
+        text = tg_escape((message.get("text") or "")[:PREVIEW_CHARS])
         url = message.get("post_url", "")
-        link = f" — <a href='{url}'>🔗 Источник</a>" if url else ""
+        link = f" — <a href='{tg_escape(url)}'>🔗 Источник</a>" if url else ""
         lines.append(f"• {text}{link}\n")
     return "\n".join(lines)
 
 
 def _chunks(text: str) -> list[str]:
-    return [text[i : i + BOT_CHUNK] for i in range(0, len(text), BOT_CHUNK)] or [text]
+    """Резать по длине, но не посреди тега.
+
+    Слепая нарезка каждые 3900 символов однажды разрубает тег пополам:
+    Bot API отвечает 400, доставка повторяет запрос без parse_mode, и
+    оформление пропадает у всего сообщения. Граница отступает назад — к
+    началу незакрытого тега, а по возможности к концу строки.
+    """
+    if len(text) <= BOT_CHUNK:
+        return [text]
+    parts: list[str] = []
+    rest = text
+    while len(rest) > BOT_CHUNK:
+        cut = BOT_CHUNK
+        window = rest[:cut]
+        if window.rfind("<") > window.rfind(">"):
+            cut = window.rfind("<")
+        newline = rest.rfind("\n", 0, cut)
+        if newline > cut - 500:
+            cut = newline + 1
+        cut = max(cut, 1)
+        parts.append(rest[:cut])
+        rest = rest[cut:]
+    if rest:
+        parts.append(rest)
+    return parts
 
 
 async def _integration(db, user_id: int) -> Integration | None:
@@ -106,7 +138,13 @@ async def _run_bot(
         return "failed"
 
     chat_title = payload.get("chat_title") or "Источник"
-    text = analysis or _summary_text(chat_title, messages)
+    # Формат ответа модели зависит от промпта канала, а промпты пишет
+    # владелец: у одного канала HTML, у другого Markdown, у третьего
+    # промпта нет вовсе. Приводим к разметке Bot API здесь — доставка не
+    # вправе рассчитывать на дисциплину модели (9.17).
+    text = (
+        to_telegram_html(analysis) if analysis else _summary_text(chat_title, messages)
+    )
     try:
         for chunk in _chunks(text):
             # Имя публичное (8.3): ту же отправку переиспользует живая
