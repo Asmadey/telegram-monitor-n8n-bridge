@@ -7,7 +7,7 @@
 
 import { apiFetch, apiGet } from './api.js';
 import { withSecret, clearSecret, fillSecretField } from './secrets.js';
-import { html, raw, formatIntervalHuman, formatNextRun, showToast, closeModalAnimated } from './render.js';
+import { html, raw, formatIntervalHuman, formatNextRun, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 import { setFilterChatOptions, mergeMessages } from './messages.js';
 
 const monitorsList = document.getElementById('monitorsList');
@@ -200,6 +200,11 @@ function openEditModal(id) {
   editIntervalMin.value = String(m.interval_minutes || 60);
   editMsgLimit.value = m.limit || 20;
   document.getElementById('editMonitorPrompt').value = m.prompt || '';
+  // Показать модалку. Без этой строки обработчик исправно находился и
+  // исправно заполнял поля, а снаружи это выглядело как «кнопка не
+  // нажимается»: отличить «не сработало» от «сработало и ничего не
+  // показало» пользователю нечем (найдено владельцем 9 сентября).
+  openModalAnimated(editMonitorModal);
 }
 
 // Делегирование вместо onclick/onchange в разметке: инлайновый обработчик

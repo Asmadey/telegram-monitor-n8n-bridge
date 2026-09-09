@@ -357,10 +357,35 @@ class Worker:
         messages = json.loads(item.raw_messages_json or "[]")
         if not messages:
             raise ValueError("в записи нет исходных постов")
-        analysis = await self.llm(db, user_id, messages, require_success=True)
+        # Тем же промптом, что и плановый разбор. Без него переразбор
+        # карточки Finder.work (промпт на 4311 символов) возвращал ответ,
+        # собранный по умолчанию, — и выглядело это как «модель стала хуже
+        # отвечать», а не как потерянная настройка.
+        prompt = await self._prompt_for(db, user_id, item)
+        analysis = await self.llm(
+            db, user_id, messages, custom_prompt=prompt, require_success=True
+        )
         if analysis:
             item.ai_analysis = analysis
             await db.commit()
+
+    async def _prompt_for(self, db, user_id: int, item: FeedItem) -> str | None:
+        """Промпт источника, которому принадлежит карточка ленты.
+
+        У карточек до Фазы 11 ссылки на источник нет (`monitor_id` появился
+        ревизией 0012 и заполнен переносом), поэтому запасной путь — по
+        каналу: он однозначен, пока источник равен каналу.
+        """
+        repo = TenantRepo(db, user_id)
+        query = repo.query(Monitor)
+        if item.monitor_id is not None:
+            query = query.where(Monitor.id == item.monitor_id)
+        elif item.chat_id is not None:
+            query = query.where(Monitor.chat_id == item.chat_id)
+        else:
+            return None
+        source = (await db.scalars(query)).first()
+        return source.prompt if source is not None else None
 
     # ------------------------------------------------------------------
     # 3. Расписание
