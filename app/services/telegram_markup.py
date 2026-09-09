@@ -21,7 +21,11 @@ import html
 import re
 
 # Теги, которые Bot API понимает. Всё остальное — текст, а не разметка.
-ALLOWED_TAGS = frozenset(
+#
+# Набор зависит от метода отправки. `sendRichMessage` (Bot API 10.1) знает
+# таблицы, заголовки и списки; `sendMessage` — нет, и для него та же
+# сводка разворачивается в строки (см. rich_html_to_plain).
+PLAIN_TAGS = frozenset(
     {
         "b",
         "strong",
@@ -39,6 +43,26 @@ ALLOWED_TAGS = frozenset(
         "tg-spoiler",
     }
 )
+RICH_ONLY_TAGS = frozenset(
+    {
+        "table",
+        "caption",
+        "tr",
+        "th",
+        "td",
+        "ul",
+        "ol",
+        "li",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "mark",
+    }
+)
+ALLOWED_TAGS = PLAIN_TAGS | RICH_ONLY_TAGS
 
 _TAG = re.compile(r"</?(?P<name>[a-zA-Z][a-zA-Z0-9-]*)(?P<attrs>\s[^<>]*)?/?>")
 _BR = re.compile(r"<br\s*/?>", re.I)
@@ -52,7 +76,16 @@ _BOLD_ALT = re.compile(r"__(.+?)__", re.S)
 _STRIKE = re.compile(r"~~(.+?)~~", re.S)
 _ITALIC = re.compile(r"(?<![\w*])\*([^*\n]+)\*(?![\w*])")
 _ITALIC_ALT = re.compile(r"(?<![\w_])_([^_\n]+)_(?![\w_])")
-_HEADER = re.compile(r"(?m)^[ \t]*#{1,6}[ \t]*(.+?)[ \t]*$")
+_HEADER = re.compile(r"(?m)^[ \t]*(#{1,6})[ \t]*(.+?)[ \t]*$")
+_LIST = re.compile(r"(?m)(?:^[ \t]*[-*+][ \t]+.+$\n?)+")
+_LIST_ITEM = re.compile(r"(?m)^[ \t]*[-*+][ \t]+(.+?)[ \t]*$")
+# Markdown-таблица: шапка, строка-разделитель, тело. Именно её присылает
+# модель, когда её просят «сведи по каждой вакансии».
+_TABLE = re.compile(
+    r"(?m)^[ \t]*\|(?P<head>.+?)\|[ \t]*\n"
+    r"[ \t]*\|(?P<rule>[ \t:\-|]+)\|[ \t]*\n"
+    r"(?P<body>(?:[ \t]*\|.*\|[ \t]*(?:\n|$))*)"
+)
 _LINK = re.compile(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
 
 _PLACEHOLDER = "\x00{}\x00"
@@ -86,8 +119,20 @@ def _markdown(text: str) -> str:
     text = _FENCE.sub(lambda m: keep(f"<pre>{m.group(1)}</pre>"), text)
     text = _INLINE_CODE.sub(lambda m: keep(f"<code>{m.group(1)}</code>"), text)
 
+    # Таблица — блочная и должна разбираться ДО строчных правил: иначе
+    # `**жирный**` внутри ячейки разъедет по границам тега.
+    text = _TABLE.sub(lambda m: keep(_render_table(m)), text)
+    text = _LIST.sub(lambda m: keep(_render_list(m.group(0))), text)
+
     text = _LINK.sub(lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>', text)
-    text = _HEADER.sub(r"<b>\1</b>", text)
+    # Заголовок — настоящим тегом: `sendRichMessage` их знает, и уровень
+    # видно глазом, а не только жирностью.
+    text = _HEADER.sub(
+        lambda m: (
+            f"<h{min(len(m.group(1)), 6)}>{m.group(2)}</h{min(len(m.group(1)), 6)}>"
+        ),
+        text,
+    )
     text = _BOLD.sub(r"<b>\1</b>", text)
     text = _BOLD_ALT.sub(r"<b>\1</b>", text)
     text = _STRIKE.sub(r"<s>\1</s>", text)
@@ -97,6 +142,61 @@ def _markdown(text: str) -> str:
     for index, rendered in enumerate(stash):
         text = text.replace(_PLACEHOLDER.format(index), rendered)
     return text
+
+
+def _cells(line: str) -> list[str]:
+    """Ячейки одной строки Markdown-таблицы."""
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def _render_table(match: "re.Match[str]") -> str:
+    """Markdown-таблица → таблица Bot API.
+
+    `bordered striped compact` — не украшение: на телефоне сводка из шести
+    колонок без границ и зебры нечитаема, а compact добавили в 10.3 именно
+    для узких экранов.
+    """
+    header = _cells(match.group("head"))
+    rows = [
+        _cells(line)
+        for line in match.group("body").splitlines()
+        if line.strip().startswith("|")
+    ]
+    parts = ["<table bordered striped compact>"]
+    parts.append("<tr>" + "".join(f"<th>{c}</th>" for c in header) + "</tr>")
+    for row in rows:
+        parts.append("<tr>" + "".join(f"<td>{c}</td>" for c in row) + "</tr>")
+    parts.append("</table>")
+    return "".join(parts)
+
+
+def _render_list(block: str) -> str:
+    items = _LIST_ITEM.findall(block)
+    return "<ul>" + "".join(f"<li>{item}</li>" for item in items) + "</ul>"
+
+
+# Разворот богатой разметки в ту, что понимает sendMessage. Нужен запасному
+# пути: таблица, ушедшая чёрточками, хуже отсутствия таблицы.
+
+
+def rich_html_to_plain(rich: str) -> str:
+    """Свести таблицы в строки, заголовки — в жирный, списки — в маркеры."""
+    text = re.sub(r"</t[dh]>\s*<t[dh][^<>]*>", " — ", rich)
+    text = re.sub(r"</tr>\s*<tr[^<>]*>", "\n", text)
+    text = re.sub(r"</?(table|caption|tbody|thead)[^<>]*>", "\n", text)
+    text = re.sub(r"</?tr[^<>]*>|</?t[dh][^<>]*>", "", text)
+    text = re.sub(r"<h[1-6][^<>]*>", "<b>", text)
+    text = re.sub(r"</h[1-6]>", "</b>", text)
+    text = re.sub(r"</?(ul|ol)[^<>]*>", "\n", text)
+    text = re.sub(r"<li[^<>]*>", "• ", text)
+    text = text.replace("</li>", "\n")
+    text = re.sub(r"</?mark[^<>]*>", "", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def to_plain_html(text: str) -> str:
+    """Разметка для `sendMessage`: тот же разбор, но без богатых тегов."""
+    return rich_html_to_plain(to_telegram_html(text))
 
 
 def escape(text: str) -> str:

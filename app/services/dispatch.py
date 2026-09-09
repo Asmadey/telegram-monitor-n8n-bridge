@@ -35,7 +35,7 @@ from app.services.integrations import integration_secrets
 from app.services.journal import add_log
 from app.services.llm import process_messages_batch_with_llm
 from app.services.telegram_markup import escape as tg_escape
-from app.services.telegram_markup import to_telegram_html
+from app.services.telegram_markup import rich_html_to_plain, to_telegram_html
 from app.services.webhook import send_webhook
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,8 @@ logger = logging.getLogger(__name__)
 # Telegram режет сообщение на 4096 символов; 3900 — запас оригинала под
 # HTML-разметку, которая в лимит входит вместе с текстом
 BOT_CHUNK = 3900
+# У rich-сообщения лимит 32768; запас на случай, если клиент считает иначе
+RICH_CHUNK = 30000
 BOT_TIMEOUT = 15.0
 # сколько постов показать в текстовой сводке, когда анализа нет
 PREVIEW_POSTS = 5
@@ -55,25 +57,55 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-async def send_telegram_bot_message(token: str, chat_id: str, text: str) -> bool:
-    """Порт server.py:854: HTML, при ошибке разметки — повтор без parse_mode.
+async def send_telegram_bot_message(
+    token: str, chat_id: str, text: str, *, transport=None
+) -> bool:
+    """Отправка сводки: сначала богатым методом, затем прежним (9.19).
 
-    Пользователь пишет заголовки каналов, а не мы: несбалансированный тег в
-    названии канала — это 400 от Bot API на КАЖДОЙ доставке, а не разовый сбой.
+    `sendRichMessage` (Bot API 10.1) знает таблицы, заголовки и списки и
+    держит 32768 символов вместо 4096. Именно этого не хватало: модель
+    отвечает Markdown-таблицей, а `sendMessage` таблиц не знает вовсе — и
+    сводка на пятнадцать вакансий приходила стеной из чёрточек.
+    `parse_mode` с ним не передаётся: форматирование лежит внутри
+    `rich_message`.
+
+    Запасной путь обязателен, но включается ТОЛЬКО если не ушло ещё ничего.
+    Иначе отказ на втором куске означал бы, что первый уже доставлен, а
+    следом уедет вся сводка целиком — человек получит её дважды.
+
+    Повтор без `parse_mode` на запасном пути сохранён: заголовки каналов
+    пишет не сервис, и несбалансированный тег в чужом названии — это 400 на
+    каждой доставке, а не разовый сбой.
     """
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": False,
-    }
-    async with httpx.AsyncClient(timeout=BOT_TIMEOUT) as client:
-        response = await client.post(url, json=payload)
-        if response.status_code != 200:
-            payload.pop("parse_mode", None)
-            response = await client.post(url, json=payload)
-        response.raise_for_status()
+    base = f"https://api.telegram.org/bot{token}"
+    async with httpx.AsyncClient(timeout=BOT_TIMEOUT, transport=transport) as client:
+        delivered = 0
+        for chunk in _chunks(text, RICH_CHUNK):
+            response = await client.post(
+                f"{base}/sendRichMessage",
+                json={"chat_id": chat_id, "rich_message": {"html": chunk}},
+            )
+            if response.status_code != 200:
+                if delivered:
+                    response.raise_for_status()
+                break
+            delivered += 1
+        else:
+            return True
+
+        plain = rich_html_to_plain(text)
+        for chunk in _chunks(plain, BOT_CHUNK):
+            payload = {
+                "chat_id": chat_id,
+                "text": chunk,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": False,
+            }
+            response = await client.post(f"{base}/sendMessage", json=payload)
+            if response.status_code != 200:
+                payload.pop("parse_mode", None)
+                response = await client.post(f"{base}/sendMessage", json=payload)
+            response.raise_for_status()
         return True
 
 
@@ -94,7 +126,7 @@ def _summary_text(chat_title: str, messages: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _chunks(text: str) -> list[str]:
+def _chunks(text: str, limit: int = BOT_CHUNK) -> list[str]:
     """Резать по длине, но не посреди тега.
 
     Слепая нарезка каждые 3900 символов однажды разрубает тег пополам:
@@ -102,12 +134,12 @@ def _chunks(text: str) -> list[str]:
     оформление пропадает у всего сообщения. Граница отступает назад — к
     началу незакрытого тега, а по возможности к концу строки.
     """
-    if len(text) <= BOT_CHUNK:
+    if len(text) <= limit:
         return [text]
     parts: list[str] = []
     rest = text
-    while len(rest) > BOT_CHUNK:
-        cut = BOT_CHUNK
+    while len(rest) > limit:
+        cut = limit
         window = rest[:cut]
         if window.rfind("<") > window.rfind(">"):
             cut = window.rfind("<")
@@ -146,13 +178,14 @@ async def _run_bot(
         to_telegram_html(analysis) if analysis else _summary_text(chat_title, messages)
     )
     try:
-        for chunk in _chunks(text):
-            # Имя публичное (8.3): ту же отправку переиспользует живая
-            # проверка бота в app/api/checks.py. Отказ Bot API — False, а не
-            # исключение: без этой ветки сбой доставки выглядел бы SUCCESS (9.1).
-            sent = await (sender or send_telegram_bot_message)(token, chat_id, chunk)
-            if sent is False:
-                raise RuntimeError("Telegram bot rejected delivery")
+        # Нарезка переехала внутрь отправителя: у богатого метода свой
+        # лимит (32768), у запасного свой (4096), и снаружи выбирать нечем.
+        # Имя публичное (8.3): ту же отправку переиспользует живая проверка
+        # бота в app/api/checks.py. Отказ Bot API — False, а не исключение:
+        # без этой ветки сбой доставки выглядел бы SUCCESS (9.1).
+        sent = await (sender or send_telegram_bot_message)(token, chat_id, text)
+        if sent is False:
+            raise RuntimeError("Telegram bot rejected delivery")
     except Exception as exc:  # noqa: BLE001 — доставка не роняет опрос
         await add_log(
             db,
