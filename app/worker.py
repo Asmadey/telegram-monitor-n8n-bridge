@@ -75,6 +75,47 @@ TICK_INTERVAL = 30.0
 # время: очередь разбирается до дна раньше, чем цикл дойдёт до шага 3.
 MAX_JOBS_PER_TICK = 20
 
+# Тайм-ауты внешних вызовов (11.0). У HTTP-клиента OpenRouter тайм-аут свой
+# (45 с в llm.py), у MTProto не было никакого: вызов Telethon, который не
+# возвращается, останавливал тик целиком — а с ним очередь, расписание и
+# очистку, то есть всех пользователей сразу.
+TELEGRAM_TIMEOUT = 60.0
+
+# Потолок на единицы работы в одном тике. Без него тик длится столько,
+# сколько дают внешние сервисы.
+TICK_BUDGET = 240.0
+
+
+class StepTimeout(TimeoutError):
+    """Внешний вызов не ответил за отведённое время.
+
+    Подкласс TimeoutError, а не своя иерархия: перехватывающий код не
+    обязан знать это имя, а `_reason` покажет и тип, и что именно молчало.
+    """
+
+
+async def _within(awaitable, seconds: float, what: str):
+    """Выполнить внешний вызов с потолком по времени.
+
+    Без потолка вызов Telethon, который не возвращается, останавливает тик
+    целиком — очередь, расписание и очистку, то есть всех пользователей
+    сразу (найдено на проде 9 сентября).
+    """
+    # asyncio.timeout, а не wait_for: у него есть expired(), и по нему видно,
+    # ЧЕЙ это тайм-аут. wait_for отдаёт TimeoutError и когда истекло наше
+    # время, и когда сам вызов упал по своему тайм-ауту, — подменять второе
+    # на «тайм-аут 60 с» значит врать о причине (поймано тестом 9.11,
+    # который подаёт asyncio.TimeoutError как отказ сети).
+    guard = asyncio.timeout(seconds)
+    try:
+        async with guard:
+            return await awaitable
+    except TimeoutError:
+        if guard.expired():
+            raise StepTimeout(f"тайм-аут {seconds:g} с: {what}") from None
+        raise
+
+
 # автоочистка — раз в сутки (порт server.py:527)
 CLEANUP_INTERVAL = 86400.0
 
@@ -197,7 +238,13 @@ class Worker:
         """Разобрать очередь. Падение задачи — failed и следующая: один
         сломанный канал не останавливает остальных пользователей."""
         done = 0
+        deadline = asyncio.get_running_loop().time() + TICK_BUDGET
         for _ in range(MAX_JOBS_PER_TICK):
+            if self._out_of_budget(deadline):
+                logger.info(
+                    "бюджет тика исчерпан, очередь разбирается дальше в следующем тике"
+                )
+                break
             job = await claim_next_job(db)
             if job is None:
                 break
@@ -240,6 +287,7 @@ class Worker:
             else:
                 await finish_job(db, job)
                 done += 1
+            await self._beat(db)
         return done
 
     async def _run_job(self, db, job) -> None:
@@ -316,13 +364,44 @@ class Worker:
             return True
         return now >= last + datetime.timedelta(minutes=monitor.interval_minutes)
 
+    async def _beat(self, db) -> None:
+        """Отметиться о ПРОДВИЖЕНИИ, а не о запуске процесса.
+
+        Задача 10.2 ставила отметку первой в тике: «зависший внутри тика
+        обязан выглядеть мёртвым». Правило верное, но прогон источника из
+        пяти каналов законно идёт минутами — при отметке раз в тик он
+        неотличим от зависания (порог устаревания 180 с).
+
+        Отметка между единицами работы решает обе задачи сразу: идущий
+        прогон отмечается и виден живым, а зависший вызов до следующей
+        отметки дойти не даёт. Отдельной задачей по таймеру этого делать
+        НЕЛЬЗЯ — она отмечалась бы и при намертво вставшем тике.
+        """
+        try:
+            await record_heartbeat(
+                db, WORKER_NAME, leader=True, fingerprint=key_fingerprint()
+            )
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001 — отметка не стоит падения тика
+            logger.debug("отметка не записана: %s", redact(_reason(exc)))
+
+    def _out_of_budget(self, deadline: float) -> bool:
+        return asyncio.get_running_loop().time() >= deadline
+
     async def run_schedule(self, db) -> int:
         now = _utcnow()
+        deadline = asyncio.get_running_loop().time() + TICK_BUDGET
         monitors = list(
             await db.scalars(select(Monitor.id).where(Monitor.is_active.is_(True)))
         )
         polled = 0
         for monitor_id in monitors:
+            if self._out_of_budget(deadline):
+                # Бюджет исчерпан — остальные подождут следующего тика.
+                # Иначе тик длится столько, сколько дают внешние сервисы,
+                # а очередь и очистка стоят всё это время.
+                logger.info("бюджет тика исчерпан, опрос отложен")
+                break
             monitor = await db.get(Monitor, monitor_id, populate_existing=True)
             if (
                 monitor is None
@@ -365,6 +444,9 @@ class Worker:
                     # но кормить его лишним незачем.)
                     _reason(exc),
                 )
+            # Единица работы закончена — отмечаемся. Долгий, но идущий
+            # обход каналов обязан выглядеть живым (11.0).
+            await self._beat(db)
         return polled
 
     async def poll_monitor(self, db, monitor: Monitor) -> str:
@@ -401,12 +483,20 @@ class Worker:
             client = await self.telegram.client_for(db, user_id)
             if client is None:
                 return None, None, None
-            entity = await self.telegram.resolve(client, monitor.chat_target)
-            messages = await self.telegram.fetch(
-                client,
-                entity,
-                limit=monitor.limit_count,
-                offset_hours=monitor.offset_hours,
+            entity = await _within(
+                self.telegram.resolve(client, monitor.chat_target),
+                TELEGRAM_TIMEOUT,
+                f"разрешение канала {monitor.chat_target}",
+            )
+            messages = await _within(
+                self.telegram.fetch(
+                    client,
+                    entity,
+                    limit=monitor.limit_count,
+                    offset_hours=monitor.offset_hours,
+                ),
+                TELEGRAM_TIMEOUT,
+                f"выборка сообщений {monitor.chat_target}",
             )
             return client, entity, messages
 
@@ -475,7 +565,11 @@ class Worker:
         try:
             # Avatar failure is cosmetic and must not prevent batch processing.
             try:
-                avatar = await self.telegram.avatar(client, entity)
+                avatar = await _within(
+                    self.telegram.avatar(client, entity),
+                    TELEGRAM_TIMEOUT,
+                    "загрузка аватарки канала",
+                )
                 if avatar:
                     await store_avatar(db, chat_id, avatar)
             except Exception as exc:
