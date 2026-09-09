@@ -184,9 +184,14 @@ async def test_migration_turns_an_old_monitor_into_a_source(alembic_target_db):
     try:
         async with engine.begin() as conn:
             await conn.execute(
+                # created_at/updated_at — NOT NULL с умолчанием на стороне
+                # Python: сырой SQL их не получает, и без явных значений
+                # вставка падает (поймано первым прогоном CI с Postgres —
+                # локально этот тест уходит в skip, и расхождение невидимо)
                 text(
-                    "INSERT INTO users (email, is_admin, timezone) "
-                    "VALUES ('legacy@example.com', false, 'UTC')"
+                    "INSERT INTO users (email, is_admin, timezone, "
+                    "created_at, updated_at) "
+                    "VALUES ('legacy@example.com', false, 'UTC', now(), now())"
                 )
             )
             user_id = (
@@ -198,9 +203,10 @@ async def test_migration_turns_an_old_monitor_into_a_source(alembic_target_db):
                 text(
                     "INSERT INTO monitors (public_id, user_id, chat_target, "
                     "chat_title, chat_id, interval_minutes, limit_count, "
-                    "offset_hours, is_active, last_sent_message_id, prompt) "
+                    "offset_hours, is_active, last_sent_message_id, prompt, "
+                    "created_at) "
                     "VALUES ('legacy-1', :u, '@finder', 'Finder.work', -100777, "
-                    "360, 50, 24, true, 0, 'искать вакансии продаж')"
+                    "360, 50, 24, true, 0, 'искать вакансии продаж', now())"
                 ),
                 {"u": user_id},
             )
