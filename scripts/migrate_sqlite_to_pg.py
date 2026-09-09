@@ -41,7 +41,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from cryptography.fernet import Fernet
-from sqlalchemy import select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -137,8 +137,37 @@ def _ts_required(value):
 
 
 async def _migrate_monitors(session, rows, user_id) -> int:
+    """Каналы переезжают, уже заведённые — не дублируются.
+
+    Дедупликация по `(user_id, public_id)` узнаёт только строку, приехавшую
+    отсюда же. Канал, который владелец завёл руками в новой сборке, получил
+    СВОЙ public_id — и та же самая ссылка приехала бы вторым экземпляром.
+    Опрашивался бы канал дважды, и посты уходили бы в n8n парами.
+
+    Поэтому «уже есть» определяется по чату: chat_id, а если его нет (канал
+    ни разу не опрашивался) — по строке подключения.
+    """
+    known_chats = set(
+        await session.scalars(
+            select(Monitor.chat_id).where(
+                Monitor.user_id == user_id, Monitor.chat_id.is_not(None)
+            )
+        )
+    )
+    known_targets = {
+        (t or "").strip().lower()
+        for t in await session.scalars(
+            select(Monitor.chat_target).where(Monitor.user_id == user_id)
+        )
+    }
     inserted = 0
     for r in rows:
+        chat_id = r["chat_id"]
+        target = (r["chat_target"] or "").strip().lower()
+        if (chat_id is not None and chat_id in known_chats) or (
+            target and target in known_targets
+        ):
+            continue
         stmt = (
             pg_insert(Monitor)
             .values(
@@ -284,30 +313,68 @@ async def _migrate_integrations(session, rows, user_id, fernet: Fernet) -> int:
             value = r.get(field) or ""
             return fernet.encrypt(value.encode()).decode() if value else ""
 
-        stmt = (
-            pg_insert(Integration)
-            .values(
-                user_id=user_id,
-                telegram_bot_token_encrypted=enc("telegram_bot_token"),
-                telegram_sender_id=r["telegram_sender_id"] or "",
-                telegram_forward_enabled=bool(r["telegram_forward_enabled"] or 0),
-                openrouter_api_key_encrypted=enc("openrouter_api_key"),
-                openrouter_base_url=r["openrouter_base_url"]
-                or "https://openrouter.ai/api/v1",
-                openrouter_model=r["openrouter_model"] or "deepseek/deepseek-v4-flash",
-                openrouter_enabled=bool(r["openrouter_enabled"] or 0),
-                webhook_url_encrypted=enc("webhook_url"),
-                auto_webhook_enabled=bool(r["auto_webhook_enabled"] or 0),
-                updated_at=_ts_required(r["updated_at"]),
-                cleanup_enabled=r.get("cleanup_enabled", False),
-                cleanup_days=r.get("cleanup_days", 30),
-                cleanup_last_run=_ts(r.get("cleanup_last_run")),
-            )
-            .on_conflict_do_nothing(index_elements=["user_id"])
+        stmt = pg_insert(Integration).values(
+            user_id=user_id,
+            telegram_bot_token_encrypted=enc("telegram_bot_token"),
+            telegram_sender_id=r["telegram_sender_id"] or "",
+            telegram_forward_enabled=bool(r["telegram_forward_enabled"] or 0),
+            openrouter_api_key_encrypted=enc("openrouter_api_key"),
+            openrouter_base_url=r["openrouter_base_url"]
+            or "https://openrouter.ai/api/v1",
+            openrouter_model=r["openrouter_model"] or "deepseek/deepseek-v4-flash",
+            openrouter_enabled=bool(r["openrouter_enabled"] or 0),
+            webhook_url_encrypted=enc("webhook_url"),
+            auto_webhook_enabled=bool(r["auto_webhook_enabled"] or 0),
+            updated_at=_ts_required(r["updated_at"]),
+            cleanup_enabled=r.get("cleanup_enabled", False),
+            cleanup_days=r.get("cleanup_days", 30),
+            cleanup_last_run=_ts(r.get("cleanup_last_run")),
+        )
+        # ON CONFLICT DO NOTHING здесь молча пропускал бы всё: строка
+        # настроек у владельца уже есть, если он хоть раз открывал кабинет.
+        # Ради ключей перенос и затевается — поэтому пустое в назначении
+        # заполняется, а заполненное остаётся: это осознанный выбор
+        # владельца, и старая база его не перебивает.
+        table = Integration.__table__
+        # WHERE обязателен: без него DO UPDATE срабатывает всегда и
+        # отчитывается «перенесена 1 строка» на каждом повторном запуске,
+        # хотя не менялось ничего. Счётчик, который врёт в спокойном
+        # состоянии, обесценивает и правдивый счётчик (идемпотентность
+        # проверяется именно нулями).
+        fillable = or_(
+            *[
+                and_(
+                    func.coalesce(table.c[name], "") == "",
+                    func.coalesce(stmt.excluded[name], "") != "",
+                )
+                for name in _FILL_IF_EMPTY
+            ]
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["user_id"],
+            set_={
+                name: case(
+                    (func.coalesce(table.c[name], "") == "", stmt.excluded[name]),
+                    else_=table.c[name],
+                )
+                for name in _FILL_IF_EMPTY
+            },
+            where=fillable,
         )
         result = await session.execute(stmt)
         inserted += result.rowcount or 0
     return inserted
+
+
+# Текстовые колонки настроек, которые перенос дополняет. Флаги (тумблеры)
+# сюда НЕ входят: у булева поля «выключено» и «не задано» неразличимы, а
+# состояние тумблеров владелец видит и меняет сам.
+_FILL_IF_EMPTY = (
+    "telegram_bot_token_encrypted",
+    "openrouter_api_key_encrypted",
+    "webhook_url_encrypted",
+    "telegram_sender_id",
+)
 
 
 def _merge_settings(rows: list[dict], settings_rows: list[dict]) -> list[dict]:
