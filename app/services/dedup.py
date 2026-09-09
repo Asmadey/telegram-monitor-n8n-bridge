@@ -9,12 +9,21 @@ INSERT OR IGNORE спасал только строку в базе, new_message
 Здесь дедупликацию решает БАЗОЙ, одним запросом:
 
     INSERT INTO sent_messages (...) VALUES ...
-    ON CONFLICT (user_id, chat_id, message_id) DO NOTHING
+    ON CONFLICT (monitor_id, chat_id, message_id) DO NOTHING
     RETURNING message_id
 
 Вернувшиеся id — и есть новые; не вернувшиеся — уже были (транзакция
 ставит unique-замок, конкурентная вставка в это же время просто
 проглотится). Никакого SELECT перед INSERT.
+
+**Ключ считается по ИСТОЧНИКУ, а не по пользователю (задача 11.2).** Один
+канал может входить в несколько источников, и каждый разбирает его посты
+по своим критериям. При прежнем ключе `(user_id, chat_id, message_id)`
+пост, увиденный первым источником, для второго переставал существовать —
+и выглядело бы это как «второй источник не работает».
+
+Индекс частичный: строки без источника (`monitor_id IS NULL` — история
+удалённого) в ключ не входят и дедупликации не мешают.
 """
 
 import datetime
@@ -52,9 +61,10 @@ def _parse_date(value: Any) -> datetime.datetime | None:
         return None
 
 
-def _to_row(user_id: int, chat_id: int, msg: dict) -> dict:
+def _to_row(user_id: int, monitor_id: int, chat_id: int, msg: dict) -> dict:
     return {
         "user_id": user_id,
+        "monitor_id": monitor_id,
         "chat_id": chat_id,
         "message_id": msg["id"],
         "date": _parse_date(msg.get("date")),
@@ -87,6 +97,7 @@ async def filter_new(
     chat_id: int,
     messages: list[dict],
     *,
+    monitor_id: int,
     commit: bool = True,
     processed: bool = True,
 ) -> list[dict]:
@@ -95,7 +106,7 @@ async def filter_new(
     if not messages:
         return []
 
-    rows = [_to_row(user_id, chat_id, m) for m in messages if m.get("id")]
+    rows = [_to_row(user_id, monitor_id, chat_id, m) for m in messages if m.get("id")]
     if not rows:
         return []
 
@@ -105,7 +116,12 @@ async def filter_new(
     stmt = (
         insert(SentMessage)
         .values(rows)
-        .on_conflict_do_nothing(index_elements=["user_id", "chat_id", "message_id"])
+        .on_conflict_do_nothing(
+            index_elements=["monitor_id", "chat_id", "message_id"],
+            # частичный индекс: цель конфликта обязана нести то же условие,
+            # иначе база не найдёт индекс и вставка упадёт
+            index_where=SentMessage.monitor_id.is_not(None),
+        )
         .returning(SentMessage.message_id)
     )
     result = await db.execute(stmt)

@@ -68,7 +68,9 @@ async def test_concurrent_dedup_yields_each_message_once(db_engine, db, user_a):
 
     async def run_one() -> list[dict]:
         async with sessionmaker() as session:
-            return await filter_new(session, user_a.id, monitor.chat_id, msgs)
+            return await filter_new(
+                session, user_a.id, monitor.chat_id, msgs, monitor_id=monitor.id
+            )
 
     a, b = await asyncio.gather(run_one(), run_one())
 
@@ -83,10 +85,14 @@ async def test_filter_new_marks_and_returns_only_unseen(db, user_a):
     monitor = await _seed_monitor(db, user_a.id)
     msgs = _msgs(5)
 
-    fresh = await filter_new(db, user_a.id, monitor.chat_id, msgs)
+    fresh = await filter_new(
+        db, user_a.id, monitor.chat_id, msgs, monitor_id=monitor.id
+    )
     assert [m["id"] for m in fresh] == [1, 2, 3, 4, 5], "первый вызов не вернул все"
 
-    again = await filter_new(db, user_a.id, monitor.chat_id, msgs)
+    again = await filter_new(
+        db, user_a.id, monitor.chat_id, msgs, monitor_id=monitor.id
+    )
     assert again == [], "уже отправленные вернулись как новые"
 
     stored = (
@@ -99,17 +105,26 @@ async def test_filter_new_marks_and_returns_only_unseen(db, user_a):
 
 
 @pytest.mark.asyncio
-async def test_filter_new_scopes_by_user(db, user_a, user_b):
-    """Дедупликация в разрезе ТЕНАНТА: один и тот же пост в одном канале —
-    новый для каждого пользователя по отдельности (unique user_id+chat_id+
-    message_id). Один забытый user_id — и B не получит пост, виденный A."""
-    monitor = await _seed_monitor(db, user_a.id)
+async def test_filter_new_scopes_by_tenant(db, user_a, user_b):
+    """Дедупликация в разрезе ТЕНАНТА — теперь через источник (11.2).
+
+    Раньше тенантность обеспечивал `user_id` прямо в ключе. Теперь ключ
+    считается по источнику, а источник принадлежит пользователю — то есть
+    разрез стал строго уже, а не шире. Проверка та же по смыслу: один и тот
+    же пост в одном канале — новый для каждого пользователя отдельно.
+    """
+    monitor_a = await _seed_monitor(db, user_a.id)
+    monitor_b = await _seed_monitor(db, user_b.id)
     msgs = _msgs(3)
 
-    a1 = await filter_new(db, user_a.id, monitor.chat_id, msgs)
-    b1 = await filter_new(db, user_b.id, monitor.chat_id, msgs)
+    a1 = await filter_new(
+        db, user_a.id, monitor_a.chat_id, msgs, monitor_id=monitor_a.id
+    )
+    b1 = await filter_new(
+        db, user_b.id, monitor_b.chat_id, msgs, monitor_id=monitor_b.id
+    )
     assert len(a1) == 3, "A не получил свои новые посты"
-    assert len(b1) == 3, "дедуп пробросил строки A на B (нет user_id в ключе)"
+    assert len(b1) == 3, "дедуп пробросил строки A на B"
 
 
 @pytest.mark.asyncio
@@ -119,7 +134,9 @@ async def test_filter_new_dedupes_within_batch(db, user_a):
     monitor = await _seed_monitor(db, user_a.id)
     msgs = _msgs(3) + [{"id": 1, "text": "дубль первого"}]
 
-    fresh = await filter_new(db, user_a.id, monitor.chat_id, msgs)
+    fresh = await filter_new(
+        db, user_a.id, monitor.chat_id, msgs, monitor_id=monitor.id
+    )
     ids = [m["id"] for m in fresh]
     assert ids.count(1) == 1, "дубль внутри батча прошёл как новый"
     assert len(ids) == 3, f"вернуто {len(ids)} постов вместо 3"
@@ -129,16 +146,29 @@ async def test_filter_new_dedupes_within_batch(db, user_a):
 async def test_filter_new_empty_batch_is_noop(db, user_a):
     """Пустой батч — нет запросов, нет строк (порт поведения оригинала)."""
     monitor = await _seed_monitor(db, user_a.id)
-    assert await filter_new(db, user_a.id, monitor.chat_id, []) == []
-
-
-def test_sent_messages_unique_constraint_declared():
-    """Ключ дедупликации — (user_id, chat_id, message_id): без user_id
-    мульти-тенантная дедупликация невозможна в принципе."""
-    cols = set()
-    for constraint in SentMessage.__table__.constraints:
-        if type(constraint).__name__ == "UniqueConstraint":
-            cols.update(col.name for col in constraint.columns)
-    assert {"user_id", "chat_id", "message_id"} <= cols, (
-        f"unique-ограничение не покрывает тенантный ключ: {cols}"
+    assert (
+        await filter_new(db, user_a.id, monitor.chat_id, [], monitor_id=monitor.id)
+        == []
     )
+
+
+def test_sent_messages_unique_key_declared():
+    """Ключ дедупликации — (monitor_id, chat_id, message_id).
+
+    Утверждение изменено осознанно (задача 11.2). Прежний ключ был
+    `(user_id, chat_id, message_id)` и был верен, пока монитор равнялся
+    каналу: тенантность обеспечивал `user_id`. С приходом источников один
+    канал может входить в несколько источников с разными критериями, и при
+    прежнем ключе пост, увиденный первым источником, для второго переставал
+    существовать.
+
+    Тенантность при этом не потеряна, а усилена: `monitor_id` ссылается на
+    источник, который сам принадлежит пользователю, то есть ключ стал
+    строго уже прежнего. Индекс частичный — строки без источника (история
+    удалённого) в ключ не входят.
+    """
+    indexes = {index.name: index for index in SentMessage.__table__.indexes}
+    key = indexes.get("uq_sent_messages_source_dedup")
+    assert key is not None, "нет ключа дедупликации по источнику"
+    assert key.unique, "ключ дедупликации перестал быть уникальным"
+    assert [col.name for col in key.columns] == ["monitor_id", "chat_id", "message_id"]
