@@ -43,11 +43,18 @@ import signal
 import uuid
 from collections.abc import Awaitable, Callable
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db import TenantRepo, get_sessionmaker
-from app.models import FeedItem, Integration, Job, Monitor, TelegramAccount
+from app.models import (
+    FeedItem,
+    Integration,
+    Job,
+    Monitor,
+    SentMessage,
+    TelegramAccount,
+)
 from app.security.crypto import key_fingerprint, validate_encryption_key
 from app.security.log_redaction import install_log_redaction
 from app.services.cleanup import purge_older_than
@@ -62,6 +69,7 @@ from app.services.jobs import (
 from app.services.journal import add_log, redact
 from app.services.llm import process_messages_batch_with_llm
 from app.services.ops import WORKER_NAME, record_heartbeat
+from app.services.stopwords import parse_stop_words, split_by_stop_words
 from app.services.tg_gateway import TelegramGateway
 from app.services.tg_pool import TelegramClientPool, flood_guarded_call
 
@@ -551,12 +559,49 @@ class Worker:
                 chat_title=monitor.chat_title,
             )
             return "no_new"
+
+        # Стоп-слова отсекают ДО модели (11.3): дешевле строкой, чем
+        # объяснением в промпте. Отсеянные помечаются обработанными —
+        # они уже зарезервированы дедупликацией, и без пометки вернулись
+        # бы на следующем прогоне, чтобы отсеяться снова.
+        fresh, filtered = split_by_stop_words(
+            fresh, parse_stop_words(monitor.stop_words or "")
+        )
+        if filtered:
+            await db.execute(
+                update(SentMessage)
+                .where(
+                    SentMessage.monitor_id == monitor.id,
+                    SentMessage.chat_id == chat_id,
+                    SentMessage.message_id.in_([m["id"] for m in filtered]),
+                )
+                .values(processed=True)
+            )
+            await db.commit()
+        if not fresh:
+            # «Всё отсеяно» — это не «новых нет»: слишком широкое
+            # стоп-слово иначе выглядит как замолчавший канал.
+            await add_log(
+                db,
+                user_id,
+                "SCHEDULER_POLL",
+                f"Опрос завершён: {len(filtered)} постов отсеяно стоп-словами, "
+                "до анализа не дошло ничего.",
+                status="SKIPPED_STOPWORDS",
+                chat_id=chat_id,
+                chat_title=monitor.chat_title,
+            )
+            return "filtered_out"
+
         batch = {
             "job_id": str(uuid.uuid4()),
             "chat_id": chat_id,
             "chat_title": monitor.chat_title,
             "chat_username": monitor.chat_username or "",
             "messages_count": len(fresh),
+            # счётчик едет с батчем: он нужен и в карточке ленты, а не
+            # только в журнале
+            "filtered_count": len(filtered),
             "messages": fresh,
         }
         job = Job(
