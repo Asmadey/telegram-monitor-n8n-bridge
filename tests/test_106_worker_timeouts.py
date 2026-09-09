@@ -38,8 +38,6 @@ from test_58_worker_body import FakeEntity, FakeTelegram, _monitor, _utc, _worke
 
 from app.models import LogEntry, WorkerHeartbeat
 
-pytestmark = pytest.mark.asyncio
-
 
 class HangingTelegram(FakeTelegram):
     """Шлюз, который не возвращается. Ровно то, что случилось на проде."""
@@ -69,6 +67,7 @@ async def _poll_errors(db) -> list[LogEntry]:
 
 
 @pytest.mark.parametrize("hang_on", ["resolve", "fetch"])
+@pytest.mark.asyncio
 async def test_hanging_call_is_cut_and_the_tick_goes_on(db, user, hang_on, monkeypatch):
     """Вызов, который не возвращается, обязан быть прерван."""
     from app import worker as worker_module
@@ -86,6 +85,7 @@ async def test_hanging_call_is_cut_and_the_tick_goes_on(db, user, hang_on, monke
     )
 
 
+@pytest.mark.asyncio
 async def test_timeout_is_not_reported_as_success(db, user, monkeypatch):
     """Прерванный опрос — не «опрошено». Иначе тишина выглядит нормой."""
     from app import worker as worker_module
@@ -99,6 +99,7 @@ async def test_timeout_is_not_reported_as_success(db, user, monkeypatch):
     assert polled == 0, "прерванный по тайм-ауту опрос посчитан успешным"
 
 
+@pytest.mark.asyncio
 async def test_one_hung_channel_does_not_block_the_others(db, user, monkeypatch):
     """Сломанный канал не забирает остальных с собой."""
     from app import worker as worker_module
@@ -126,6 +127,7 @@ async def test_one_hung_channel_does_not_block_the_others(db, user, monkeypatch)
     )
 
 
+@pytest.mark.asyncio
 async def test_heartbeat_marks_progress_not_just_the_start_of_the_tick(
     db, user, monkeypatch
 ):
@@ -164,6 +166,7 @@ async def test_heartbeat_marks_progress_not_just_the_start_of_the_tick(
     )
 
 
+@pytest.mark.asyncio
 async def test_hung_call_still_stops_the_heartbeat(db, user, monkeypatch):
     """Контракт 10.2 не ослаблен: зависший воркер выглядит мёртвым.
 
@@ -182,6 +185,7 @@ async def test_hung_call_still_stops_the_heartbeat(db, user, monkeypatch):
     )
 
 
+@pytest.mark.asyncio
 async def test_tick_budget_stops_taking_new_work(db, user, monkeypatch):
     """Бюджет тика: исчерпан — новые единицы работы не начинаются.
 
@@ -218,6 +222,7 @@ async def test_tick_budget_stops_taking_new_work(db, user, monkeypatch):
     )
 
 
+@pytest.mark.asyncio
 async def test_our_timeout_is_not_confused_with_the_calls_own():
     """Чужой тайм-аут не выдаётся за наш.
 
