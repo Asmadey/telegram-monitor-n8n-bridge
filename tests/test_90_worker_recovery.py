@@ -247,14 +247,20 @@ async def test_monthly_budget_defers_unread_batch(db, user):
 
 @pytest.mark.asyncio
 async def test_retention_keeps_dedup_and_unfinished_analysis(db, user):
-    from app.models import SentMessage
+    from app.models import Monitor, SentMessage
     from app.services.cleanup import purge_older_than
     from app.services.dedup import filter_new
 
     old = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=60)
+    # ключ дедупликации теперь считается по источнику (11.2), поэтому у
+    # строки должен быть владелец-источник — иначе она в ключ не входит
+    source = Monitor(user_id=user.id, public_id="retention", title="Источник")
+    db.add(source)
+    await db.commit()
     db.add(
         SentMessage(
             user_id=user.id,
+            monitor_id=source.id,
             chat_id=-1001,
             message_id=11,
             sent_at=old,
@@ -273,7 +279,12 @@ async def test_retention_keeps_dedup_and_unfinished_analysis(db, user):
     )
     await db.commit()
     await purge_older_than(db, user.id, 30)
-    assert await filter_new(db, user.id, -1001, [{"id": 11, "text": "again"}]) == []
+    assert (
+        await filter_new(
+            db, user.id, -1001, [{"id": 11, "text": "again"}], monitor_id=source.id
+        )
+        == []
+    )
     assert list(await db.scalars(select(FeedItem)))
 
 

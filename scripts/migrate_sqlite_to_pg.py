@@ -195,19 +195,41 @@ async def _migrate_monitors(session, rows, user_id) -> int:
     return inserted
 
 
+async def _sources_by_chat(session, user_id) -> dict[int, int]:
+    """chat_id → id источника. Мониторы переносятся первыми, поэтому карта
+    уже полна к моменту переноса истории."""
+    rows = await session.execute(
+        select(Monitor.chat_id, Monitor.id).where(
+            Monitor.user_id == user_id, Monitor.chat_id.is_not(None)
+        )
+    )
+    return {chat_id: monitor_id for chat_id, monitor_id in rows}
+
+
 async def _migrate_sent_messages(session, rows, user_id) -> int:
-    """Дедупликация переезжает первой: без неё 192 дубля в n8n."""
+    """Дедупликация переезжает первой: без неё 192 дубля в n8n.
+
+    Ключ считается по источнику (11.2), поэтому каждая строка получает
+    `monitor_id`. Строка без источника (канал удалили ещё в старой базе) в
+    ключ не входит вовсе — переносить её значило бы плодить дубли при
+    каждом повторном прогоне, поэтому она пропускается.
+    """
+    sources = await _sources_by_chat(session, user_id)
     inserted = 0
     for r in rows:
+        if sources.get(r["chat_id"]) is None:
+            continue
         stmt = (
             pg_insert(SentMessage)
             .values(
                 # PK старой базы НЕ переносится. Он всегда начинается с 1, и
                 # у второго же тенанта вызывал duplicate key на sent_messages_pkey:
-                # ON CONFLICT целится в (user_id, chat_id, message_id), а не в PK,
-                # поэтому коллизию первичного ключа не перехватывал. Идемпотентность
-                # обеспечивает бизнес-ключ — он и есть правильная цель конфликта.
+                # ON CONFLICT целится в бизнес-ключ, а не в PK, поэтому
+                # коллизию первичного ключа не перехватывал. Идемпотентность
+                # обеспечивает бизнес-ключ — он и есть правильная цель
+                # конфликта. С задачи 11.2 ключ считается по источнику.
                 user_id=user_id,
+                monitor_id=sources[r["chat_id"]],
                 chat_id=r["chat_id"],
                 message_id=r["message_id"],
                 date=_ts(r["date"]),
@@ -221,7 +243,10 @@ async def _migrate_sent_messages(session, rows, user_id) -> int:
                 has_media=bool(r.get("has_media") or 0),
                 reactions_json=r.get("reactions_json") or "[]",
             )
-            .on_conflict_do_nothing(index_elements=["user_id", "chat_id", "message_id"])
+            .on_conflict_do_nothing(
+                index_elements=["monitor_id", "chat_id", "message_id"],
+                index_where=SentMessage.monitor_id.is_not(None),
+            )
         )
         result = await session.execute(stmt)
         inserted += result.rowcount or 0

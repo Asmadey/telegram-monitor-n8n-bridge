@@ -49,16 +49,22 @@ def test_user_id_is_foreign_key_to_users():
         assert fks[0].column.table is users, f"{name}: user_id ссылается не на users"
 
 
-def test_sent_messages_unique_per_tenant():
-    """Дедуп теперь в разрезе тенанта: UNIQUE(user_id, chat_id, message_id)."""
+def test_sent_messages_unique_per_source():
+    """Дедуп в разрезе ИСТОЧНИКА: UNIQUE(monitor_id, chat_id, message_id).
+
+    Утверждение изменено осознанно (задача 11.2). Прежний ключ включал
+    `user_id` и был верен, пока монитор равнялся каналу. С приходом
+    источников один канал может входить в несколько источников с разными
+    критериями, и при прежнем ключе пост, увиденный первым источником, для
+    второго переставал существовать.
+
+    Тенантность не потеряна, а усилена: источник принадлежит пользователю,
+    то есть разрез стал строго уже прежнего.
+    """
     t = Base.metadata.tables["sent_messages"]
-    combos = {
-        tuple(sorted(c.name for c in u.columns))
-        for u in t.constraints
-        if getattr(u, "columns", None) and u.__class__.__name__ == "UniqueConstraint"
-    }
-    assert ("chat_id", "message_id", "user_id") in combos, (
-        f"нет UNIQUE(user_id, chat_id, message_id), найдено: {combos}"
+    keys = {tuple(c.name for c in index.columns) for index in t.indexes if index.unique}
+    assert ("monitor_id", "chat_id", "message_id") in keys, (
+        f"нет уникального ключа по источнику, найдено: {keys}"
     )
 
 

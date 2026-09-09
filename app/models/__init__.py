@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Identity,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -24,6 +25,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
 )
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -297,7 +299,23 @@ class SentMessage(Base):
     reactions_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    __table_args__ = (UniqueConstraint("user_id", "chat_id", "message_id"),)
+    # Ключ дедупликации — по ИСТОЧНИКУ (11.2): один канал может входить в
+    # несколько источников, и каждый разбирает его посты по своим
+    # критериям. Индекс частичный — строки без источника (история
+    # удалённого) в ключ не входят и никому не мешают.
+    # `text` здесь — имя колонки этой же таблицы, и внутри тела класса оно
+    # затеняет sqlalchemy.text: отсюда алиас sa_text.
+    __table_args__ = (
+        Index(
+            "uq_sent_messages_source_dedup",
+            "monitor_id",
+            "chat_id",
+            "message_id",
+            unique=True,
+            postgresql_where=sa_text("monitor_id IS NOT NULL"),
+            sqlite_where=sa_text("monitor_id IS NOT NULL"),
+        ),
+    )
 
 
 class FeedItem(Base):

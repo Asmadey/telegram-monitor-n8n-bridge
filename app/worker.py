@@ -529,7 +529,16 @@ class Worker:
         # Reserve IDs and their full retry payload in ONE transaction. A crash
         # never leaves a reservation without recoverable source messages.
         fresh = await filter_new(
-            db, user_id, chat_id, messages, commit=False, processed=False
+            db,
+            user_id,
+            chat_id,
+            messages,
+            # ключ дедупликации — по источнику (11.2): пока источник = один
+            # канал, это тот же монитор; с приходом конвейера сюда придёт
+            # идентификатор источника, а не канала
+            monitor_id=monitor.id,
+            commit=False,
+            processed=False,
         )
         if not fresh:
             await add_log(
