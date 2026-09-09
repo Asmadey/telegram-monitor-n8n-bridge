@@ -39,7 +39,12 @@ def test_headers_and_inline_code_and_links():
     out = to_telegram_html(
         "### Роли\nТехнологии: `Python`, `vLLM`\n[Вакансия](https://example.com/job)"
     )
-    assert "<b>Роли</b>" in out, f"заголовок остался решётками: {out!r}"
+    # Было `<b>Роли</b>`: пока доставка шла через `sendMessage`, заголовков
+    # в её HTML не существовало, и жирный был лучшим приближением. С
+    # переходом на `sendRichMessage` (9.19) заголовок стал настоящим тегом —
+    # уровень виден глазом, а не только жирностью. Запасной путь
+    # разворачивает его обратно в `<b>`.
+    assert "<h3>Роли</h3>" in out, f"заголовок остался решётками: {out!r}"
     assert "<code>Python</code>" in out
     assert '<a href="https://example.com/job">Вакансия</a>' in out
     assert "#" not in out.split("\n")[0]
