@@ -181,3 +181,50 @@ async def test_channel_can_be_removed(anon_client, db, user):
     assert removed.status_code == 200, removed.text
     listed = (await anon_client.get("/api/sources")).json()
     assert listed["sources"][0]["channels"] == []
+
+
+async def test_patch_updates_only_given_fields(anon_client, db, user):
+    """Перенесено из набора снятого `/api/monitors` (11.8).
+
+    Частичная правка не должна обнулять соседние поля: форма присылает то,
+    что изменил пользователь, а не всю карточку целиком.
+    """
+    await act_as(anon_client, db, user)
+    source = await _source(
+        anon_client, stop_words="разработчик", answer_prompt="оформить кратко"
+    )
+
+    patched = await anon_client.patch(
+        f"/api/sources/{source['public_id']}", json={"interval_minutes": 360}
+    )
+    body = patched.json()
+    assert body["interval_minutes"] == 360
+    assert body["stop_words"] == "разработчик", "правка интервала стёрла стоп-слова"
+    assert body["answer_prompt"] == "оформить кратко", "правка стёрла промпт"
+
+
+async def test_reset_dedup_touches_only_this_source(anon_client, db, user):
+    """Перенесено из набора снятого `/api/monitors` (11.8).
+
+    Сброс истории у одного источника не должен трогать соседний, который
+    следит за тем же каналом: иначе ему прилетят сотни старых постов.
+    """
+    from sqlalchemy import select
+
+    from app.models import Monitor, SentMessage
+    from app.services.dedup import filter_new
+
+    await act_as(anon_client, db, user)
+    first = await _source(anon_client, title="Продажи")
+    second = await _source(anon_client, title="Аналитика")
+    ids = {s.public_id: s.id for s in await db.scalars(select(Monitor))}
+    posts = [{"id": 11, "text": "пост"}]
+    for public_id in (first["public_id"], second["public_id"]):
+        await filter_new(db, user.id, -1001, posts, monitor_id=ids[public_id])
+
+    await anon_client.post(f"/api/sources/{first['public_id']}/reset-dedup")
+
+    left = list(await db.scalars(select(SentMessage.monitor_id)))
+    assert left == [ids[second["public_id"]]], (
+        f"сброс задел чужую историю: осталось {left}"
+    )

@@ -88,7 +88,7 @@ async def test_reanalysis_uses_the_channel_prompt(db, user):
         user_id=user.id,
         monitor_id=monitor.id,
         job_id="feed-1",
-        chat_id=monitor.chat_id,
+        chat_id=-1001,
         raw_messages_json=json.dumps([{"id": 11, "text": "пост"}]),
     )
     db.add(item)
@@ -125,7 +125,7 @@ async def test_reanalysis_delivers_nothing(db, user):
         user_id=user.id,
         monitor_id=monitor.id,
         job_id="feed-2",
-        chat_id=monitor.chat_id,
+        chat_id=-1001,
         raw_messages_json=json.dumps([{"id": 11, "text": "пост"}]),
     )
     db.add(item)

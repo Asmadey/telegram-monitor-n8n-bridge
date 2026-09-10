@@ -149,20 +149,28 @@ async def test_channel_already_added_by_hand_is_not_duplicated(db, user):
     """
     from sqlalchemy import func, select
 
-    from app.models import Monitor
+    from app.models import Monitor, MonitorChannel
     from scripts.migrate_sqlite_to_pg import _migrate_monitors
 
+    # «Заведён руками» теперь значит «есть строка канала»: источник и канал
+    # разъехались (Фаза 11), и узнавать чат надо по каналу.
+    source = Monitor(
+        user_id=user.id,
+        public_id="новый-идентификатор",
+        title="Finder.work",
+        interval_minutes=360,  # владелец сам поставил 6 часов
+    )
+    db.add(source)
+    await db.commit()
     db.add(
-        Monitor(
+        MonitorChannel(
+            monitor_id=source.id,
             user_id=user.id,
-            public_id="новый-идентификатор",
             chat_target="@finder",
             chat_title="Finder.work",
             chat_id=-100123,
-            interval_minutes=360,  # владелец сам поставил 6 часов
             limit_count=20,
-            offset_hours=24,
-            prompt="новый промпт",
+            extract_prompt="новый промпт",
         )
     )
     await db.commit()
@@ -178,15 +186,23 @@ async def test_channel_already_added_by_hand_is_not_duplicated(db, user):
     await db.commit()
 
     total = await db.scalar(
-        select(func.count()).select_from(Monitor).where(Monitor.user_id == user.id)
+        select(func.count())
+        .select_from(MonitorChannel)
+        .where(MonitorChannel.user_id == user.id)
     )
     assert total == 2, (
         f"каналов стало {total}: существующий канал приехал вторым экземпляром "
         "и теперь опрашивается дважды"
     )
 
-    kept = (await db.scalars(select(Monitor).where(Monitor.chat_id == -100123))).first()
-    assert kept.interval_minutes == 360, (
+    kept = (
+        await db.scalars(
+            select(MonitorChannel).where(MonitorChannel.chat_id == -100123)
+        )
+    ).first()
+    source = await db.get(Monitor, kept.monitor_id)
+    assert source.interval_minutes == 360, (
         "перенос откатил интервал к старому значению — владелец менял его "
         "уже в новой сборке"
     )
+    assert kept.extract_prompt == "новый промпт", "перенос затёр промпт канала"

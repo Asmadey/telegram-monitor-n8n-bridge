@@ -20,11 +20,11 @@ photo_base64, и raw_messages_json целиком: двести аватарок
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import delete, func
+from sqlalchemy import delete, func, select
 
 from app.db import TenantRepo, deleted_count
 from app.deps import get_tenant_repo, require_user
-from app.models import ChatAvatar, FeedItem, Monitor
+from app.models import ChatAvatar, FeedItem, MonitorChannel
 from app.services.jobs import enqueue_job
 
 router = APIRouter(dependencies=[Depends(require_user)])
@@ -91,7 +91,12 @@ async def chat_avatar(
     """Аватарка канала: только юзеру, который мониторит этот канал."""
     monitored = (
         await repo.db.scalars(
-            repo.query(Monitor).where(Monitor.chat_id == chat_id).limit(1)
+            select(MonitorChannel)
+            .where(
+                MonitorChannel.user_id == repo.user_id,
+                MonitorChannel.chat_id == chat_id,
+            )
+            .limit(1)
         )
     ).first()
     if monitored is None:

@@ -20,7 +20,6 @@ from app.api import (
     feed,
     integrations,
     journal,
-    monitors,
     ops,
     public,
     sources,
@@ -73,7 +72,6 @@ app.include_router(telegram.router)  # send-code/sign-in (3.3), state в БД
 # первый ресурсный роутер из server.py (5.4): лента + аватарки. Свип
 # изоляции эндпоинт-уровня (test_30) закрыт вместе с этим переносом.
 app.include_router(feed.router)
-app.include_router(monitors.router)  # К2: каналы мониторинга (устаревает с 11.6)
 app.include_router(sources.router)  # 11.6: источники и их каналы
 app.include_router(journal.router)  # К2: сохранённые посты и журнал
 app.include_router(integrations.router)  # К2: n8n / OpenRouter / бот

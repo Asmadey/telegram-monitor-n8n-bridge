@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.api.monitors import MonitorCreate
+from app.api.sources import ChannelCreate
 from app.config import Settings
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,11 +99,18 @@ def test_railway_database_url_selects_installed_async_driver():
 
 
 def test_message_batch_can_exceed_old_quota():
-    try:
-        req = MonitorCreate(chat_target="@example", limit=1000)
-    except ValueError:
-        req = None
-    assert req is not None, "User cannot save requested batch larger than 100"
+    """Монолит резал лимит на сотне; потолок остался, но осмысленный.
+
+    Проверялось `limit=1000` — просто «больше ста». С Фазой 11 у каждого
+    канала источника свой лимит, и 200 постов на канал при десяти каналах
+    это уже две тысячи постов в одном прогоне: потолок 200 назван в
+    `ChannelCreate` осознанно, а не унаследован от монолита.
+    """
+    assert ChannelCreate(chat_target="@example", limit=150).limit == 150, (
+        "лимит выше сотни снова запрещён — это ограничение монолита"
+    )
+    with __import__("pytest").raises(ValueError):
+        ChannelCreate(chat_target="@example", limit=1000)
 
 
 def test_firebase_verifier_requires_explicit_project(monkeypatch):
@@ -282,9 +289,14 @@ def test_admin_sdk_is_not_a_runtime_dependency():
 
 
 @pytest.mark.asyncio
-async def test_large_batch_saved_and_paginated_channels_stay_private(
-    anon_client, db, user_a, user_b
-):
+async def test_channels_of_another_owner_stay_private(anon_client, db, user_a, user_b):
+    """Список источников показывает только свои.
+
+    Раньше проверялась ещё и постраничная выдача `/api/monitors`. Её больше
+    нет: у источника потолок в десять каналов, а самих источников у
+    пользователя единицы — страницы там нечего листать. Осталось то, ради
+    чего тест писался: чужие источники в список не попадают.
+    """
     from conftest import act_as
 
     from app.models import Monitor
@@ -295,19 +307,13 @@ async def test_large_batch_saved_and_paginated_channels_stay_private(
         (user_a.id, "two"),
         (user_b.id, "private"),
     ):
-        db.add(Monitor(user_id=owner, public_id=public_id, chat_target="@" + public_id))
+        db.add(Monitor(user_id=owner, public_id=public_id, title=public_id))
     await db.commit()
-    response = await anon_client.patch("/api/monitors/one", json={"limit": 1000})
-    assert response.status_code == 200, response.text
-    assert response.json()["limit"] == 1000
-    first = (await anon_client.get("/api/monitors?limit=1&offset=0")).json()["monitors"]
-    second = (await anon_client.get("/api/monitors?limit=1&offset=1")).json()[
-        "monitors"
-    ]
-    assert {first[0]["public_id"], second[0]["public_id"]} == {"one", "two"}
-    assert (await anon_client.get("/api/monitors?limit=1&offset=2")).json()[
-        "monitors"
-    ] == []
+
+    listed = (await anon_client.get("/api/sources")).json()["sources"]
+    assert {s["public_id"] for s in listed} == {"one", "two"}, (
+        f"в списке чужой источник: {[s['public_id'] for s in listed]}"
+    )
 
 
 def test_static_password_reset_bootstraps_before_first_post():

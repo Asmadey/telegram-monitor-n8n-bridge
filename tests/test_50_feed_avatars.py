@@ -204,11 +204,33 @@ async def test_avatar_for_owner_with_cache_control_and_404_for_stranger(
     ChatAvatar = getattr(models, "ChatAvatar", None)
     assert ChatAvatar is not None, "app.models.ChatAvatar не существует (задача 5.4)"
     Monitor = models.Monitor
+    MonitorChannel = models.MonitorChannel
 
-    db.add(Monitor(user_id=user.id, chat_target="@a", chat_id=CHAT_ID))
+    source = Monitor(user_id=user.id, title="A")
+    db.add(source)
+    await db.commit()
+    # Доступ к аватарке даёт КАНАЛ, а не источник (11.8): чат уехал туда
+    db.add(
+        MonitorChannel(
+            monitor_id=source.id,
+            user_id=user.id,
+            chat_target="@a",
+            chat_id=CHAT_ID,
+        )
+    )
     db.add(ChatAvatar(chat_id=CHAT_ID, image_bytes=AVATAR_BYTES))
     # канал мониторится, но фото не скачано (воркер ещё не ходил) — тоже 404
-    db.add(Monitor(user_id=user.id, chat_target="@empty", chat_id=CHAT_ID + 1))
+    empty = Monitor(user_id=user.id, title="Пустой")
+    db.add(empty)
+    await db.commit()
+    db.add(
+        MonitorChannel(
+            monitor_id=empty.id,
+            user_id=user.id,
+            chat_target="@empty",
+            chat_id=CHAT_ID + 1,
+        )
+    )
     await db.commit()
 
     await act_as(anon_client, db, user)

@@ -48,6 +48,13 @@ class RecordingClient:
     async def get_entity(self, target):
         return types.SimpleNamespace(id=-100123, title="Канал", username="theyseeku")
 
+    async def iter_dialogs(self, limit=None):
+        """Пустой список: тест спрашивает, ЧЬЕЙ сессией открыт клиент, а не
+        что он вернул. Без этого метода двойник падал там, где живой клиент
+        отвечает, — дефект двойника, а не кода."""
+        for item in ():
+            yield item
+
 
 async def _connected_account(db, user):
     from app.security.crypto import encrypt
@@ -128,14 +135,20 @@ async def test_without_a_connected_account_the_answer_is_explicit(
 
 
 @pytest.mark.asyncio
-async def test_resolving_a_channel_no_longer_borrows_the_login_client(
+async def test_account_action_no_longer_borrows_the_login_client(
     anon_client, db, user, monkeypatch
 ):
-    """Сквозная проверка: добавление канала идёт сессией аккаунта.
+    """Сквозная проверка: действие от имени аккаунта идёт его сессией.
 
     Двойник подменяет не резолвер, а сам Telethon — иначе вопрос о том,
     чьей сессией выполняется действие, снова окажется вне теста (ровно так
     дефект и дожил до прода).
+
+    Раньше проверялось добавление канала. С задачи 11.6 канал добавляется
+    по ссылке и разрешается конвейером при первом опросе, поэтому здесь
+    берётся другое действие того же рода — список диалогов аккаунта.
+    Контракт тот же: клиент входа несёт пустую сессию, и любое действие от
+    имени аккаунта обязано брать сохранённую.
     """
     from app.services import tg_auth
 
@@ -145,16 +158,12 @@ async def test_resolving_a_channel_no_longer_borrows_the_login_client(
     built: list[RecordingClient] = []
     _patch_telethon(monkeypatch, tg_auth, built)
 
-    created = await anon_client.post(
-        "/api/monitors",
-        json={"chat_target": "https://t.me/theyseeku", "interval_minutes": 60},
-    )
+    await anon_client.get("/api/telegram/dialogs?limit=5")
 
-    assert created.status_code in (200, 201), created.text
     assert built, "клиент вообще не создавался"
     assert built[0].built_from == ACCOUNT_SESSION, (
-        "канал разрешался клиентом входа: после успешного входа его сессия "
-        "пуста, отсюда AUTH_KEY_UNREGISTERED"
+        "действие выполнялось клиентом входа: после успешного входа его "
+        "сессия пуста, отсюда AUTH_KEY_UNREGISTERED"
     )
 
 
