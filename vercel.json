@@ -25,7 +25,7 @@
       "destination": "/"
     },
     {
-      "source": "/channels",
+      "source": "/sources",
       "destination": "/"
     },
     {
