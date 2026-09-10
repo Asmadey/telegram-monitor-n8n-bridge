@@ -66,6 +66,26 @@ class ChannelUpdate(BaseModel):
     position: int | None = Field(default=None, ge=0, le=MAX_CHANNELS)
 
 
+def clean_target(target: str) -> str | int:
+    """@name / https://t.me/name / -100... → то, что понимает get_entity.
+
+    Переехало из `app/api/monitors.py` вместе со снятием того модуля
+    (11.8): два API над одной таблицей неизбежно расходятся, и это уже
+    случилось однажды.
+    """
+    target = target.strip()
+    if "t.me/" in target:
+        target = target.split("t.me/")[-1].replace("+", "").replace("/", "")
+    if target.startswith("@"):
+        target = target[1:]
+    if target.startswith("-") or target.isdigit():
+        try:
+            return int(target)
+        except ValueError:
+            pass
+    return target
+
+
 def _check_prompt(text: str | None, what: str) -> str:
     value = (text or "").strip()
     if len(value) > MAX_PROMPT_CHARS:
@@ -392,6 +412,47 @@ async def run_source(
         payload={"monitor_public_id": source.public_id},
     )
     return {"status": "queued", "job_id": job.id, "public_id": public_id}
+
+
+@router.post("/api/sources/{public_id}/reset-dedup")
+async def reset_dedup(
+    public_id: str,
+    repo: TenantRepo = Depends(get_tenant_repo),
+    channel_id: int | None = None,
+) -> dict:
+    """Забыть, какие посты уже прочитаны, и разобрать их заново.
+
+    Единственный законный способ применить улучшенный промпт к тому, что
+    уже прочитано: в обычном ходе дел пост разбирается один раз за жизнь
+    источника.
+
+    Удаление идёт в разрезе ИСТОЧНИКА: соседний источник, следящий за тем
+    же каналом, свою историю сохраняет — иначе ему прилетели бы сотни
+    старых постов повторно.
+    """
+    source = await _get_or_404(repo, public_id)
+    channels = await _channels_of(repo, source.id)
+    if channel_id is not None:
+        channels = [c for c in channels if c.id == channel_id]
+        if not channels:
+            raise HTTPException(status_code=404, detail="Канал не найден в источнике")
+
+    condition = SentMessage.monitor_id == source.id
+    if channel_id is not None:
+        condition = condition & (SentMessage.chat_id == channels[0].chat_id)
+    result = await repo.db.execute(delete(SentMessage).where(condition))
+    await repo.db.commit()
+    removed = deleted_count(result)
+    await add_log(
+        repo.db,
+        repo.user_id,
+        "DEDUP_RESET",
+        f"Сброшена история прочитанных постов источника «{source.title}» "
+        f"({removed} записей)",
+        "SUCCESS",
+        chat_title=source.title,
+    )
+    return {"status": "reset", "removed": removed}
 
 
 @router.get("/api/sources/{public_id}/status")

@@ -47,7 +47,8 @@ def _msgs(n: int = 50) -> list[dict]:
 
 
 async def _seed_monitor(db, user_id: int) -> Monitor:
-    monitor = Monitor(user_id=user_id, chat_target="@race", chat_id=CHAT_ID)
+    # Колонки канала сняты с источника (11.8): здесь нужен только он сам
+    monitor = Monitor(user_id=user_id, title="Гонка")
     db.add(monitor)
     await db.commit()
     return monitor
@@ -69,7 +70,7 @@ async def test_concurrent_dedup_yields_each_message_once(db_engine, db, user_a):
     async def run_one() -> list[dict]:
         async with sessionmaker() as session:
             return await filter_new(
-                session, user_a.id, monitor.chat_id, msgs, monitor_id=monitor.id
+                session, user_a.id, CHAT_ID, msgs, monitor_id=monitor.id
             )
 
     a, b = await asyncio.gather(run_one(), run_one())
@@ -85,14 +86,10 @@ async def test_filter_new_marks_and_returns_only_unseen(db, user_a):
     monitor = await _seed_monitor(db, user_a.id)
     msgs = _msgs(5)
 
-    fresh = await filter_new(
-        db, user_a.id, monitor.chat_id, msgs, monitor_id=monitor.id
-    )
+    fresh = await filter_new(db, user_a.id, CHAT_ID, msgs, monitor_id=monitor.id)
     assert [m["id"] for m in fresh] == [1, 2, 3, 4, 5], "первый вызов не вернул все"
 
-    again = await filter_new(
-        db, user_a.id, monitor.chat_id, msgs, monitor_id=monitor.id
-    )
+    again = await filter_new(db, user_a.id, CHAT_ID, msgs, monitor_id=monitor.id)
     assert again == [], "уже отправленные вернулись как новые"
 
     stored = (
@@ -117,12 +114,8 @@ async def test_filter_new_scopes_by_tenant(db, user_a, user_b):
     monitor_b = await _seed_monitor(db, user_b.id)
     msgs = _msgs(3)
 
-    a1 = await filter_new(
-        db, user_a.id, monitor_a.chat_id, msgs, monitor_id=monitor_a.id
-    )
-    b1 = await filter_new(
-        db, user_b.id, monitor_b.chat_id, msgs, monitor_id=monitor_b.id
-    )
+    a1 = await filter_new(db, user_a.id, CHAT_ID, msgs, monitor_id=monitor_a.id)
+    b1 = await filter_new(db, user_b.id, CHAT_ID, msgs, monitor_id=monitor_b.id)
     assert len(a1) == 3, "A не получил свои новые посты"
     assert len(b1) == 3, "дедуп пробросил строки A на B"
 
@@ -134,9 +127,7 @@ async def test_filter_new_dedupes_within_batch(db, user_a):
     monitor = await _seed_monitor(db, user_a.id)
     msgs = _msgs(3) + [{"id": 1, "text": "дубль первого"}]
 
-    fresh = await filter_new(
-        db, user_a.id, monitor.chat_id, msgs, monitor_id=monitor.id
-    )
+    fresh = await filter_new(db, user_a.id, CHAT_ID, msgs, monitor_id=monitor.id)
     ids = [m["id"] for m in fresh]
     assert ids.count(1) == 1, "дубль внутри батча прошёл как новый"
     assert len(ids) == 3, f"вернуто {len(ids)} постов вместо 3"
@@ -146,10 +137,7 @@ async def test_filter_new_dedupes_within_batch(db, user_a):
 async def test_filter_new_empty_batch_is_noop(db, user_a):
     """Пустой батч — нет запросов, нет строк (порт поведения оригинала)."""
     monitor = await _seed_monitor(db, user_a.id)
-    assert (
-        await filter_new(db, user_a.id, monitor.chat_id, [], monitor_id=monitor.id)
-        == []
-    )
+    assert await filter_new(db, user_a.id, CHAT_ID, [], monitor_id=monitor.id) == []
 
 
 def test_sent_messages_unique_key_declared():

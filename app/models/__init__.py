@@ -170,22 +170,8 @@ class Monitor(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
-    # Устаревшие поля канала: живут до ревизии 0013, пока воркер и
-    # интерфейс не переедут на monitor_channels. `chat_target` перестал
-    # быть обязательным — у источника канала нет, каналы у него в детях.
-    chat_target: Mapped[str | None] = mapped_column(String(255))
-    chat_title: Mapped[str | None] = mapped_column(String(512))
-    chat_username: Mapped[str | None] = mapped_column(String(255))
-    chat_id: Mapped[int | None] = mapped_column(BigInteger)
     interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
-    limit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
-    offset_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=24)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    last_checked: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_sent_message_id: Mapped[int] = mapped_column(
-        BigInteger, nullable=False, default=0
-    )
-    prompt: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )

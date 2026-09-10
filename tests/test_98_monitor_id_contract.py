@@ -9,7 +9,7 @@
 ответе нет. Дальше по цепочке:
 
 - `data-monitor-id="${m.id}"` превращается в строку `"undefined"`;
-- `toggleMonitor("undefined")` шлёт PATCH на `/api/monitors/undefined`,
+- `toggleMonitor("undefined")` слал PATCH на `/api/monitors/undefined`,
   получает 404, и подтверждения не показывает — оно за `res.ok`;
 - `openEditModal("undefined")` не находит канал и молча выходит.
 
@@ -54,28 +54,12 @@ def test_interface_addresses_monitors_by_the_key_api_returns():
 @pytest.mark.asyncio
 async def test_api_answers_with_public_id_and_nothing_else(anon_client, db, user):
     """Ответ несёт ровно тот ключ, которым интерфейс потом адресует канал."""
-    from app.api.monitors import get_entity_resolver
-    from app.main import app
-
-    class _Entity:
-        id = -1001234567890
-        title = "Тестовый канал"
-        username = "example"
-
-    app.dependency_overrides[get_entity_resolver] = lambda: (
-        lambda target: _entity_result()
-    )
-
-    async def _entity_result():
-        return _Entity()
-
     await act_as(anon_client, db, user)
-    try:
-        created = await anon_client.post(
-            "/api/monitors", json={"chat_target": "@example", "interval_minutes": 60}
-        )
-    finally:
-        app.dependency_overrides.pop(get_entity_resolver, None)
+    # Канал больше не разрешается при добавлении (11.6): его разрешает
+    # конвейер при первом опросе, поэтому подменять Telegram незачем.
+    created = await anon_client.post(
+        "/api/sources", json={"title": "Вакансии", "interval_minutes": 60}
+    )
 
     assert created.status_code in (200, 201), created.text
     body = created.json()

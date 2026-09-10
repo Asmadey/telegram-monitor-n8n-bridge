@@ -86,7 +86,7 @@ async def test_preflight_permits_the_csrf_header(anon_client, cross_site):
     """Без X-CSRF-Token в разрешённых заголовках ни один не-GET не пройдёт:
     браузер отсечёт запрос на предполётной проверке."""
     resp = await anon_client.options(
-        "/api/monitors",
+        "/api/sources",
         headers={
             "Origin": FRONTEND,
             "Access-Control-Request-Method": "POST",

@@ -356,7 +356,7 @@ class Worker:
                 )
             ).first()
             if monitor is None:
-                raise LookupError("монитор не найден у владельца задачи")
+                raise LookupError("источник не найден у владельца задачи")
             # Имя другое: у ветки батча `result` — словарь диспетчера, а
             # здесь исход опроса строкой. Одно имя на два типа mypy ловит
             # справедливо: читающему это тоже мешало бы.
@@ -376,7 +376,7 @@ class Worker:
             raise ValueError(f"неизвестный вид задачи: {job.kind}")
 
     async def _run_source_batch(
-        self, db, user_id: int, payload: dict, job=None, **senders
+        self, db, user_id: int, payload: dict, job=None, deliver=True, **senders
     ) -> dict:
         """Разбор по каналам, затем сведение (конвейер 11.4).
 
@@ -556,6 +556,11 @@ class Worker:
             analysis = f"{analysis}\n\n⚠️ Не разобраны: {', '.join(unparsed)}"
 
         messages = [m for group in groups for m in group["messages"]]
+        if not deliver:
+            # Переразбор обновляет карточку и НИЧЕГО не отправляет: нажатие
+            # «обновить» не должно рассылать второе сообщение об одном и
+            # том же батче (контракт 9.18).
+            return {"status": "reanalyzed", "analysis": analysis}
         return await self._dispatch(
             db,
             user_id,
@@ -584,35 +589,58 @@ class Worker:
         messages = json.loads(item.raw_messages_json or "[]")
         if not messages:
             raise ValueError("в записи нет исходных постов")
-        # Тем же промптом, что и плановый разбор. Без него переразбор
-        # карточки Finder.work (промпт на 4311 символов) возвращал ответ,
-        # собранный по умолчанию, — и выглядело это как «модель стала хуже
-        # отвечать», а не как потерянная настройка.
-        prompt = await self._prompt_for(db, user_id, item)
-        analysis = await self.llm(
-            db, user_id, messages, custom_prompt=prompt, require_success=True
-        )
+        # Переразбор идёт ТЕМ ЖЕ конвейером, что и плановый (11.8): посты
+        # группируются по каналам, у каждого свой промпт извлечения, затем
+        # сведение промптом источника. Иначе переразбор отвечает по другим
+        # правилам, и выглядит это как «модель стала хуже отвечать».
+        payload = await self._batch_from_feed(db, user_id, item, messages)
+        result = await self._run_source_batch(db, user_id, payload, deliver=False)
+        analysis = result.get("analysis") or ""
         if analysis:
             item.ai_analysis = analysis
             await db.commit()
 
-    async def _prompt_for(self, db, user_id: int, item: FeedItem) -> str | None:
-        """Промпт источника, которому принадлежит карточка ленты.
-
-        У карточек до Фазы 11 ссылки на источник нет (`monitor_id` появился
-        ревизией 0012 и заполнен переносом), поэтому запасной путь — по
-        каналу: он однозначен, пока источник равен каналу.
-        """
-        repo = TenantRepo(db, user_id)
-        query = repo.query(Monitor)
+    async def _batch_from_feed(
+        self, db, user_id: int, item: FeedItem, messages: list[dict]
+    ) -> dict:
+        """Собрать батч конвейера из сохранённых постов карточки ленты."""
+        source = None
         if item.monitor_id is not None:
-            query = query.where(Monitor.id == item.monitor_id)
-        elif item.chat_id is not None:
-            query = query.where(Monitor.chat_id == item.chat_id)
-        else:
-            return None
-        source = (await db.scalars(query)).first()
-        return source.prompt if source is not None else None
+            source = await db.get(Monitor, item.monitor_id)
+        channels = (
+            list(
+                await db.scalars(
+                    select(MonitorChannel).where(MonitorChannel.monitor_id == source.id)
+                )
+            )
+            if source is not None
+            else []
+        )
+        prompts = {c.chat_id: c.extract_prompt or "" for c in channels}
+        groups: dict[int, dict] = {}
+        for message in messages:
+            chat_id = message.get("chat_id") or item.chat_id or 0
+            group = groups.setdefault(
+                chat_id,
+                {
+                    "chat_id": chat_id,
+                    "chat_title": message.get("chat_title") or item.chat_title,
+                    "extract_prompt": prompts.get(chat_id, ""),
+                    "filtered_count": 0,
+                    "messages": [],
+                },
+            )
+            group["messages"].append(message)
+        return {
+            "batch": {
+                "job_id": item.job_id,
+                "chat_title": source.title if source is not None else item.chat_title,
+                "messages_count": len(messages),
+                "channels": list(groups.values()),
+                "unparsed": [],
+            },
+            "answer_prompt": source.answer_prompt if source is not None else "",
+        }
 
     # ------------------------------------------------------------------
     # 3. Расписание
@@ -622,7 +650,7 @@ class Worker:
         # Часы источника, а не канала: `last_checked` уехал в
         # monitor_channels, и по нему расписание либо не сработало бы
         # никогда, либо срабатывало каждый тик.
-        last = _aware(monitor.last_run_at or monitor.last_checked)
+        last = _aware(monitor.last_run_at)
         if last is None:  # только что добавленный канал — опрос сразу
             return True
         return now >= last + datetime.timedelta(minutes=monitor.interval_minutes)
@@ -677,7 +705,7 @@ class Worker:
             # это ленивая загрузка, то есть MissingGreenlet в async-сессии.
             # Тот же корень, что и у задач очереди выше.
             owner_id = monitor.user_id
-            chat_id, chat_title = monitor.chat_id, monitor.chat_title
+            chat_id, chat_title = None, monitor.title
             public_id = monitor.public_id
             try:
                 outcome = await self.poll_source(db, monitor, **senders)
@@ -702,7 +730,7 @@ class Worker:
                     chat_title=chat_title,
                 )
                 logger.warning(
-                    "монитор %s тенанта %s: опрос упал — %s",
+                    "источник %s тенанта %s: опрос упал — %s",
                     public_id,
                     owner_id,
                     # Причина — тип и текст, но НЕ трейсбек: он несёт

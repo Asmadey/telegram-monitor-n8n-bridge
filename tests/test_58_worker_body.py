@@ -3,7 +3,7 @@
 Каркас процесса закрыт задачей 4.1 (test_40): цикл тикает, переживает
 падения, умирает по SIGTERM с закрытым пулом. Тик при этом делал ровно
 одну вещь — щётку пула. То есть очередь `jobs` наполнялась из интерфейса
-(`POST /api/monitors/{id}/run` честно отвечал 202) и не разбиралась
+(`POST /api/sources/{id}/run` честно отвечал 202) и не разбиралась
 никогда, мониторы по расписанию не опрашивались, доставка не работала.
 Это блокировало живой деплой целиком.
 
@@ -110,6 +110,13 @@ class RecordingDispatcher:
 
 
 async def _monitor(db, user, **overrides) -> Monitor:
+    """Источник с одним каналом.
+
+    Помощник сохраняет ИМЕНА полей монолита (`chat_target`, `prompt`,
+    `limit_count`), потому что ими пользуется половина тестов, — но кладёт
+    их туда, где они теперь живут: в строку канала. Колонки-двойники сняты
+    с источника ревизией 0014 (11.8).
+    """
     fields = {
         "user_id": user.id,
         "chat_target": "@channel",
@@ -129,15 +136,16 @@ async def _monitor(db, user, **overrides) -> Monitor:
     # тестов сеет его старым способом.
     channel_fields = {
         "chat_target": fields.pop("chat_target", "@channel"),
-        "chat_title": fields.get("chat_title"),
-        "chat_username": fields.get("chat_username"),
-        "chat_id": fields.get("chat_id"),
+        "chat_title": fields.pop("chat_title", None),
+        "chat_username": fields.pop("chat_username", None),
+        "chat_id": fields.pop("chat_id", None),
         "limit_count": fields.pop("limit_count", 20),
         "offset_hours": fields.pop("offset_hours", 24),
-        "extract_prompt": fields.get("prompt") or "",
+        "extract_prompt": fields.pop("prompt", None) or "",
+        "last_checked": fields.pop("last_checked", None),
     }
-    fields.setdefault("title", fields.get("chat_title") or "Источник")
-    fields.setdefault("last_run_at", fields.get("last_checked"))
+    fields.setdefault("title", channel_fields["chat_title"] or "Источник")
+    fields.setdefault("last_run_at", channel_fields["last_checked"])
     monitor = Monitor(**fields)
     db.add(monitor)
     await db.commit()

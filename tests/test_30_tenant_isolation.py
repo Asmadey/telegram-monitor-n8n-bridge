@@ -23,7 +23,7 @@ import pytest
 from fastapi import params
 from sqlalchemy import BigInteger, Boolean, DateTime, Integer
 
-from app.models import Base, Monitor
+from app.models import Base, Monitor, MonitorChannel
 from tests.conftest import walk_routes
 
 # пути, где тенантный фильтр неприменим или не про данные тенанта.
@@ -161,7 +161,7 @@ async def test_repo_get_hides_foreign_rows_as_none(db, user_a, user_b):
     существования)."""
     from app.db import TenantRepo
 
-    monitor_b = Monitor(user_id=user_b.id, chat_target="@channel-of-b")
+    monitor_b = Monitor(user_id=user_b.id, title="Источник B")
     db.add(monitor_b)
     await db.commit()
 
@@ -242,13 +242,7 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
 
     marker = "tenant-a-secret-marker"
     chat_a, chat_b = 424242501, 424242502
-    monitor_a = Monitor(
-        user_id=user_a.id,
-        public_id="a-monitor",
-        chat_target="@a-channel",
-        chat_title=marker,
-        chat_id=chat_a,
-    )
+    monitor_a = Monitor(user_id=user_a.id, public_id="a-monitor", title=marker)
     db.add(monitor_a)
     db.add(ChatAvatar(chat_id=chat_a, image_bytes=b"\xff\xd8avatar-of-a"))
     feed_a = FeedItem(
@@ -275,11 +269,19 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
     # собственные данные B: списки/эндпоинты обязаны работать и отдавать своё
     # заголовок несёт тот же маркер «сводка B»: позитивный контроль свипа
     # ищет его в ответе КАЖДОГО списка, а у каналов видимое поле — название
+    db.add(Monitor(user_id=user_b.id, public_id="b-source", title="сводка B"))
+    await db.commit()
+    from sqlalchemy import select as sa_select
+
+    source_b = (
+        await db.scalars(sa_select(Monitor).where(Monitor.public_id == "b-source"))
+    ).first()
+    # Доступ к аватарке даёт канал, а не источник (11.8)
     db.add(
-        Monitor(
+        MonitorChannel(
+            monitor_id=source_b.id,
             user_id=user_b.id,
             chat_target="@b-channel",
-            chat_title="сводка B",
             chat_id=chat_b,
         )
     )

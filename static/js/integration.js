@@ -391,7 +391,7 @@ testOpenRouterBtn.addEventListener('click', async () => {
     const res = await apiFetch('/api/openrouter/test', {
       method: 'POST',
       body: {
-        sample_text: "Требуется Senior AI/Python разработчик для создания Telegram-мониторов и Webhook-интеграций. Зарплата: $5000/мес."
+        sample_text: "Требуется Senior AI/Python разработчик для создания Telegram-источников и Webhook-интеграций. Зарплата: $5000/мес."
       }
     });
     const data = await res.json();

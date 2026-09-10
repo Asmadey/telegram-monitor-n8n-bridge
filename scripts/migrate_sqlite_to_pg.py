@@ -52,6 +52,7 @@ from app.models import (
     LegacyImportRow,
     LogEntry,
     Monitor,
+    MonitorChannel,
     SentMessage,
     TelegramAccount,
     User,
@@ -149,15 +150,17 @@ async def _migrate_monitors(session, rows, user_id) -> int:
     """
     known_chats = set(
         await session.scalars(
-            select(Monitor.chat_id).where(
-                Monitor.user_id == user_id, Monitor.chat_id.is_not(None)
+            select(MonitorChannel.chat_id).where(
+                MonitorChannel.user_id == user_id, MonitorChannel.chat_id.is_not(None)
             )
         )
     )
+    # Источник и канал разъехались (Фаза 11): «уже есть» проверяется по
+    # каналам, а не по источникам — у источника своего чата больше нет.
     known_targets = {
         (t or "").strip().lower()
         for t in await session.scalars(
-            select(Monitor.chat_target).where(Monitor.user_id == user_id)
+            select(MonitorChannel.chat_target).where(MonitorChannel.user_id == user_id)
         )
     }
     inserted = 0
@@ -173,17 +176,13 @@ async def _migrate_monitors(session, rows, user_id) -> int:
             .values(
                 public_id=str(r["id"]),  # старый TEXT-UUID становится публичным id
                 user_id=user_id,
-                chat_target=r["chat_target"],
-                chat_title=r["chat_title"],
-                chat_username=r["chat_username"],
-                chat_id=r["chat_id"],
+                # Канал старой базы становится ИСТОЧНИКОМ с одним каналом
+                # (Фаза 11): «что искать» и «где искать» разъехались по
+                # разным строкам, и промпт уезжает в канал.
+                title=r["chat_title"] or r["chat_target"] or "Источник",
                 interval_minutes=r["interval_minutes"] or 60,
-                limit_count=r["limit_count"] or 20,
-                offset_hours=r["offset_hours"] or 24,
                 is_active=bool(r["is_active"] or 0),
-                last_checked=_ts(r["last_checked"]),
-                last_sent_message_id=r["last_sent_message_id"] or 0,
-                prompt=r["prompt"],
+                last_run_at=_ts(r["last_checked"]),
                 created_at=_ts_required(r["created_at"]),
             )
             # цель конфликта — пара, а не один public_id: уникальность стала
@@ -192,6 +191,34 @@ async def _migrate_monitors(session, rows, user_id) -> int:
         )
         result = await session.execute(stmt)
         inserted += result.rowcount or 0
+        if not result.rowcount:
+            continue
+        source_id = (
+            await session.execute(
+                select(Monitor.id).where(
+                    Monitor.user_id == user_id, Monitor.public_id == str(r["id"])
+                )
+            )
+        ).scalar_one()
+        await session.execute(
+            pg_insert(MonitorChannel)
+            .values(
+                monitor_id=source_id,
+                user_id=user_id,
+                chat_target=r["chat_target"],
+                chat_title=r["chat_title"],
+                chat_username=r["chat_username"],
+                chat_id=r["chat_id"],
+                limit_count=r["limit_count"] or 20,
+                offset_hours=r["offset_hours"] or 24,
+                extract_prompt=r["prompt"] or "",
+                position=0,
+                is_active=bool(r["is_active"] or 0),
+                last_checked=_ts(r["last_checked"]),
+                last_sent_message_id=r["last_sent_message_id"] or 0,
+            )
+            .on_conflict_do_nothing(index_elements=["monitor_id", "chat_target"])
+        )
     return inserted
 
 
@@ -199,8 +226,8 @@ async def _sources_by_chat(session, user_id) -> dict[int, int]:
     """chat_id → id источника. Мониторы переносятся первыми, поэтому карта
     уже полна к моменту переноса истории."""
     rows = await session.execute(
-        select(Monitor.chat_id, Monitor.id).where(
-            Monitor.user_id == user_id, Monitor.chat_id.is_not(None)
+        select(MonitorChannel.chat_id, MonitorChannel.monitor_id).where(
+            MonitorChannel.user_id == user_id, MonitorChannel.chat_id.is_not(None)
         )
     )
     return {chat_id: monitor_id for chat_id, monitor_id in rows}
