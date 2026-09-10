@@ -209,6 +209,13 @@ def _tenant_resource_routes():
         yield route
 
 
+# Маршруты, у которых тело обязательно: без него ответ — 422 от проверки
+# формы, и до проверки владельца дело не доходит.
+REQUIRED_BODIES = {
+    "/api/sources/{public_id}/channels": {"chat_target": "@example"},
+}
+
+
 @pytest.mark.asyncio
 async def test_user_a_cannot_see_or_touch_user_b_resources(
     anon_client, db, user_a, user_b
@@ -316,10 +323,16 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
 
     # ЧУЖИЕ (A) ресурсы в path-параметрах: каждый маршрут свипа обязан
     # знать, чем их подставлять — новый параметр = громкий провал здесь
-    params = {"id": feed_a.id, "chat_id": chat_a, "public_id": "a-monitor"}
+    params = {
+        "id": feed_a.id,
+        "chat_id": chat_a,
+        "public_id": "a-monitor",
+        # канал чужого источника: он не должен находиться даже по номеру
+        "channel_id": 1,
+    }
     exercised = set()
     for route in routes:
-        for method in sorted(getattr(route, "methods", None) or {"GET"}):
+        for method in sorted(getattr(route, "methods", None) or {"GET"}):  # noqa: B007
             assert method in ("GET", "HEAD", "OPTIONS", "POST", "PATCH", "DELETE"), (
                 f"свип не умеет {method} {route.path} — дополни свип (PLAN 3.1)"
             )
@@ -349,9 +362,18 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
             if method == "GET":
                 resp = await anon_client.get(url)
             else:
-                # изменяющий метод по ЧУЖОМУ id: тело пустое — до валидации
-                # дело дойти не должно, ресурс не найден раньше
-                resp = await anon_client.request(method, url, json={})
+                # Изменяющий метод по ЧУЖОМУ id: тело пустое — до валидации
+                # дело дойти не должно, ресурс не найден раньше.
+                #
+                # Исключение — маршруты с ОБЯЗАТЕЛЬНЫМ телом: у них проверка
+                # формы стоит раньше обработчика и отвечает 422 независимо
+                # от владельца. Это не утечка (422 приходит всем одинаково),
+                # но и не то, что проверяет свип, поэтому такому маршруту
+                # даётся минимально валидное тело — чтобы дойти до проверки
+                # владельца и увидеть настоящие 404.
+                resp = await anon_client.request(
+                    method, url, json=REQUIRED_BODIES.get(route.path, {})
+                )
             exercised.add(f"{method} {route.path}")
             if method != "GET":
                 assert resp.status_code == 404, (
@@ -377,7 +399,12 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
                 has_list = isinstance(body, dict) and any(
                     isinstance(v, list) for v in body.values()
                 )
-                if has_list:
+                # `/api/sources` тоже отдаёт список, но не текстов, а
+                # источников: маркер «сводка B» живёт в журнале и ленте, и
+                # взяться ему здесь неоткуда. Позитивный контроль этому
+                # маршруту не подходит; проверка утечки маркера A — подходит
+                # и применяется выше наравне со всеми.
+                if has_list and not route.path.startswith("/api/sources"):
                     assert "сводка B" in resp.text, (
                         f"{url}: собственных данных B не видно — свип не видит, "
                         "что списки вообще работают"
