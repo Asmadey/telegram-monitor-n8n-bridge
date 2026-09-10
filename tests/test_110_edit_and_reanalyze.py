@@ -66,8 +66,8 @@ def test_every_modal_that_can_be_closed_can_be_opened():
 
 def test_edit_handler_opens_the_modal():
     """Точечно — чтобы падение читалось без разбора свипа."""
-    source = (JS_DIR / "channels.js").read_text(encoding="utf-8")
-    body = source[source.index("function openEditModal") :]
+    source = (JS_DIR / "sources.js").read_text(encoding="utf-8")
+    body = source[source.index("export function openSourceModal") :]
     body = body[: body.index("\n}\n")]
     assert "openModalAnimated" in body, (
         f"openEditModal заполняет поля и не показывает модалку: {body[-200:]!r}"

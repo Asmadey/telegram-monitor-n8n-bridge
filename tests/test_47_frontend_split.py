@@ -31,7 +31,7 @@ REQUIRED_MODULES = (
     "render.js",
     "auth.js",
     "feed.js",
-    "channels.js",
+    "sources.js",
     "messages.js",
     "integration.js",
     "logs.js",

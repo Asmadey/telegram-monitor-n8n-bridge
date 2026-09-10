@@ -350,7 +350,7 @@ vm.runInNewContext(fs.readFileSync('static/js/auth-pages.js', 'utf8'), context);
 
 
 def test_edit_channel_does_not_reject_saved_large_batch():
-    source = (ROOT / "static/js/channels.js").read_text()
+    source = (ROOT / "static/js/sources.js").read_text()
     assert "limit > 100" not in source, (
         "Edit form still refuses a batch accepted by the API"
     )
@@ -358,7 +358,7 @@ def test_edit_channel_does_not_reject_saved_large_batch():
 
 def test_frontend_uses_current_tenant_scoped_telegram_routes():
     auth_source = (ROOT / "static/js/auth.js").read_text()
-    channel_source = (ROOT / "static/js/channels.js").read_text()
+    channel_source = (ROOT / "static/js/sources.js").read_text()
     for obsolete in (
         "/api/settings",
         "/api/auth/send-code",
@@ -501,7 +501,7 @@ def test_history_pages_offer_load_more_instead_of_hiding_old_records():
 
 
 def test_frontend_treats_worker_actions_as_queued():
-    channels = (ROOT / "static/js/channels.js").read_text()
+    channels = (ROOT / "static/js/sources.js").read_text()
     feed = (ROOT / "static/js/feed.js").read_text()
     assert "data.status === 'queued'" in channels
     assert "data.status === 'queued'" in feed

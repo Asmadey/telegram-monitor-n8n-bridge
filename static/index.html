@@ -31,9 +31,9 @@
           Сообщения
           <span id="tabMessagesCount" class="tab-badge">0</span>
         </button>
-        <button class="tab-btn" data-tab="channels">
-          Каналы
-          <span id="tabChannelsCount" class="tab-badge">0</span>
+        <button class="tab-btn" data-tab="sources">
+          Источники
+          <span id="tabSourcesCount" class="tab-badge">0</span>
         </button>
         <button class="tab-btn" data-tab="integration">
           Интеграция
@@ -197,29 +197,26 @@
     </div>
 
     <!-- ==================== TAB 2: CHANNELS ==================== -->
-    <div id="tab-channels" class="tab-pane">
-      
-      <!-- Collapsible Add Channel Drawer -->
-      <div id="addChannelDrawer" class="card" style="margin-bottom: 24px;">
+    <div id="tab-sources" class="tab-pane">
+
+      <!-- Создание источника: задача поиска, каналы добавляются в неё -->
+      <div id="addSourceDrawer" class="card" style="margin-bottom: 24px;">
         <div class="card-header">
           <div>
             <span class="eyebrow">Новый источник</span>
-            <div class="card-title">Добавить канал или чат</div>
+            <div class="card-title">Что искать и где</div>
           </div>
-          <div style="display: flex; gap: 8px;">
-            <button id="openDialogsModalBtn" class="btn btn-secondary btn-sm">Выбрать из диалогов</button>
-            <button id="closeAddChannelBtn" class="btn btn-secondary btn-sm">✕ Закрыть</button>
-          </div>
+          <button id="closeAddSourceBtn" class="btn btn-secondary btn-sm">✕ Закрыть</button>
         </div>
-        <form id="addMonitorForm">
+        <form id="addSourceForm">
           <div class="form-group">
-            <label for="chatTarget">Ссылка на канал (@username, t.me/... или ID):</label>
-            <input type="text" id="chatTarget" placeholder="https://t.me/theyseeku или @theyseeku" required spellcheck="false">
+            <label for="sourceTitle">Название источника:</label>
+            <input type="text" id="sourceTitle" placeholder="Вакансии продаж" required spellcheck="false">
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label for="intervalMin">Интервал опроса:</label>
-              <select id="intervalMin">
+              <label for="sourceInterval">Интервал опроса:</label>
+              <select id="sourceInterval">
                 <option value="15">Каждые 15 минут</option>
                 <option value="30">Каждые 30 минут</option>
                 <option value="60" selected>Каждый 1 час</option>
@@ -230,30 +227,28 @@
               </select>
             </div>
             <div class="form-group">
-              <label for="msgLimit">Лимит постов за опрос:</label>
-              <input type="number" id="msgLimit" value="20" min="1">
+              <label for="sourceStopWords">Стоп-слова (по одному на строку):</label>
+              <textarea id="sourceStopWords" rows="3" placeholder="разработчик&#10;стажировка" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 10px 12px; font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
             </div>
           </div>
           <div class="form-group">
-            <label for="channelPrompt">Промпт LLM для этого источника (опционально):</label>
-            <textarea id="channelPrompt" rows="6" style="width: 100%; min-height: 160px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: inherit; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="Инструкция для LLM по обработке сообщений канала"></textarea>
+            <label for="sourceAnswerPrompt">Промпт оформления ответа (опционально):</label>
+            <textarea id="sourceAnswerPrompt" rows="4" placeholder="Как свести находки со всех каналов и как оформить итог" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: inherit; font-size: 13px; line-height: 1.5; resize: vertical;"></textarea>
             <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
-              Входной JSON для модели: <code>{ "post": [ { "ID": "...", "пост": "...", "ссылка": "..." } ] }</code>
+              Что искать — задаётся отдельно у каждого канала. Здесь только про то, как собрать и подать результат.
             </p>
           </div>
-          <button type="submit" class="btn btn-primary btn-block">Добавить канал</button>
+          <button type="submit" class="btn btn-primary btn-block">Создать источник</button>
         </form>
       </div>
 
-      <!-- Action Buttons -->
       <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 18px; gap: 10px;">
-        <span id="monitorsCount" style="display: none;">0</span>
-        <button id="toggleAddChannelBtn" class="btn btn-primary btn-sm">+ Добавить канал</button>
+        <span id="sourcesCount" style="display: none;">0</span>
+        <button id="toggleAddSourceBtn" class="btn btn-primary btn-sm">+ Создать источник</button>
       </div>
 
-      <!-- Full-Width Horizontal Channels List -->
-      <div id="monitorsList" class="channels-list">
-        <div style="text-align: center; color: var(--mute); padding: 36px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-md);">Загрузка списка каналов...</div>
+      <div id="sourcesList" class="channels-list">
+        <div style="text-align: center; color: var(--mute); padding: 36px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-md);">Загрузка источников...</div>
       </div>
 
     </div>
@@ -457,21 +452,25 @@
   </div>
 
   <!-- Modal: Edit Monitor (Интервал и Лимиты) -->
-  <div id="editMonitorModal" class="modal-overlay">
-    <div class="modal" style="max-width: 680px; width: 92%;">
+  <div id="sourceModal" class="modal-overlay">
+    <div class="modal" style="max-width: 760px; width: 94%;">
       <div class="modal-header">
         <div>
           <span class="eyebrow">Параметры источника</span>
-          <h3 id="editModalTitle">Редактирование канала</h3>
+          <h3 id="sourceModalTitle">Редактирование источника</h3>
         </div>
-        <button id="closeEditModalBtn" class="btn btn-secondary btn-sm">✕</button>
+        <button id="closeSourceModalBtn" class="btn btn-secondary btn-sm">✕</button>
       </div>
       <div class="modal-body">
-        <input type="hidden" id="editMonitorId">
+        <input type="hidden" id="editSourceId">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div class="form-group">
-            <label for="editIntervalMin">Интервал авто-опроса (Cron):</label>
-            <select id="editIntervalMin">
+            <label for="editSourceTitle">Название источника:</label>
+            <input type="text" id="editSourceTitle" spellcheck="false">
+          </div>
+          <div class="form-group">
+            <label for="editSourceInterval">Интервал опроса:</label>
+            <select id="editSourceInterval">
               <option value="15">Каждые 15 минут</option>
               <option value="30">Каждые 30 минут</option>
               <option value="60">Каждый 1 час</option>
@@ -481,22 +480,40 @@
               <option value="1440">Раз в сутки (24 ч)</option>
             </select>
           </div>
-          <div class="form-group">
-            <label for="editMsgLimit">Лимит постов за один опрос:</label>
-            <input type="number" id="editMsgLimit" min="1">
+        </div>
+
+        <div class="form-group">
+          <label>Каналы источника <span id="editChannelsCount" class="tab-badge">0</span></label>
+          <p style="font-size: 11.5px; color: var(--body-mid); margin: 4px 0 10px;">
+            У каждого канала свой лимит постов и свой промпт извлечения: шумный канал публикует полсотни постов в день, тихий — пять, и искать в них надо разное.
+          </p>
+          <div id="editChannelsList"></div>
+          <div style="display: flex; gap: 8px; margin-top: 10px; align-items: flex-end;">
+            <div class="form-group" style="flex: 1; margin: 0;">
+              <label for="newChannelTarget">Добавить канал:</label>
+              <input type="text" id="newChannelTarget" placeholder="@channel или https://t.me/..." spellcheck="false">
+            </div>
+            <button id="openDialogsModalBtn" class="btn btn-secondary btn-sm" type="button">Из диалогов</button>
+            <button id="addChannelBtn" class="btn btn-secondary btn-sm" type="button">+ Добавить</button>
           </div>
         </div>
+
         <div class="form-group">
-          <label for="editMonitorPrompt">Промпт LLM для этого канала:</label>
-          <textarea id="editMonitorPrompt" rows="10" style="width: 100%; min-height: 240px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: inherit; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="Инструкция для LLM по обработке массива постов (ID, пост, ссылка). Если пусто — сообщения отправляются в исходном виде."></textarea>
+          <label for="editSourceStopWords">Стоп-слова (по одному на строку):</label>
+          <textarea id="editSourceStopWords" rows="3" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 10px 12px; font-family: inherit; font-size: 13px; resize: vertical;" placeholder="разработчик"></textarea>
           <p style="font-size: 11.5px; color: var(--body-mid); margin-top: 5px;">
-            Входной JSON для модели: <code>{ "post": [ { "ID": "...", "пост": "...", "ссылка": "..." } ] }</code>
+            Пост со стоп-словом не доходит до модели вовсе. Отсеянные считаются и видны в журнале.
           </p>
+        </div>
+
+        <div class="form-group">
+          <label for="editSourceAnswerPrompt">Промпт оформления ответа:</label>
+          <textarea id="editSourceAnswerPrompt" rows="6" style="width: 100%; min-height: 140px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 12px 14px; font-family: inherit; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="Как свести находки со всех каналов и оформить итог"></textarea>
         </div>
       </div>
       <div class="modal-footer">
-        <button id="cancelEditBtn" class="btn btn-secondary btn-sm">Отмена</button>
-        <button id="saveEditBtn" class="btn btn-primary btn-sm">💾 Сохранить изменения</button>
+        <button id="cancelSourceBtn" class="btn btn-secondary btn-sm">Отмена</button>
+        <button id="saveSourceBtn" class="btn btn-primary btn-sm">💾 Сохранить изменения</button>
       </div>
     </div>
   </div>

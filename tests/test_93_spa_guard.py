@@ -44,7 +44,7 @@ def test_spa_checks_the_session_before_it_starts_loading():
     # уже проверена.
     loaders = (
         "checkHealth",
-        "loadConfig",
+        "loadSources",
         "loadFeed",
         "loadLogs",
         "loadCleanupConfig",
