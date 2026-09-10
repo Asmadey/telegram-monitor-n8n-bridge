@@ -237,3 +237,32 @@ def test_the_interface_actually_reads_the_field_the_api_sends():
     assert js.count("/api/avatars/${item.chat_id}") == 0, (
         "остался прямой переход по chat_id: у записи источника он пуст"
     )
+
+
+async def test_the_card_does_not_carry_internal_foreign_keys(anon_client, db, user):
+    """Контракт 9.10 на карточке ленты — найдено ревью в тот же день.
+
+    Первая версия `avatar_chat_id` заодно положила в ответ `monitor_id`:
+    поле понадобилось внутри `_card`, и оно машинально уехало в список
+    выдаваемых. Но `_card` берёт его с ORM-объекта, а не из словаря, — в
+    ответе оно было не нужно вовсе. Это внутренний BIGINT чужой таблицы, и
+    контракт 9.10 говорит ровно о нём: наружу уходит `public_id`.
+
+    Собственный `id` строки ленты — исключение, оговорённое той же задачей:
+    им интерфейс адресует карточку (`/api/feed/{id}`).
+    """
+    from app.models import Monitor
+
+    await act_as(anon_client, db, user)
+    source = await _source_with_channels(
+        db, user, public_id="src-contract", channels=[(-1001, "Канал", 0)]
+    )
+    await _source_card(db, user, source)
+
+    card = (await anon_client.get("/api/feed")).json()["feed"][0]
+    leaked = [k for k in ("monitor_id", "user_id") if k in card]
+    assert not leaked, (
+        f"в ответ уехал внутренний ключ {leaked}: наружу ходит только public_id "
+        "(контракт 9.10)"
+    )
+    assert await db.get(Monitor, source.id) is not None, "источник должен быть в базе"
