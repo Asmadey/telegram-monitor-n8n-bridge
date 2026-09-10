@@ -91,7 +91,16 @@ def test_vercel_spa_tabs_fall_back_to_the_shell():
     clean_urls = cfg.get("cleanUrls") is True
     rules = {r["source"]: r["destination"] for r in cfg["rewrites"]}
     shell = {"/", "/index"} if clean_urls else {"/index.html"}
-    for tab in ("/feed", "/channels", "/messages", "/integration", "/logs"):
+    # Список вкладок берётся ИЗ РАЗМЕТКИ, а не из константы теста.
+    # Захардкоженный список пережил переименование «/channels» →
+    # «/sources» (11.7) и остался зелёным, пока прямая ссылка на раздел
+    # отдавала 404: тест проверял сам себя, а не стык с vercel.json.
+    import re
+
+    markup = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    tabs = [f"/{name}" for name in re.findall(r'data-tab="(\w+)"', markup)]
+    assert len(tabs) >= 5, f"вкладок в разметке подозрительно мало: {tabs}"
+    for tab in tabs:
         assert rules.get(tab) in shell, (
             f"вкладка {tab} без отката к оболочке: {rules.get(tab)!r}, "
             f"ожидалось одно из {sorted(shell)}"
