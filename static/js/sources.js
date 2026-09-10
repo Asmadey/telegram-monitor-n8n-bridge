@@ -184,7 +184,7 @@ function renderChannelRows() {
     return;
   }
   editChannelsList.innerHTML = editing.channels.map(c => html`
-    <div class="card" data-channel-id="${c.channel_id}" style="padding: 12px; margin-bottom: 10px;">
+    <div class="card" data-channel-row="${c.channel_id}" style="padding: 12px; margin-bottom: 10px;">
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
         <b>${c.chat_title || c.chat_target}</b>
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -287,8 +287,13 @@ saveSourceBtn.addEventListener('click', async () => {
       const err = await patched.json();
       throw new Error(err.detail || 'Не удалось сохранить источник');
     }
-    for (const row of editChannelsList.querySelectorAll('[data-channel-id]')) {
-      const channelId = Number(row.dataset.channelId);
+    // Перечисление идёт по data-channel-row, а не по data-channel-id: тот же
+    // data-channel-id носит кнопка удаления ВНУТРИ строки, и выборка по нему
+    // отдавала строку + кнопку. На кнопке .channel-limit не находится, чтение
+    // .value у null роняло сохранение — и каналы после первого не сохранялись
+    // вовсе. Стык держит test_121.
+    for (const row of editChannelsList.querySelectorAll('[data-channel-row]')) {
+      const channelId = Number(row.dataset.channelRow);
       const limit = parseInt(row.querySelector('.channel-limit').value, 10) || 20;
       const prompt = row.querySelector('.channel-prompt').value;
       const res = await apiFetch(
