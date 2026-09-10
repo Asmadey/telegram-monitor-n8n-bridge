@@ -64,23 +64,17 @@ async def test_successful_analysis_is_saved_before_delivery_and_reused(db, user)
         if len(deliveries) == 1:
             raise RuntimeError("temporary outage")
 
-    async def deliver(db, uid, payload, **kwargs):
-        return await dispatch(
-            db,
-            uid,
-            payload,
-            llm_caller=llm,
-            bot_sender=bot,
-            webhook_sender=webhook,
-            **kwargs,
-        )
+    # Разбор переехал из доставки в конвейер источника (11.4), поэтому
+    # двойник модели передаётся воркеру, а не оборачивает dispatch:
+    # обёртка перестала быть местом, где вызывается LLM.
+    senders = {"llm_caller": llm, "bot_sender": bot, "webhook_sender": webhook}
 
-    worker = _worker(db, dispatcher=deliver)
-    await worker.run_schedule(db)
+    worker = _worker(db, dispatcher=dispatch)
+    await worker.run_schedule(db, **senders)
     for job in await db.scalars(select(Job)):
         job.retry_after = None
     await db.commit()
-    await _worker(db, dispatcher=deliver).run_jobs(db)
+    await _worker(db, dispatcher=dispatch).run_jobs(db, **senders)
     assert len(deliveries) == 2, "failed delivery must retry"
     assert len(analyses) == 1, "durable successful analysis must not rerun"
     assert deliveries[0]["job_id"] == deliveries[1]["job_id"]
@@ -99,7 +93,7 @@ async def test_first_monitor_failure_does_not_expire_second(db, user):
         if len(seen) == 1:
             raise RuntimeError("first fails")
 
-    worker.poll_monitor = poll
+    worker.poll_source = poll
     error = None
     try:
         await worker.run_schedule(db)
@@ -180,29 +174,20 @@ async def test_partial_analysis_retry_does_not_reread_successful_chunk(db, user)
     async def sender(*args):
         return True
 
-    async def deliver(db, uid, payload, **kwargs):
-        return await dispatch(
-            db,
-            uid,
-            payload,
-            llm_caller=llm,
-            bot_sender=sender,
-            webhook_sender=sender,
-            **kwargs,
-        )
+    senders = {"llm_caller": llm, "bot_sender": sender, "webhook_sender": sender}
 
     worker = _worker(
         db,
-        dispatcher=deliver,
+        dispatcher=dispatch,
         telegram=FakeTelegram(
             posts=[{"id": 11, "text": "a" * 30000}, {"id": 12, "text": "b" * 30000}]
         ),
     )
-    await worker.run_schedule(db)
+    await worker.run_schedule(db, **senders)
     for job in await db.scalars(select(Job)):
         job.retry_after = None
     await db.commit()
-    await _worker(db, dispatcher=deliver).run_jobs(db)
+    await _worker(db, dispatcher=dispatch).run_jobs(db, **senders)
     assert seen == ["a", "b", "b"], "completed chunks must survive restart"
 
 
@@ -402,7 +387,7 @@ async def test_account_floodwait_blocks_other_monitors_but_not_other_owner(
     await _worker(db, telegram=Gateway()).run_schedule(db)
     assert calls == [owner_a, owner_b]
     calls.clear()
-    await _worker(db, telegram=Gateway()).poll_monitor(db, await db.get(Monitor, 2))
+    await _worker(db, telegram=Gateway()).poll_source(db, await db.get(Monitor, 2))
     assert calls == []
 
 
@@ -459,8 +444,8 @@ async def test_account_floodwait_blocks_manual_jobs_for_same_auth_key(
 async def test_no_new_messages_restores_skipped_dedup_journal(db, user):
     monitor = await _monitor(db, user)
     worker = _worker(db)
-    assert await worker.poll_monitor(db, monitor) == "dispatched"
-    assert await worker.poll_monitor(db, monitor) == "no_new"
+    assert await worker.poll_source(db, monitor) == "dispatched"
+    assert await worker.poll_source(db, monitor) == "no_new"
     entries = list(
         await db.scalars(
             select(LogEntry).where(

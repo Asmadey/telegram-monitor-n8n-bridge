@@ -118,7 +118,8 @@ async def test_filtered_posts_never_reach_the_batch(db, user):
     job = (await db.scalars(select(Job).where(Job.kind == "process_batch"))).first()
     assert job is not None, "батч не создан вовсе"
     payload = json.loads(job.payload_json)
-    ids = [m["id"] for m in payload["batch"]["messages"]]
+    # батч источника несёт каналы, а не плоский список (11.4)
+    ids = [m["id"] for g in payload["batch"]["channels"] for m in g["messages"]]
     assert ids == [12], f"в модель ушёл отсеянный пост: {ids}"
 
 
@@ -192,6 +193,5 @@ async def test_count_of_filtered_posts_travels_with_the_batch(db, user):
 
     job = (await db.scalars(select(Job).where(Job.kind == "process_batch"))).first()
     payload = json.loads(job.payload_json)
-    assert payload["batch"].get("filtered_count") == 1, (
-        f"счётчик отсеянных не доехал до батча: {payload['batch']}"
-    )
+    counts = [g.get("filtered_count") for g in payload["batch"]["channels"]]
+    assert counts == [1], f"счётчик отсеянных не доехал до батча: {counts}"

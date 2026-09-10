@@ -35,6 +35,7 @@ from app.models import (
     Job,
     LogEntry,
     Monitor,
+    MonitorChannel,
     SentMessage,
 )
 from app.services.jobs import (
@@ -123,8 +124,31 @@ async def _monitor(db, user, **overrides) -> Monitor:
         "public_id": overrides.pop("public_id", "mon-1"),
     }
     fields.update(overrides)
+    # Источник опрашивается через свои каналы (11.4), поэтому помощник
+    # заводит и строку канала: до фазы 11 монитор БЫЛ каналом, и половина
+    # тестов сеет его старым способом.
+    channel_fields = {
+        "chat_target": fields.pop("chat_target", "@channel"),
+        "chat_title": fields.get("chat_title"),
+        "chat_username": fields.get("chat_username"),
+        "chat_id": fields.get("chat_id"),
+        "limit_count": fields.pop("limit_count", 20),
+        "offset_hours": fields.pop("offset_hours", 24),
+        "extract_prompt": fields.get("prompt") or "",
+    }
+    fields.setdefault("title", fields.get("chat_title") or "Источник")
+    fields.setdefault("last_run_at", fields.get("last_checked"))
     monitor = Monitor(**fields)
     db.add(monitor)
+    await db.commit()
+    db.add(
+        MonitorChannel(
+            monitor_id=monitor.id,
+            user_id=monitor.user_id,
+            position=0,
+            **channel_fields,
+        )
+    )
     await db.commit()
     return monitor
 
@@ -268,7 +292,15 @@ async def test_job_error_text_is_redacted(db, user):
         db, user_id=user.id, kind=POLL, payload={"monitor_public_id": "mon-1"}
     )
 
-    await _worker(db, telegram=FakeTelegram(fail=leaky))._default_tick()
+    # Отказ на уровне АККАУНТА, а не канала: с приходом источников (11.4)
+    # сломанный канал не роняет источник — он помечается неразобранным, и
+    # задача завершается успешно. Задача падает, когда не удалось само
+    # подключение, и именно тогда её текст попадает в `jobs.error`.
+    class LeakyGateway(FakeTelegram):
+        async def client_for(self, db, user_id):
+            raise leaky
+
+    await _worker(db, telegram=LeakyGateway())._default_tick()
 
     job = (await _jobs(db))[0]
     assert job.status == STATUS_FAILED
@@ -346,8 +378,10 @@ async def test_due_monitor_is_polled_without_any_job(db, user):
     await db.refresh(monitor)
     # SQLite возвращает datetime без tzinfo — сравнение naive с aware бросает
     # TypeError независимо от поведения воркера; приводим обе стороны
-    checked = monitor.last_checked.replace(tzinfo=datetime.timezone.utc)
-    assert checked > _utc(minutes=1), "last_checked не обновлён"
+    checked = monitor.last_run_at.replace(tzinfo=datetime.timezone.utc)
+    # Часы переехали на источник (11.4): у канала `last_checked` остаётся
+    # для диагностики, а расписание считает по `last_run_at` источника.
+    assert checked > _utc(minutes=1), "last_run_at источника не обновлён"
 
 
 @pytest.mark.asyncio

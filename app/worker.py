@@ -52,6 +52,7 @@ from app.models import (
     Integration,
     Job,
     Monitor,
+    MonitorChannel,
     SentMessage,
     TelegramAccount,
 )
@@ -67,7 +68,10 @@ from app.services.jobs import (
     requeue_hung_jobs,
 )
 from app.services.journal import add_log, redact
-from app.services.llm import process_messages_batch_with_llm
+from app.services.llm import (
+    MonthlyTokenBudgetExhausted,
+    process_messages_batch_with_llm,
+)
 from app.services.ops import WORKER_NAME, record_heartbeat
 from app.services.stopwords import parse_stop_words, split_by_stop_words
 from app.services.tg_gateway import TelegramGateway
@@ -88,6 +92,20 @@ MAX_JOBS_PER_TICK = 20
 # возвращается, останавливал тик целиком — а с ним очередь, расписание и
 # очистку, то есть всех пользователей сразу.
 TELEGRAM_TIMEOUT = 60.0
+
+# Потолок на один разбор модели. У HTTP-клиента OpenRouter свой (45 с), но
+# durable-режим режет длинный текст на несколько запросов подряд.
+LLM_TIMEOUT = 120.0
+
+# Столько прогонов подряд канал может не разбираться, прежде чем он будет
+# отключён: мёртвый канал не должен вечно тратить время прогона.
+MAX_CHANNEL_FAILURES = 5
+
+# Столько раз батч источника пробует разобраться, прежде чем доставить то,
+# что собрано. Без потолка один навсегда сломанный канал держал бы источник
+# вечно; без повторов вообще — посты канала, упавшего на модели, пропали бы
+# совсем: они уже зарезервированы дедупликацией.
+MAX_BATCH_ATTEMPTS = 3
 
 # Потолок на единицы работы в одном тике. Без него тик длится столько,
 # сколько дают внешние сервисы.
@@ -242,7 +260,7 @@ class Worker:
     # 1–2. Очередь
     # ------------------------------------------------------------------
 
-    async def run_jobs(self, db) -> int:
+    async def run_jobs(self, db, **senders) -> int:
         """Разобрать очередь. Падение задачи — failed и следующая: один
         сломанный канал не останавливает остальных пользователей."""
         done = 0
@@ -261,7 +279,7 @@ class Worker:
             # — это ленивая загрузка, то есть MissingGreenlet в async-сессии
             job_id, job_kind = job.id, job.kind
             try:
-                await self._run_job(db, job)
+                await self._run_job(db, job, **senders)
             except JobDeferred as deferred:
                 await db.rollback()
                 stale = await db.get(Job, job_id)
@@ -282,6 +300,7 @@ class Worker:
                     if job_kind == KIND_BATCH:
                         stale.status = "pending"
                         stale.started_at = None
+                        stale.attempts = (stale.attempts or 0) + 1
                         stale.retry_after = _retry_deadline(exc)
                         stale.error = redact(_reason(exc))[:MAX_ERROR_CHARS]
                         await db.commit()
@@ -298,20 +317,29 @@ class Worker:
             await self._beat(db)
         return done
 
-    async def _run_job(self, db, job) -> None:
+    async def _run_job(self, db, job, **senders) -> None:
         try:
             payload = json.loads(job.payload_json or "{}")
         except ValueError as exc:
             raise ValueError(f"повреждённый payload задачи: {exc}") from exc
 
         if job.kind == KIND_BATCH:
-            result = await self._dispatch(
-                db,
-                job.user_id,
-                payload["batch"],
-                channel_prompt=payload.get("prompt"),
-            )
+            if payload.get("batch", {}).get("channels"):
+                result = await self._run_source_batch(
+                    db, job.user_id, payload, job=job, **senders
+                )
+            else:
+                # Батч, поставленный до Фазы 11: один канал, плоский список
+                result = await self._dispatch(
+                    db,
+                    job.user_id,
+                    payload["batch"],
+                    channel_prompt=payload.get("prompt"),
+                    **senders,
+                )
             if result.get("retry"):
+                # Отказ доставки не считается выполненной работой — иначе
+                # разобранный батч тихо теряется вместе с его постами.
                 raise RuntimeError(
                     "Delivery temporarily failed; saved result awaits retry"
                 )
@@ -329,8 +357,11 @@ class Worker:
             ).first()
             if monitor is None:
                 raise LookupError("монитор не найден у владельца задачи")
-            result = await self.poll_monitor(db, monitor)
-            if result == "flood_wait":
+            # Имя другое: у ветки батча `result` — словарь диспетчера, а
+            # здесь исход опроса строкой. Одно имя на два типа mypy ловит
+            # справедливо: читающему это тоже мешало бы.
+            outcome = await self.poll_source(db, monitor, **senders)
+            if outcome == "flood_wait":
                 account = (
                     await db.scalars(TenantRepo(db, job.user_id).query(TelegramAccount))
                 ).first()
@@ -343,6 +374,202 @@ class Worker:
             await self._reanalyze(db, job.user_id, payload.get("feed_item_id"))
         else:
             raise ValueError(f"неизвестный вид задачи: {job.kind}")
+
+    async def _run_source_batch(
+        self, db, user_id: int, payload: dict, job=None, **senders
+    ) -> dict:
+        """Разбор по каналам, затем сведение (конвейер 11.4).
+
+        **Разборы идут последовательно, а не параллельно** — и это
+        сознательное отступление от плана. `AsyncSession` не рассчитан на
+        одновременные операции, а разбор ведёт учёт израсходованных
+        токенов, то есть работает с той же сессией. Параллельность здесь
+        дала бы гонку в базе ради экономии минут; каждый вызов и так
+        ограничен тайм-аутом, а весь прогон — бюджетом тика.
+
+        Пустой вердикт при непустом входе — самый вероятный тихий отказ
+        схемы, поэтому он попадает в журнал отдельным событием: иначе
+        кривой промпт канала неотличим от «совпадений нет».
+        """
+        batch = payload["batch"]
+        groups = batch.get("channels") or []
+        answer_prompt = payload.get("answer_prompt") or ""
+        unparsed = list(batch.get("unparsed") or [])
+        verdicts: list[dict] = []
+        caller = senders.get("llm_caller")
+        attempts = getattr(job, "attempts", 0) or 0
+
+        async def _save_progress() -> None:
+            """Вердикты копятся в payload задачи.
+
+            Повтор после сбоя не переспрашивает уже разобранные каналы:
+            модель — самая дорогая часть прогона, и платить за неё дважды
+            из-за отказа доставки незачем (контракт 9.1, перенесённый на
+            конвейер).
+            """
+            if job is None:
+                return
+            job.payload_json = json.dumps(payload, ensure_ascii=False)
+            await db.commit()
+
+        single = len(groups) == 1
+        for group in groups:
+            if group.get("verdict"):
+                # уже разобран прошлой попыткой
+                verdicts.append(group)
+                continue
+            prompt = group.get("extract_prompt") or ""
+            if single and answer_prompt:
+                # Один канал — сводить нечего: извлечение и оформление
+                # уходят одним запросом. Частый случай не должен стоить вдвое.
+                prompt = f"{prompt}\n\n{answer_prompt}".strip()
+
+            async def _chunk_done(done, group=group):
+                """Удачные куски длинного канала переживают повтор.
+
+                Без этого отказ провайдера на втором запросе заставлял бы
+                платить за первый заново — а длинный канал режется на
+                несколько запросов (контракт 9.1).
+                """
+                group["completed"] = list(done)
+                await _save_progress()
+
+            try:
+                verdict = await _within(
+                    self.llm(
+                        db,
+                        user_id,
+                        group["messages"],
+                        custom_prompt=prompt,
+                        caller=caller,
+                        require_success=True,
+                        completed=list(group.get("completed") or []),
+                        checkpoint=_chunk_done,
+                    ),
+                    LLM_TIMEOUT,
+                    f"разбор канала {group.get('chat_title')}",
+                )
+            except MonthlyTokenBudgetExhausted:
+                # Исчерпан месячный бюджет — это про весь источник, а не про
+                # канал: следующий упрётся в тот же потолок. Задача
+                # откладывается целиком и вернётся в новом периоде,
+                # сохранив уже разобранные каналы (контракт 4.5).
+                raise
+            except RuntimeError as exc:
+                if "LLM enabled without API key" in str(exc):
+                    # То же самое: ключа нет у источника, а не у канала
+                    raise
+                if attempts + 1 < MAX_BATCH_ATTEMPTS:
+                    # Отказ модели восстановим, а посты канала уже
+                    # зарезервированы дедупликацией: пометить канал
+                    # неразобранным и пойти дальше — значит потерять их
+                    # навсегда. Батч возвращается в очередь; разобранные
+                    # каналы при повторе не переспрашиваются.
+                    raise
+                await db.rollback()
+                unparsed.append(group.get("chat_title") or "канал")
+                await add_log(
+                    db,
+                    user_id,
+                    "AI_ERROR",
+                    f"Разбор канала не удался: {redact(_reason(exc))}",
+                    status="ERROR",
+                    chat_id=group.get("chat_id"),
+                    chat_title=group.get("chat_title"),
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001 — канал не роняет источник
+                await db.rollback()
+                unparsed.append(group.get("chat_title") or "канал")
+                await add_log(
+                    db,
+                    user_id,
+                    "AI_ERROR",
+                    f"Разбор канала не удался: {redact(_reason(exc))}",
+                    status="ERROR",
+                    chat_id=group.get("chat_id"),
+                    chat_title=group.get("chat_title"),
+                )
+                continue
+            if verdict:
+                group["verdict"] = verdict
+                verdicts.append(group)
+                await _save_progress()
+            else:
+                await add_log(
+                    db,
+                    user_id,
+                    "AI_EMPTY",
+                    f"Модель ничего не извлекла из {len(group['messages'])} постов",
+                    status="SKIPPED",
+                    chat_id=group.get("chat_id"),
+                    chat_title=group.get("chat_title"),
+                )
+            await self._beat(db)
+
+        analysis = ""
+        if verdicts and single:
+            analysis = verdicts[0]["verdict"]
+        elif verdicts:
+            # Сведение видит вердикты в порядке каналов источника — он же
+            # задаёт порядок в сообщении.
+            summary_input = [
+                {
+                    "id": index + 1,
+                    "chat_title": item.get("chat_title"),
+                    "text": item["verdict"],
+                }
+                for index, item in enumerate(verdicts)
+            ]
+            try:
+                analysis = await _within(
+                    self.llm(
+                        db,
+                        user_id,
+                        summary_input,
+                        custom_prompt=answer_prompt,
+                        caller=caller,
+                        require_success=True,
+                    ),
+                    LLM_TIMEOUT,
+                    "сведение по каналам",
+                )
+            except Exception as exc:  # noqa: BLE001 — находки дороже оформления
+                await db.rollback()
+                await add_log(
+                    db,
+                    user_id,
+                    "AI_ERROR",
+                    f"Сведение не удалось: {redact(_reason(exc))}",
+                    status="ERROR",
+                    chat_title=batch.get("chat_title"),
+                )
+                # Сырые вердикты лучше потерянных находок
+                analysis = "\n\n".join(
+                    f"{item.get('chat_title')}: {item['verdict']}" for item in verdicts
+                )
+
+        if analysis and unparsed:
+            # Строку пишет система, а не модель: модель может её
+            # проигнорировать или переврать, а это единственное место, где
+            # видно, что картина неполная.
+            analysis = f"{analysis}\n\n⚠️ Не разобраны: {', '.join(unparsed)}"
+
+        messages = [m for group in groups for m in group["messages"]]
+        return await self._dispatch(
+            db,
+            user_id,
+            {
+                "job_id": batch.get("job_id"),
+                "chat_title": batch.get("chat_title"),
+                "chat_id": None,
+                "chat_username": "",
+                "messages_count": len(messages),
+                "messages": messages,
+            },
+            analysis=analysis,
+            **senders,
+        )
 
     async def _reanalyze(self, db, user_id: int, feed_item_id) -> None:
         item = (
@@ -392,7 +619,10 @@ class Worker:
     # ------------------------------------------------------------------
 
     def _is_due(self, monitor: Monitor, now: datetime.datetime) -> bool:
-        last = _aware(monitor.last_checked)
+        # Часы источника, а не канала: `last_checked` уехал в
+        # monitor_channels, и по нему расписание либо не сработало бы
+        # никогда, либо срабатывало каждый тик.
+        last = _aware(monitor.last_run_at or monitor.last_checked)
         if last is None:  # только что добавленный канал — опрос сразу
             return True
         return now >= last + datetime.timedelta(minutes=monitor.interval_minutes)
@@ -421,7 +651,7 @@ class Worker:
     def _out_of_budget(self, deadline: float) -> bool:
         return asyncio.get_running_loop().time() >= deadline
 
-    async def run_schedule(self, db) -> int:
+    async def run_schedule(self, db, **senders) -> int:
         now = _utcnow()
         deadline = asyncio.get_running_loop().time() + TICK_BUDGET
         monitors = list(
@@ -450,8 +680,12 @@ class Worker:
             chat_id, chat_title = monitor.chat_id, monitor.chat_title
             public_id = monitor.public_id
             try:
-                await self.poll_monitor(db, monitor)
-                polled += 1
+                outcome = await self.poll_source(db, monitor, **senders)
+                # Прерванный или несостоявшийся опрос не считается
+                # выполненным: счётчик — это диагностика, и врать он не
+                # должен даже в мелочах.
+                if outcome not in ("failed", "flood_wait", "no_account", "no_channels"):
+                    polled += 1
             except Exception as exc:  # noqa: BLE001 — один канал не роняет цикл
                 await db.rollback()
                 await add_log(
@@ -482,12 +716,60 @@ class Worker:
             await self._beat(db)
         return polled
 
-    async def poll_monitor(self, db, monitor: Monitor) -> str:
-        """Опрос одного канала: выборка → дедупликация → доставка.
+    async def _resolve_channel(self, client, channel: dict):
+        """Сначала по `chat_id`, потом по ссылке — и обновить оба.
 
-        Возвращает исход строкой (для диагностики и тестов).
+        Порядок неочевиден и важен. По ссылке первым нельзя: у
+        переименованного канала username меняется, а рабочий `chat_id`
+        остался бы неиспользованным. По `chat_id` первым — но с запасным
+        путём: перенесённый из старой базы идентификатор не находится в
+        кэше новой сессии Telethon (это и был отказ 9.15).
         """
-        user_id = monitor.user_id
+        targets: list = []
+        if channel.get("chat_id"):
+            targets.append(channel["chat_id"])
+        if channel.get("chat_target"):
+            targets.append(channel["chat_target"])
+        last: Exception | None = None
+        for target in targets:
+            try:
+                return await _within(
+                    self.telegram.resolve(client, target),
+                    TELEGRAM_TIMEOUT,
+                    f"разрешение канала {target}",
+                )
+            except Exception as exc:  # noqa: BLE001 — пробуем следующий способ
+                last = exc
+        raise last or LookupError("канал нечем разрешить")
+
+    async def poll_source(self, db, source: Monitor, **senders) -> str:
+        """Обойти каналы источника и поставить общий разбор в очередь.
+
+        Выборка идёт здесь, разбор — в задаче: сеть и модель разделены,
+        поэтому сбой доставки не заставляет заново читать Telegram.
+        """
+        user_id = source.user_id
+        channels = list(
+            await db.scalars(
+                select(MonitorChannel)
+                .where(
+                    MonitorChannel.monitor_id == source.id,
+                    MonitorChannel.is_active.is_(True),
+                )
+                .order_by(MonitorChannel.position, MonitorChannel.id)
+            )
+        )
+        if not channels:
+            await add_log(
+                db,
+                user_id,
+                "SCHEDULER_POLL",
+                f"У источника «{source.title}» нет активных каналов.",
+                status="SKIPPED",
+                chat_title=source.title,
+            )
+            return "no_channels"
+
         account = (
             await db.scalars(TenantRepo(db, user_id).query(TelegramAccount))
         ).first()
@@ -495,7 +777,12 @@ class Worker:
         if account_retry is not None and _utcnow() < account_retry:
             return "flood_wait"
 
-        async def _flood(exc) -> None:
+        async def _flood(exc) -> None:  # noqa: D401
+            """FloodWait — про весь аккаунт, а не про канал.
+
+            Следующий канал упрётся в тот же лимит, поэтому обход
+            прекращается целиком, а не переходит к соседу.
+            """
             if account is not None:
                 account.retry_after = _utcnow() + datetime.timedelta(
                     seconds=max(1, exc.seconds)
@@ -506,134 +793,218 @@ class Worker:
                 user_id,
                 "FLOOD_WAIT",
                 f"Telegram просит подождать {getattr(exc, 'seconds', '?')} с — "
-                f"опрос «{monitor.chat_title or monitor.chat_target}» пропущен",
+                f"опрос «{source_title}» пропущен",
                 status="SKIPPED",
-                chat_id=monitor.chat_id,
-                chat_title=monitor.chat_title,
+                chat_title=source_title,
             )
 
-        async def _work():
-            client = await self.telegram.client_for(db, user_id)
-            if client is None:
-                return None, None, None
-            entity = await _within(
-                self.telegram.resolve(client, monitor.chat_target),
-                TELEGRAM_TIMEOUT,
-                f"разрешение канала {monitor.chat_target}",
-            )
-            messages = await _within(
-                self.telegram.fetch(
-                    client,
-                    entity,
-                    limit=monitor.limit_count,
-                    offset_hours=monitor.offset_hours,
-                ),
-                TELEGRAM_TIMEOUT,
-                f"выборка сообщений {monitor.chat_target}",
-            )
-            return client, entity, messages
+        # Источник — тоже ORM-объект той же сессии, и rollback обесценивает
+        # и его: `source.id` в середине обхода стал бы ленивой загрузкой.
+        source_id = source.id
+        source_title = source.title
+        source_stop_words = source.stop_words or ""
+        source_answer_prompt = source.answer_prompt or ""
+        source_public_id = source.public_id
 
-        # FloodWaitError не ретраится и не спит inline: ожидание на тысячи
-        # секунд повесило бы воркера целиком, то есть всех пользователей
-        result = await flood_guarded_call(_work, on_flood_wait=_flood)
-        if result is None:
-            return "flood_wait"
-        client, entity, messages = result
-        if client is None:
-            return "no_account"
+        # Поля снимаются ДО обхода, все сразу. Rollback в ветке ошибки
+        # обесценивает НЕ только текущий объект, а всю сессию: следующая
+        # итерация обращалась бы к полю уже обесцененной строки, то есть
+        # к ленивой загрузке — MissingGreenlet в async-сессии. Тот же
+        # корень, что у задач очереди и расписания выше, но подножка здесь
+        # тоньше: цикл выглядит независимым, а сессия у него общая.
+        plan = [
+            {
+                "id": c.id,
+                "chat_target": c.chat_target,
+                "chat_id": c.chat_id,
+                "name": c.chat_title or c.chat_target,
+                "limit_count": c.limit_count,
+                "offset_hours": c.offset_hours,
+                "extract_prompt": c.extract_prompt or "",
+            }
+            for c in channels
+        ]
 
-        # chat_id — ключ дедупликации. Без него посты всех каналов легли бы
-        # под одним ключом 0: разные каналы начали бы «глушить» друг друга,
-        # и это выглядело бы как «канал перестал присылать новое».
-        resolved = monitor.chat_id or getattr(entity, "id", None)
-        if not resolved:
-            raise LookupError(f"канал {monitor.chat_target} не дал chat_id")
-        chat_id = int(resolved)
-        monitor.chat_id = chat_id
-        monitor.chat_title = getattr(entity, "title", None) or monitor.chat_title
-        monitor.chat_username = (
-            getattr(entity, "username", None) or monitor.chat_username
+        # Клиент берётся ПОД защитой от FloodWait: подключение — такой же
+        # запрос к Telegram, и в старом пути оно тоже было внутри guard'а.
+        # Снаружи FloodWaitError улетал бы в расписание, retry_after не
+        # ставился, и следующий источник того же аккаунта шёл в тот же лимит.
+        connected = await flood_guarded_call(
+            lambda: self.telegram.client_for(db, user_id), on_flood_wait=_flood
         )
-        monitor.last_checked = _utcnow()
+        if connected is None:
+            return "flood_wait"
+        client = connected
+
+        groups: list[dict] = []
+        unparsed: list[str] = []
+        entities: dict[int, object] = {}
+        filtered_total = 0
+        for spec in plan:
+            channel_id = spec["id"]
+            name = spec["name"]
+
+            async def _work(spec=spec):
+                entity = await self._resolve_channel(client, spec)
+                messages = await _within(
+                    self.telegram.fetch(
+                        client,
+                        entity,
+                        limit=spec["limit_count"],
+                        offset_hours=spec["offset_hours"],
+                    ),
+                    TELEGRAM_TIMEOUT,
+                    f"выборка сообщений {spec['chat_target']}",
+                )
+                return entity, messages
+
+            try:
+                # FloodWaitError не ретраится и не спит inline: ожидание на
+                # тысячи секунд повесило бы воркера, то есть всех тенантов
+                result = await flood_guarded_call(_work, on_flood_wait=_flood)
+                if result is None:
+                    return "flood_wait"
+                entity, messages = result
+            except Exception as exc:  # noqa: BLE001 — один канал не роняет источник
+                await db.rollback()
+                stale = await db.get(MonitorChannel, channel_id)
+                if stale is not None:
+                    stale.fail_streak += 1
+                    if stale.fail_streak >= MAX_CHANNEL_FAILURES:
+                        # Мёртвый канал не должен вечно тратить время прогона
+                        stale.is_active = False
+                    await db.commit()
+                unparsed.append(name)
+                await add_log(
+                    db,
+                    user_id,
+                    "POLL_ERROR",
+                    f"Ошибка извлечения: {_reason(exc)}",
+                    status="ERROR",
+                    chat_title=name,
+                )
+                logger.warning(
+                    "канал %s источника %s тенанта %s: опрос упал — %s",
+                    name,
+                    source_public_id,
+                    user_id,
+                    # Причина — тип и текст, но НЕ трейсбек: он несёт
+                    # окружение вызова, где встречаются учётные данные.
+                    _reason(exc),
+                )
+                continue
+
+            channel = await db.get(MonitorChannel, channel_id)
+            if channel is None:  # источник правили во время прогона
+                continue
+            channel.chat_id = int(getattr(entity, "id", 0) or channel.chat_id or 0)
+            channel.chat_title = getattr(entity, "title", None) or channel.chat_title
+            channel.chat_username = (
+                getattr(entity, "username", None) or channel.chat_username
+            )
+            channel.last_checked = _utcnow()
+            channel.fail_streak = 0
+            entities[channel.chat_id] = entity
+            chat_id = channel.chat_id
+            chat_title = channel.chat_title
+            chat_username = channel.chat_username or ""
+            await db.commit()
+
+            fresh = await filter_new(
+                db,
+                user_id,
+                chat_id,
+                messages,
+                monitor_id=source_id,
+                commit=False,
+                processed=False,
+            )
+            fresh, filtered = split_by_stop_words(
+                fresh, parse_stop_words(source_stop_words)
+            )
+            if filtered:
+                await db.execute(
+                    update(SentMessage)
+                    .where(
+                        SentMessage.monitor_id == source_id,
+                        SentMessage.chat_id == chat_id,
+                        SentMessage.message_id.in_([m["id"] for m in filtered]),
+                    )
+                    .values(processed=True)
+                )
+            await db.commit()
+            filtered_total += len(filtered)
+            if not fresh:
+                continue
+            for message in fresh:
+                # у поста своя принадлежность: в сводке из пяти каналов без
+                # неё нельзя ни сослаться, ни отметить обработанным
+                message["chat_id"] = chat_id
+                message["chat_title"] = chat_title
+            groups.append(
+                {
+                    "chat_id": chat_id,
+                    "chat_title": chat_title,
+                    "chat_username": chat_username,
+                    "extract_prompt": spec["extract_prompt"],
+                    "filtered_count": len(filtered),
+                    "messages": fresh,
+                }
+            )
+            await self._beat(db)
+
+        source = await db.get(Monitor, source_id) or source
+        source.last_run_at = _utcnow()
         if account is not None:
             account.retry_after = None
         await db.commit()
 
-        # Reserve IDs and their full retry payload in ONE transaction. A crash
-        # never leaves a reservation without recoverable source messages.
-        fresh = await filter_new(
-            db,
-            user_id,
-            chat_id,
-            messages,
-            # ключ дедупликации — по источнику (11.2): пока источник = один
-            # канал, это тот же монитор; с приходом конвейера сюда придёт
-            # идентификатор источника, а не канала
-            monitor_id=monitor.id,
-            commit=False,
-            processed=False,
-        )
-        if not fresh:
+        if not groups:
+            if unparsed and not filtered_total:
+                # Ни один канал не удалось разобрать — это НЕ «новых нет».
+                # Прогон, посчитанный успешным, скрыл бы отказ: снаружи
+                # тишина выглядела бы нормой (контракт 11.0).
+                return "failed"
+            # «Всё отсеяно» и «новых нет» — разные исходы: слишком широкое
+            # стоп-слово иначе выглядит как замолчавший источник (11.3).
+            if filtered_total:
+                await add_log(
+                    db,
+                    user_id,
+                    "SCHEDULER_POLL",
+                    f"Опрос «{source_title}» завершён: {filtered_total} постов "
+                    "отсеяно стоп-словами, до анализа не дошло ничего.",
+                    status="SKIPPED_STOPWORDS",
+                    chat_title=source_title,
+                )
+                return "filtered_out"
             await add_log(
                 db,
                 user_id,
                 "SCHEDULER_POLL",
-                f"Опрос завершён: {len(messages)} сообщений, новых нет.",
+                f"Опрос «{source_title}» завершён: новых постов нет.",
                 status="SKIPPED_DEDUP",
-                chat_id=chat_id,
-                chat_title=monitor.chat_title,
+                chat_title=source_title,
             )
             return "no_new"
 
-        # Стоп-слова отсекают ДО модели (11.3): дешевле строкой, чем
-        # объяснением в промпте. Отсеянные помечаются обработанными —
-        # они уже зарезервированы дедупликацией, и без пометки вернулись
-        # бы на следующем прогоне, чтобы отсеяться снова.
-        fresh, filtered = split_by_stop_words(
-            fresh, parse_stop_words(monitor.stop_words or "")
-        )
-        if filtered:
-            await db.execute(
-                update(SentMessage)
-                .where(
-                    SentMessage.monitor_id == monitor.id,
-                    SentMessage.chat_id == chat_id,
-                    SentMessage.message_id.in_([m["id"] for m in filtered]),
-                )
-                .values(processed=True)
-            )
-            await db.commit()
-        if not fresh:
-            # «Всё отсеяно» — это не «новых нет»: слишком широкое
-            # стоп-слово иначе выглядит как замолчавший канал.
-            await add_log(
-                db,
-                user_id,
-                "SCHEDULER_POLL",
-                f"Опрос завершён: {len(filtered)} постов отсеяно стоп-словами, "
-                "до анализа не дошло ничего.",
-                status="SKIPPED_STOPWORDS",
-                chat_id=chat_id,
-                chat_title=monitor.chat_title,
-            )
-            return "filtered_out"
-
-        batch = {
-            "job_id": str(uuid.uuid4()),
-            "chat_id": chat_id,
-            "chat_title": monitor.chat_title,
-            "chat_username": monitor.chat_username or "",
-            "messages_count": len(fresh),
-            # счётчик едет с батчем: он нужен и в карточке ленты, а не
-            # только в журнале
-            "filtered_count": len(filtered),
-            "messages": fresh,
-        }
+        total = sum(len(g["messages"]) for g in groups)
         job = Job(
             user_id=user_id,
             kind=KIND_BATCH,
             payload_json=json.dumps(
-                {"batch": batch, "prompt": monitor.prompt}, ensure_ascii=False
+                {
+                    "batch": {
+                        "job_id": str(uuid.uuid4()),
+                        "source_public_id": source_public_id,
+                        "chat_title": source_title,
+                        "messages_count": total,
+                        "channels": groups,
+                        "unparsed": unparsed,
+                    },
+                    "answer_prompt": source_answer_prompt,
+                },
+                ensure_ascii=False,
             ),
             status="running",
             started_at=_utcnow(),
@@ -642,29 +1013,32 @@ class Worker:
         await db.commit()
         job_id = job.id
         try:
-            # Avatar failure is cosmetic and must not prevent batch processing.
-            try:
-                avatar = await _within(
-                    self.telegram.avatar(client, entity),
-                    TELEGRAM_TIMEOUT,
-                    "загрузка аватарки канала",
-                )
-                if avatar:
-                    await store_avatar(db, chat_id, avatar)
-            except Exception as exc:
-                logger.warning("avatar unavailable: %s", redact(_reason(exc)))
-                await db.rollback()
-                job = await db.get(Job, job_id)
-            await self._run_job(db, job)
+            # Аватарка косметическая и не должна мешать разбору батча
+            for chat_id, entity in entities.items():
+                try:
+                    avatar = await _within(
+                        self.telegram.avatar(client, entity),
+                        TELEGRAM_TIMEOUT,
+                        "загрузка аватарки канала",
+                    )
+                    if avatar:
+                        await store_avatar(db, chat_id, avatar)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("avatar unavailable: %s", redact(_reason(exc)))
+                    await db.rollback()
+            job = await db.get(Job, job_id)
+            await self._run_job(db, job, **senders)
             await finish_job(db, job)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — батч ждёт повтора, а не теряется
             await db.rollback()
             job = await db.get(Job, job_id)
-            job.status = "pending"
-            job.started_at = None
-            job.error = redact(_reason(exc))[:MAX_ERROR_CHARS]
-            job.retry_after = _retry_deadline(exc)
-            await db.commit()
+            if job is not None:
+                job.status = "pending"
+                job.started_at = None
+                job.attempts = (job.attempts or 0) + 1
+                job.error = redact(_reason(exc))[:MAX_ERROR_CHARS]
+                job.retry_after = _retry_deadline(exc)
+                await db.commit()
             logger.warning("batch %s awaiting retry: %s", job_id, redact(_reason(exc)))
         return "dispatched"
 

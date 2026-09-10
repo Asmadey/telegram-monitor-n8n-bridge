@@ -269,17 +269,52 @@ async def store_avatar(db, chat_id: int, image_bytes: bytes) -> None:
     await db.commit()
 
 
+async def _mark_processed(db, repo, payload: dict, messages: list[dict]) -> None:
+    """Пометить разобранные посты обработанными.
+
+    Чат берётся у самого поста, а не у батча: в сводке источника посты
+    приходят из разных каналов, и общего `chat_id` у батча нет.
+    """
+    by_chat: dict[int, list[int]] = {}
+    for message in messages:
+        if not message.get("id"):
+            continue
+        chat_id = message.get("chat_id") or payload.get("chat_id")
+        if chat_id is None:
+            continue
+        by_chat.setdefault(int(chat_id), []).append(message["id"])
+    for chat_id, ids in by_chat.items():
+        await db.execute(
+            update(SentMessage)
+            .where(
+                SentMessage.id.in_(
+                    repo.query(SentMessage).with_only_columns(SentMessage.id)
+                ),
+                SentMessage.chat_id == chat_id,
+                SentMessage.message_id.in_(ids),
+            )
+            .values(processed=True)
+        )
+
+
 async def dispatch(
     db,
     user_id: int,
     payload: dict,
     *,
     channel_prompt: str | None = None,
+    analysis: str | None = None,
     llm_caller=None,
     bot_sender=None,
     webhook_sender=None,
 ) -> dict:
-    """Провести выборку через доставку и записать её в ленту тенанта."""
+    """Провести выборку через доставку и записать её в ленту тенанта.
+
+    `analysis` передаёт конвейер источника (11.4): разбор уже сделан по
+    каналам и сведён, повторять его здесь нечего. Пустая строка при этом
+    значит «совпадений нет» — карточка в ленту пишется, а бот и вебхук
+    молчат. Это разные вещи: тишина здесь осмысленная, а не отказ.
+    """
     messages = payload.get("messages") or []
     if not messages:
         return {"status": "no_messages"}
@@ -315,7 +350,13 @@ async def dispatch(
         )
         db.add(item)
         await db.commit()
-    if item.delivery_status == "ANALYZING":
+    if analysis is not None and item.delivery_status == "ANALYZING":
+        # Разбор пришёл готовым: конвейер уже спросил модель по каналам
+        item.ai_analysis = analysis
+        item.delivery_status = "PENDING"
+        await _mark_processed(db, repo, payload, messages)
+        await db.commit()
+    elif item.delivery_status == "ANALYZING":
 
         async def checkpoint(analyses):
             item.analysis_progress_json = json.dumps(analyses, ensure_ascii=False)
@@ -333,17 +374,7 @@ async def dispatch(
         )
         item.ai_analysis = analysis or ""
         item.delivery_status = "PENDING"
-        await db.execute(
-            update(SentMessage)
-            .where(
-                SentMessage.id.in_(
-                    repo.query(SentMessage).with_only_columns(SentMessage.id)
-                ),
-                SentMessage.chat_id == payload.get("chat_id"),
-                SentMessage.message_id.in_([m["id"] for m in messages if m.get("id")]),
-            )
-            .values(processed=True)
-        )
+        await _mark_processed(db, repo, payload, messages)
         # The result and processed markers become durable BEFORE sending.
         await db.commit()
         if analysis:
@@ -356,9 +387,18 @@ async def dispatch(
                 chat_id=payload.get("chat_id"),
                 chat_title=payload.get("chat_title"),
             )
+    silent = analysis is not None and not analysis
     analysis = item.ai_analysis or ""
     if analysis:
         payload["ai_analysis"] = analysis
+    if silent:
+        # Совпадений нет — говорить нечего. Карточка в ленте остаётся, и по
+        # ней видно, что прогон был: тишина не должна выглядеть как отказ.
+        item.bot_status = "skipped"
+        item.webhook_status = "skipped"
+        item.delivery_status = "NO_MATCHES"
+        await db.commit()
+        return {"status": "no_matches", "job_id": batch_id}
     if item.bot_status not in ("sent", "skipped"):
         item.bot_status = await _run_bot(
             db, user_id, integration, payload, messages, analysis, bot_sender
