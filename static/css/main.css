@@ -433,13 +433,17 @@
       transform: translateX(18px);
     }
 
-    /* Collapsible Add Channel Drawer */
-    #addChannelDrawer {
+    /* Форма нового источника: свёрнута, пока кнопка не откроет её.
+       Имя правила отстало от переименования 11.7 («Каналы» → «Источники»):
+       разметка и модуль переехали на #addSourceDrawer, правило осталось на
+       #addChannelDrawer и перестало находить свой элемент — форма показывалась
+       всегда. Стык держит test_118. */
+    #addSourceDrawer {
       display: none;
       animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    #addChannelDrawer.open {
+    #addSourceDrawer.open {
       display: block;
     }
 

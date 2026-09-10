@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# .env лежит в корне приложения (FastAPI/), а не в cwd, откуда запущен pytest.
+# .env лежит в корне репозитория, а не в cwd, откуда запущен pytest.
 _ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 

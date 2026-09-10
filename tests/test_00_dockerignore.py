@@ -16,6 +16,21 @@ REQUIRED_PATTERNS = {
     "Ruby/",
     "exports/",
     ".git/",
+    # Добавлено 2026-09-10, когда дерево развернули: `private-backups/` лежал
+    # ЭТАЖОМ ВЫШЕ репозитория и в контекст сборки не попадал вовсе. После
+    # разворачивания он оказался внутри контекста, а внутри него — снимок
+    # `personal_account.session` и боевой `storage.db`. Перенос каталога
+    # молча превратил безопасный файл в содержимое образа.
+    "private-backups/",
+}
+
+# Не секреты, а вес. Держатся здесь же, потому что путь попадания тот же —
+# `COPY . .` берёт всё, чего нет в .dockerignore.
+REQUIRED_WEIGHT_PATTERNS = {
+    ".mypy_cache/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    ".venv/",
 }
 
 
@@ -41,3 +56,16 @@ def test_dockerfile_still_copies_everything():
         "Dockerfile больше не копирует каталог целиком — пересмотрите "
         "REQUIRED_PATTERNS в этом тесте."
     )
+
+
+def test_dockerignore_keeps_developer_caches_out_of_the_image():
+    """Найдено настоящей сборкой, а не разбором списка.
+
+    До 2026-09-10 демон Docker не запускался, и всё, что здесь проверялось, —
+    список шаблонов: он был полон, тест зелен. Первый живой `docker build`
+    показал внутри образа `.mypy_cache` на 77 МБ, `.pytest_cache` и
+    `.ruff_cache`. Список шаблонов не может рассказать о том, чего в нём нет,
+    — поэтому требование записано явно.
+    """
+    missing = REQUIRED_WEIGHT_PATTERNS - _patterns()
+    assert not missing, f"кеши инструментов уедут в боевой образ: {sorted(missing)}"
