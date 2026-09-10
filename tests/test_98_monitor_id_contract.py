@@ -29,7 +29,9 @@ import pytest
 from conftest import act_as
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-CHANNELS_JS = (ROOT / "static" / "js" / "channels.js").read_text(encoding="utf-8")
+# Файл переименован в 11.7 вместе с самим понятием: канал стал входом
+# источника, а не объектом. Свип смотрит на модуль источников.
+CHANNELS_JS = (ROOT / "static" / "js" / "sources.js").read_text(encoding="utf-8")
 INDEX_HTML = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
 
 
@@ -38,14 +40,14 @@ def test_interface_addresses_monitors_by_the_key_api_returns():
     offenders = [
         line.strip()[:100]
         for line in CHANNELS_JS.splitlines()
-        if re.search(r"\bm\.id\b|item\.id\b|\bdata\.id\b", line)
+        if re.search(r"\bs\.id\b|item\.id\b|\bdata\.id\b", line)
     ]
     assert not offenders, (
         "интерфейс адресует канал полем, которого API не отдаёт "
         "(нужен public_id):\n" + "\n".join(offenders)
     )
-    assert 'data-monitor-id="${m.public_id}"' in CHANNELS_JS, (
-        "кнопки строки канала не получают идентификатор"
+    assert 'data-source-id="${s.public_id}"' in CHANNELS_JS, (
+        "кнопки карточки источника не получают идентификатор"
     )
 
 
@@ -93,7 +95,7 @@ def test_twelve_hours_is_offered_everywhere_intervals_are_chosen():
     соседнее значение.
     """
     selects = re.findall(
-        r'<select id="(?:intervalMin|editIntervalMin)">(.*?)</select>',
+        r'<select id="(?:sourceInterval|editSourceInterval)">(.*?)</select>',
         INDEX_HTML,
         re.S,
     )

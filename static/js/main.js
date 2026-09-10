@@ -3,17 +3,17 @@
 //
 // Единственный модуль, знающий все вкладки: переключение тянет loaders
 // из модулей вкладок, сами модули друг про друга не знают (кроме
-// ребра channels → messages и integration → logs).
+// ребра sources → messages и integration → logs).
 
 import { apiGet } from './api.js';
 import { checkHealth, showAccount } from './auth.js';
 import { loadFeed } from './feed.js';
-import { loadConfig, refreshMonitorTimers } from './channels.js';
+import { loadSources } from './sources.js';
 import { loadSavedMessages } from './messages.js';
 import { loadOpenRouterConfig, loadTgForwardConfig, loadCleanupConfig } from './integration.js';
 import { loadLogs, loadOpsStatus } from './logs.js';
 
-const VALID_TABS = ['feed', 'messages', 'channels', 'integration', 'logs'];
+const VALID_TABS = ['feed', 'messages', 'sources', 'integration', 'logs'];
 
 function switchTab(tabId, updateUrl = true) {
   if (!VALID_TABS.includes(tabId)) {
@@ -51,10 +51,10 @@ function switchTab(tabId, updateUrl = true) {
   } else if (tabId === 'logs') {
     loadLogs();
     loadOpsStatus();
-  } else if (tabId === 'channels') {
-    loadConfig();
+  } else if (tabId === 'sources') {
+    loadSources();
   } else if (tabId === 'integration') {
-    loadConfig();
+    loadSources();
     loadOpenRouterConfig();
     loadTgForwardConfig();
   }
@@ -81,8 +81,8 @@ function initTabFromUrl() {
   const cleanPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
   if (cleanPath === 'messages') {
     switchTab('messages', false);
-  } else if (cleanPath === 'channels') {
-    switchTab('channels', false);
+  } else if (cleanPath === 'sources') {
+    switchTab('sources', false);
   } else if (cleanPath === 'integration') {
     switchTab('integration', false);
   } else if (cleanPath === 'logs') {
@@ -115,7 +115,7 @@ async function start() {
   if (shell) shell.hidden = false;
 
   checkHealth();
-  loadConfig();
+  loadSources();
   loadFeed();
   loadLogs();
   loadOpsStatus();
@@ -132,8 +132,7 @@ async function start() {
 
   // Периодический пересчет таймеров обратного отсчета (каждые 15 секунд)
   setInterval(() => {
-    refreshMonitorTimers();
-  }, 15000);
+      }, 15000);
 }
 
 start();
