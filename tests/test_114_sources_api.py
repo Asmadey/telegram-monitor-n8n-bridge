@@ -228,3 +228,66 @@ async def test_reset_dedup_touches_only_this_source(anon_client, db, user):
     assert left == [ids[second["public_id"]]], (
         f"сброс задел чужую историю: осталось {left}"
     )
+
+
+async def test_editing_a_channel_prompt_persists_and_comes_back(anon_client, db, user):
+    """Правка промпта канала — то самое действие владельца (2026-09-10).
+
+    Набор проверял СОЗДАНИЕ канала с промптом и потолок его длины, но не
+    ПРАВКУ: путь, которым пользуются каждый день, оставался непокрытым. Когда
+    сохранение упало в интерфейсе (`test_121`), по тестам нельзя было сказать,
+    доехал промпт до базы или нет, — а вопрос владельца был именно такой.
+    """
+    await act_as(anon_client, db, user)
+    source = await _source(anon_client)
+    created = (
+        await _channel(
+            anon_client,
+            source["public_id"],
+            "@alpha",
+            limit=20,
+            extract_prompt="старый",
+        )
+    ).json()
+
+    patched = await anon_client.patch(
+        f"/api/sources/{source['public_id']}/channels/{created['channel_id']}",
+        json={"extract_prompt": "искать вакансии продаж"},
+    )
+    assert patched.status_code == 200, patched.text
+
+    channels = (await anon_client.get("/api/sources")).json()["sources"][0]["channels"]
+    assert channels[0]["extract_prompt"] == "искать вакансии продаж"
+    assert channels[0]["limit"] == 20, "правка промпта сбросила лимит канала"
+
+
+async def test_every_channel_of_a_source_can_be_edited(anon_client, db, user):
+    """Правки доезжают до КАЖДОГО канала, а не только до первого.
+
+    Дефект в интерфейсе обрывал обход на кнопке внутри первой строки: канал №1
+    сохранялся, остальные — нет, молча. Здесь закреплено серверное свойство,
+    на которое интерфейс обязан опираться.
+    """
+    await act_as(anon_client, db, user)
+    source = await _source(anon_client)
+    ids = []
+    for index in range(3):
+        created = await _channel(
+            anon_client, source["public_id"], f"@ch{index}", extract_prompt="старый"
+        )
+        ids.append(created.json()["channel_id"])
+
+    for index, channel_id in enumerate(ids):
+        response = await anon_client.patch(
+            f"/api/sources/{source['public_id']}/channels/{channel_id}",
+            json={"extract_prompt": f"критерии {index}", "limit": (index + 1) * 5},
+        )
+        assert response.status_code == 200, response.text
+
+    channels = (await anon_client.get("/api/sources")).json()["sources"][0]["channels"]
+    assert [c["extract_prompt"] for c in channels] == [
+        "критерии 0",
+        "критерии 1",
+        "критерии 2",
+    ], "правки доехали не до всех каналов"
+    assert [c["limit"] for c in channels] == [5, 10, 15]
