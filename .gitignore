@@ -40,3 +40,19 @@ Ruby/
 # Тестовый кэш
 .pytest_cache/
 tests/__pycache__/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# Слито из корневого .gitignore при разворачивании дерева 2026-09-10.
+# `.env.*` шире, чем `.env.local`, поэтому нужна и отмена для примера.
+.env.*
+!.env.example
+
+# Личные резервные копии: внутри боевые storage.db и personal_account.session.
+# Каталог переехал в корень репозитория — без этой строки один `git add .`
+# закоммитил бы MTProto-сессию.
+private-backups/
+
+# Персональные настройки Claude Code этой машины (имя файла говорит: local).
+.claude/settings.local.json
