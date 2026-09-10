@@ -42,7 +42,6 @@ _LIST_FIELDS = (
     "chat_id",
     "chat_title",
     "chat_username",
-    "monitor_id",
     "messages_count",
     "ai_analysis",
     "model_name",
