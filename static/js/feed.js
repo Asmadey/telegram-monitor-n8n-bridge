@@ -96,10 +96,13 @@ function renderFeedList() {
     // Аватарка — с отдельного эндпоинта с кешом браузера (задача 5.4),
     // не из строки ленты. Ветка photo_base64 — совместимость с монолитом
     // (server.py, рантайм до закрытия К2): он ещё отдаёт аватарку строкой.
+    // У записи источника собственного чата нет — аватарку даёт первый канал
+    // (`avatar_chat_id` с сервера). Запасной `chat_id` — для записей до фазы 11.
+    const avatarChatId = item.avatar_chat_id || item.chat_id;
     const avatarHtml = item.photo_base64
       ? html`<img src="${item.photo_base64}" class="feed-avatar" alt="${item.chat_title}">`
-      : item.chat_id
-        ? html`<img src="/api/avatars/${item.chat_id}" class="feed-avatar" alt="${item.chat_title}" data-initial="${initial}">`
+      : avatarChatId
+        ? html`<img src="/api/avatars/${avatarChatId}" class="feed-avatar" alt="${item.chat_title}" data-initial="${initial}">`
         : html`<div class="feed-avatar">${initial}</div>`;
 
     const rawMsgs = Array.isArray(item.messages) ? item.messages : [];
@@ -173,12 +176,13 @@ async function selectFeedItem(id) {
   }
 
   const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
+  const detailAvatarChatId = item.avatar_chat_id || item.chat_id;
   if (feedDetailAvatar) {
     if (item.photo_base64) {
       feedDetailAvatar.innerHTML = html`<img src="${item.photo_base64}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
-    } else if (item.chat_id) {
+    } else if (detailAvatarChatId) {
       // аватарка с эндпоинта (5.4); 404 → буква-заглушка
-      feedDetailAvatar.innerHTML = html`<img src="/api/avatars/${item.chat_id}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="">`;
+      feedDetailAvatar.innerHTML = html`<img src="/api/avatars/${detailAvatarChatId}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="">`;
       const img = feedDetailAvatar.querySelector('img');
       if (img) {
         img.addEventListener('error', () => {

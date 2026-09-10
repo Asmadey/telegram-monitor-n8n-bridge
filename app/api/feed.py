@@ -42,6 +42,7 @@ _LIST_FIELDS = (
     "chat_id",
     "chat_title",
     "chat_username",
+    "monitor_id",
     "messages_count",
     "ai_analysis",
     "model_name",
@@ -49,8 +50,48 @@ _LIST_FIELDS = (
 )
 
 
-def _card(item: FeedItem) -> dict:
-    return {name: getattr(item, name) for name in _LIST_FIELDS}
+def _card(item: FeedItem, avatars: dict[int, int] | None = None) -> dict:
+    """Карточка списка. `avatars` — заранее разрешённые аватарки источников.
+
+    `avatar_chat_id` отвечает на единственный вопрос фронтенда: чью картинку
+    рисовать. У записи от опроса одного канала это её собственный чат; у записи
+    источника собственного чата нет (каналов много), и берётся первый канал по
+    порядку — тот, что идёт первым и в сводке.
+    """
+    card = {name: getattr(item, name) for name in _LIST_FIELDS}
+    card["avatar_chat_id"] = item.chat_id or (avatars or {}).get(item.monitor_id or 0)
+    return card
+
+
+async def _avatars_for(repo: TenantRepo, items) -> dict[int, int]:
+    """Один запрос на всю страницу ленты, а не по запросу на карточку.
+
+    Берутся только каналы ЭТОГО кабинета: строка ленты может нести
+    `monitor_id` чужого источника (перенос, подлог), и тянуть по нему картинку
+    значило бы показать чужое. Канал без разрешённого `chat_id` пропускается:
+    `/api/avatars/0` ответит 404, и вместо буквы пользователь увидел бы
+    битую картинку.
+    """
+    wanted = {i.monitor_id for i in items if not i.chat_id and i.monitor_id}
+    if not wanted:
+        return {}
+    rows = await repo.db.scalars(
+        select(MonitorChannel)
+        .where(
+            MonitorChannel.user_id == repo.user_id,
+            MonitorChannel.monitor_id.in_(wanted),
+            MonitorChannel.chat_id.is_not(None),
+            MonitorChannel.chat_id != 0,
+        )
+        .order_by(MonitorChannel.monitor_id, MonitorChannel.position, MonitorChannel.id)
+    )
+    first: dict[int, int] = {}
+    for channel in rows:
+        # Отбор в запросе уже отсёк NULL и ноль, но типы модели этого не
+        # знают: сужаем явно, чтобы не подсунуть None ключом или значением.
+        if channel.monitor_id and channel.chat_id:
+            first.setdefault(channel.monitor_id, channel.chat_id)
+    return first
 
 
 @router.get("/api/feed")
@@ -66,7 +107,8 @@ async def list_feed(
     )
     stmt = base.order_by(FeedItem.id.desc()).offset(offset).limit(limit)
     items = (await repo.db.scalars(stmt)).all()
-    cards = [_card(i) for i in items]
+    avatars = await _avatars_for(repo, items)
+    cards = [_card(i, avatars) for i in items]
     return {"total": total or 0, "feed": cards}
 
 
@@ -81,7 +123,8 @@ async def feed_detail(id: int, repo: TenantRepo = Depends(get_tenant_repo)) -> d
         messages = json.loads(item.raw_messages_json or "[]")
     except ValueError:  # битый JSON — пустой список, а не 500 всей вкладки
         messages = []
-    return {"feed_item": {**_card(item), "messages": messages}}
+    avatars = await _avatars_for(repo, [item])
+    return {"feed_item": {**_card(item, avatars), "messages": messages}}
 
 
 @router.get("/api/avatars/{chat_id}")
