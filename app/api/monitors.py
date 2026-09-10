@@ -26,11 +26,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func
+from sqlalchemy import delete, func, select
 
 from app.db import TenantRepo, deleted_count
 from app.deps import get_tenant_repo, require_user
-from app.models import Monitor, SentMessage
+from app.models import Monitor, MonitorChannel, SentMessage
 from app.services.jobs import enqueue_job
 from app.services.journal import add_log
 from app.services.tg_auth import get_account_client
@@ -201,6 +201,28 @@ async def add_monitor(
     await repo.db.commit()
     await repo.db.refresh(monitor)
 
+    # Источник опрашивается через свои каналы (11.4). Без этой строки канал
+    # был бы виден в списке и молчал бы без единой ошибки: конвейер просто
+    # не нашёл бы, что опрашивать. Разрыв возник между двумя зелёными
+    # задачами — чтение переехало на новую таблицу, запись осталась на
+    # старой; по отдельности верны обе стороны, не стыкуется шов.
+    repo.db.add(
+        MonitorChannel(
+            monitor_id=monitor.id,
+            user_id=repo.user_id,
+            chat_target=req.chat_target,
+            chat_title=title,
+            chat_username=username,
+            chat_id=chat_id,
+            limit_count=req.limit,
+            offset_hours=req.offset_hours,
+            extract_prompt=(req.prompt or "").strip(),
+            is_active=req.is_active,
+            position=0,
+        )
+    )
+    await repo.db.commit()
+
     await add_log(
         repo.db,
         repo.user_id,
@@ -231,6 +253,23 @@ async def update_monitor(
         monitor.is_active = req.is_active
     if req.prompt is not None:
         monitor.prompt = req.prompt.strip() or None
+
+    # Пока источник равен одному каналу, правка идёт в обе строки: иначе
+    # изменение лимита или промпта видно в интерфейсе и не действует.
+    channel = (
+        await repo.db.scalars(
+            select(MonitorChannel).where(MonitorChannel.monitor_id == monitor.id)
+        )
+    ).first()
+    if channel is not None:
+        if req.limit is not None:
+            channel.limit_count = req.limit
+        if req.offset_hours is not None:
+            channel.offset_hours = req.offset_hours
+        if req.is_active is not None:
+            channel.is_active = req.is_active
+        if req.prompt is not None:
+            channel.extract_prompt = req.prompt.strip()
 
     await repo.db.commit()
     await repo.db.refresh(monitor)
