@@ -737,6 +737,13 @@
     </div>
   </div>
 
+  <!-- Полоса состояния связи (12.8). Тост живёт три секунды, а сервер лежит
+       минутами: состояние обязано ДЕРЖАТЬСЯ до успешного запроса. Держит его
+       api.js — один перехват на все вызовы, как и у 401. -->
+  <div id="connectionBanner" role="status" aria-live="polite">
+    <span id="connectionBannerText">Нет связи с сервером</span>
+  </div>
+
   <!-- Toast -->
   <div id="toast" class="toast">
     <span id="toastMsg">Уведомление</span>

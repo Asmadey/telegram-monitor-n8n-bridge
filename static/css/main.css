@@ -953,6 +953,28 @@
       line-height: 1.4;
     }
 
+    /* Полоса состояния связи (12.8): показывается классом open, как и
+       остальные скрытые блоки — правило проверяет test_118. */
+    #connectionBanner {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: var(--accent-red);
+      color: var(--on-primary);
+      padding: 10px 18px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 1100;
+      box-shadow: var(--shadow-modal);
+    }
+
+    #connectionBanner.open {
+      display: block;
+    }
+
     .toast {
       position: fixed;
       bottom: 24px;
