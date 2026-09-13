@@ -7,6 +7,7 @@
 
 Порт registrations_controller.rb / sessions_controller.rb (Rails-шаблон).
 """
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -93,6 +94,7 @@ class SignupRequest(AuthRequest):
 class GoogleLoginRequest(BaseModel):
     """Фаза 6: Firebase-токен с фронта. Верификатор — зависимость,
     подменяемая в тестах (app.services.google_auth)."""
+
     id_token: str
 
 
@@ -300,7 +302,9 @@ async def confirm_password_reset(
     # 422 без объяснений: подделка, истёк, уже использован — не различаем
     user = await resolve_reset_token(db, req.token)
     if user is None:
-        raise HTTPException(status_code=422, detail="Ссылка недействительна или устарела")
+        raise HTTPException(
+            status_code=422, detail="Ссылка недействительна или устарела"
+        )
     user.password_hash = hash_password(req.new_password)
     await db.commit()
     # смена пароля убивает ВСЕ сессии пользователя (в т.ч. угнанные)
