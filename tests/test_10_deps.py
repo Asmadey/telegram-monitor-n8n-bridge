@@ -16,8 +16,6 @@ REQUIRED_MODULES = [
     "uvicorn",
     "pydantic",
     "httpx",
-    "rich",
-    "tabulate",
     # Фаза 1 (задача 1.1)
     "sqlalchemy",
     "sqlalchemy.ext.asyncio",
@@ -31,6 +29,9 @@ REQUIRED_MODULES = [
     "cryptography.fernet",
     "slowapi",
     # dev-зависимости
+    # rich переехал сюда из боевых (12.2): им пользуются только CLI-скрипты
+    # в корне. tabulate убран совсем — его не импортировал никто.
+    "rich",
     "pytest",
     "pytest_asyncio",
     "ruff",
