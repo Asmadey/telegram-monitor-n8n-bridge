@@ -24,10 +24,10 @@ import json
 import logging
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects import postgresql, sqlite
 
-from app.models import Integration, LLMUsage
+from app.models import Integration, LLMUsage, LLMUsageSlice
 from app.services.integrations import integration_secrets
 from app.services.journal import add_log, redact
 
@@ -118,10 +118,24 @@ async def monthly_tokens_used(
 
 
 async def _add_tokens(
-    db, user_id: int, tokens: int, *, now: datetime.datetime, commit: bool = True
+    db,
+    user_id: int,
+    tokens: int,
+    *,
+    now: datetime.datetime,
+    commit: bool = True,
+    source_public_id: str = "",
+    chat_id: int = 0,
+    chat_title: str = "",
 ) -> None:
     """Атомарное списание: upsert с инкрементом — конкурентные списания
-    (воркер + ручной запуск) не теряют токены."""
+    (воркер + ручной запуск) не теряют токены.
+
+    Пишет ДВА счётчика в одной транзакции: общий по тенанту (на нём держится
+    месячный гейт) и разрез по источнику и каналу (задача 12.7). Вместе, а не
+    по отдельности, — иначе сумма по разрезу однажды разойдётся с расходом, и
+    отчёт, по которому решают, какой канал отключить, начнёт врать.
+    """
     insert = sqlite.insert if db.bind.dialect.name == "sqlite" else postgresql.insert
     stmt = insert(LLMUsage).values(
         user_id=user_id, period=_period(now), tokens=tokens, updated_at=now
@@ -131,6 +145,30 @@ async def _add_tokens(
         set_={"tokens": LLMUsage.__table__.c.tokens + stmt.excluded.tokens},
     )
     await db.execute(stmt)
+
+    sliced = insert(LLMUsageSlice).values(
+        user_id=user_id,
+        period=_period(now),
+        source_public_id=source_public_id or "",
+        chat_id=chat_id or 0,
+        chat_title=chat_title or "",
+        tokens=tokens,
+        updated_at=now,
+    )
+    sliced = sliced.on_conflict_do_update(
+        index_elements=["user_id", "period", "source_public_id", "chat_id"],
+        set_={
+            "tokens": LLMUsageSlice.__table__.c.tokens + sliced.excluded.tokens,
+            # имя канала могли переименовать — храним последнее известное,
+            # но не затираем его пустотой из вызова, который имени не знает
+            "chat_title": func.coalesce(
+                func.nullif(sliced.excluded.chat_title, ""),
+                LLMUsageSlice.__table__.c.chat_title,
+            ),
+            "updated_at": sliced.excluded.updated_at,
+        },
+    )
+    await db.execute(sliced)
     if commit:
         await db.commit()
 
@@ -156,6 +194,9 @@ async def process_messages_batch_with_llm(
     require_success: bool = False,
     completed: list[str] | None = None,
     checkpoint=None,
+    source_public_id: str = "",
+    chat_id: int = 0,
+    chat_title: str = "",
 ) -> str | None:
     """Анализ батча с гейтами и устойчивыми checkpoints.
 
@@ -163,6 +204,11 @@ async def process_messages_batch_with_llm(
     запросом. `require_success=True` используется durable job: весь текст
     уходит чанками, успешные чанки не повторяются, а месячный бюджет
     переносит непрочитанный остаток на следующий период.
+
+    `source_public_id` / `chat_id` / `chat_title` — адрес расхода (12.7).
+    Пустая строка и ноль означают «вне источника» и «не канал»: прямой
+    разбор из ленты и сведение по каналам тоже тратят токены, но канала
+    у них нет.
     """
     now = now or _utcnow()
     integration = (
@@ -256,7 +302,14 @@ async def process_messages_batch_with_llm(
                 analyses.append(result)
             if require_success:
                 await _add_tokens(
-                    db, user_id, used or 0, now=now, commit=checkpoint is None
+                    db,
+                    user_id,
+                    used or 0,
+                    now=now,
+                    commit=checkpoint is None,
+                    source_public_id=source_public_id,
+                    chat_id=chat_id,
+                    chat_title=chat_title,
                 )
                 if checkpoint is not None:
                     await checkpoint(analyses)
@@ -285,7 +338,15 @@ async def process_messages_batch_with_llm(
     if not analysis:
         return None
     if not require_success:
-        await _add_tokens(db, user_id, tokens or 0, now=now)
+        await _add_tokens(
+            db,
+            user_id,
+            tokens or 0,
+            now=now,
+            source_public_id=source_public_id,
+            chat_id=chat_id,
+            chat_title=chat_title,
+        )
 
     # пересечение лимита ЭТИМ запросом: токены уже списаны — отключаем
     if (

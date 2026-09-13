@@ -393,6 +393,10 @@ class Worker:
         """
         batch = payload["batch"]
         groups = batch.get("channels") or []
+        # Публичный id, а не внутренний: он и так в задаче, и расход по нему
+        # переживёт удаление источника (12.7). Старые задачи в очереди его не
+        # несут — тогда расход попадёт в «вне источника», а не потеряется.
+        source_public_id = batch.get("source_public_id") or ""
         answer_prompt = payload.get("answer_prompt") or ""
         unparsed = list(batch.get("unparsed") or [])
         verdicts: list[dict] = []
@@ -445,6 +449,11 @@ class Worker:
                         require_success=True,
                         completed=list(group.get("completed") or []),
                         checkpoint=_chunk_done,
+                        # адрес расхода (12.7): по общему счётчику не видно,
+                        # какой из десяти каналов жжёт бюджет
+                        source_public_id=source_public_id,
+                        chat_id=group.get("chat_id") or 0,
+                        chat_title=group.get("chat_title") or "",
                     ),
                     LLM_TIMEOUT,
                     f"разбор канала {group.get('chat_title')}",
@@ -530,6 +539,9 @@ class Worker:
                         custom_prompt=answer_prompt,
                         caller=caller,
                         require_success=True,
+                        # сведение тратит токены на источник целиком:
+                        # канала у него нет, поэтому chat_id остаётся нулём
+                        source_public_id=source_public_id,
                     ),
                     LLM_TIMEOUT,
                     "сведение по каналам",

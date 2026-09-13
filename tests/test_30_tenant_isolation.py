@@ -309,6 +309,31 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
     db.add(
         LogEntry(user_id=user_b.id, event_type="X", status="INFO", details="сводка B")
     )
+    # Расход токенов (12.7): у него видимое поле — имя канала, поэтому маркер
+    # живёт там. Сеется ОБОИМ тенантам: у A — чтобы проверка утечки на этом
+    # маршруте была настоящей, у B — чтобы позитивный контроль видел, что
+    # список вообще работает.
+    from app.services.llm import _add_tokens, _utcnow
+
+    now = _utcnow()
+    await _add_tokens(
+        db,
+        user_a.id,
+        11,
+        now=now,
+        source_public_id="a-monitor",
+        chat_id=chat_a,
+        chat_title=marker,
+    )
+    await _add_tokens(
+        db,
+        user_b.id,
+        22,
+        now=now,
+        source_public_id="b-source",
+        chat_id=chat_b,
+        chat_title="сводка B",
+    )
     await db.commit()
 
     # секреты интеграций A: конфиг-эндпоинты не отдают их даже владельцу
