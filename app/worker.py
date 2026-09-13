@@ -159,14 +159,29 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+# Хвосты, которые SQLAlchemy приписывает к тексту исключения: сам запрос,
+# его параметры и ссылка на документацию. Владельцу они не говорят ничего
+# (2026-09-13: вместо причины он увидел четыре строки SQL с подстановками),
+# а параметры — это ещё и содержимое строк таблицы в журнале.
+_NOISE = ("\n[SQL:", " [SQL:", "\n[parameters:", "(Background on this error")
+
+
 def _reason(exc: BaseException) -> str:
-    """Тип и текст исключения одной строкой.
+    """Тип и причина исключения ОДНОЙ строкой.
 
     Тип обязателен: самые частые сетевые отказы (`ConnectionError`,
     `asyncio.TimeoutError`) приходят без сообщения, и запись без типа
     сообщает ровно ничего — а логи процесса пользователю недоступны.
+
+    Хвост с запросом и параметрами обрезается: запись в журнале должна
+    называть причину, а не пересказывать оператору содержимое таблицы.
     """
     text = str(exc).strip()
+    for mark in _NOISE:
+        head = text.split(mark, 1)[0].strip()
+        if head:
+            text = head
+    text = " ".join(text.split())
     name = type(exc).__name__
     return f"{name}: {text}" if text else name
 
@@ -937,7 +952,60 @@ class Worker:
             channel = await db.get(MonitorChannel, channel_id)
             if channel is None:  # источник правили во время прогона
                 continue
-            channel.chat_id = int(getattr(entity, "id", 0) or channel.chat_id or 0)
+
+            resolved_id = int(getattr(entity, "id", 0) or channel.chat_id or 0)
+            twin = (
+                await db.scalars(
+                    select(MonitorChannel)
+                    .where(
+                        MonitorChannel.monitor_id == source_id,
+                        MonitorChannel.chat_id == resolved_id,
+                        MonitorChannel.id != channel.id,
+                    )
+                    .limit(1)
+                )
+            ).first()
+            if twin is not None:
+                # Поле снимается в обычную строку СРАЗУ: ниже нет отката, но
+                # и без него обращение к ORM-объекту после чужого commit —
+                # ленивая загрузка, то есть MissingGreenlet в async-сессии.
+                twin_target = twin.chat_target
+                # Два адреса источника разрешились в ОДИН чат. Проверка на
+                # входе (12.x) ловит разные написания одного имени, но два
+                # РАЗНЫХ адреса — публичное имя и приглашение, старое имя
+                # переименованного канала — сходятся законно, и узнать об
+                # этом можно только здесь.
+                #
+                # Присваивать нельзя: ограничение (monitor_id, chat_id)
+                # выстрелит на commit, а исключение унесёт ВЕСЬ прогон
+                # источника вместе с уже разобранными каналами — ровно так
+                # источник владельца стоял 2026-09-13. Канал объявляется
+                # неразобранным, остальные идут своим ходом.
+                #
+                # Отката здесь нет намеренно: неудачного запроса не было —
+                # столкновение поймано ДО присваивания. Лишний rollback
+                # обесценил бы всю сессию (факт 4 CLAUDE.md).
+                unparsed.append(name)
+                await add_log(
+                    db,
+                    user_id,
+                    "POLL_ERROR",
+                    f"Канал «{name}» — дубль: он уже есть в источнике как "
+                    f"«{twin_target}». Удалите лишний, иначе канал "
+                    "опрашивался бы дважды и считался дважды",
+                    status="ERROR",
+                    chat_title=name,
+                )
+                logger.warning(
+                    "канал %s источника %s тенанта %s — дубль %s",
+                    name,
+                    source_public_id,
+                    user_id,
+                    twin_target,
+                )
+                continue
+
+            channel.chat_id = resolved_id
             channel.chat_title = getattr(entity, "title", None) or channel.chat_title
             channel.chat_username = (
                 getattr(entity, "username", None) or channel.chat_username

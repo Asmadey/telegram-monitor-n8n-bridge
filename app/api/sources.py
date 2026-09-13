@@ -22,6 +22,7 @@ from sqlalchemy import delete, func, select
 from app.db import TenantRepo, deleted_count
 from app.deps import get_tenant_repo, require_user
 from app.models import Job, Monitor, MonitorChannel, SentMessage
+from app.services.channels import normalize_channel_target
 from app.services.jobs import STATUS_DONE, STATUS_FAILED
 from app.services.journal import add_log
 from app.services.stopwords import MAX_STOP_WORDS, parse_stop_words
@@ -295,7 +296,12 @@ async def add_channel(
     prompt = _check_prompt(req.extract_prompt, "Промпт извлечения")
     target = req.chat_target.strip()
 
-    if any(c.chat_target == target for c in existing):
+    # Сравнение по нормализованному адресу, а не по строке. Буквальное `==`
+    # пропускало `@name` рядом с `t.me/name`: Telegram разрешает их в один
+    # чат, и ограничение `(monitor_id, chat_id)` стреляло уже на ПРОГОНЕ,
+    # унося с собой весь источник (найдено владельцем 2026-09-13).
+    key = normalize_channel_target(target)
+    if any(normalize_channel_target(c.chat_target) == key for c in existing):
         raise HTTPException(
             status_code=409,
             detail="Этот канал уже есть в источнике: он опрашивался бы дважды",
