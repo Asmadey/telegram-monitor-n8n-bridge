@@ -183,9 +183,9 @@ async def list_sources(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
     sources = list(await repo.db.scalars(repo.query(Monitor).order_by(Monitor.id)))
     channels = list(
         await repo.db.scalars(
-            select(MonitorChannel)
-            .where(MonitorChannel.user_id == repo.user_id)
-            .order_by(MonitorChannel.position, MonitorChannel.id)
+            repo.query(MonitorChannel).order_by(
+                MonitorChannel.position, MonitorChannel.id
+            )
         )
     )
     counts = await _sent_counts(repo, [c.chat_id for c in channels if c.chat_id])

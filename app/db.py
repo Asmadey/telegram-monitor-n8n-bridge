@@ -7,6 +7,7 @@
 from collections.abc import AsyncIterator
 from typing import Any
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -57,6 +58,16 @@ class TenantRepo:
 
     def query(self, model):
         return select(model).where(model.user_id == self.user_id)
+
+    def delete(self, model):
+        """DELETE по строкам тенанта — парный `query` для удаления.
+
+        Без него очистки писали `delete(Model).where(Model.user_id == ...)`
+        руками: ровно та форма, которую запрещает AGENTS.md §5, и ровно та,
+        где забытый `where` стирает данные ВСЕМ клиентам сразу, а не отдаёт
+        чужие на чтение.
+        """
+        return sa_delete(model).where(model.user_id == self.user_id)
 
     async def get(self, model, id_):
         """Строка по id — или None, если её нет ИЛИ она чужая.
