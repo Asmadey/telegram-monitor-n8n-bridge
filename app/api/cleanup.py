@@ -7,7 +7,6 @@ settings, одна на весь сервис. Данные принадлежа
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
 from app.db import TenantRepo
 from app.deps import get_tenant_repo, require_user
@@ -27,11 +26,7 @@ class CleanupConfig(BaseModel):
 
 
 async def _row(repo: TenantRepo) -> Integration | None:
-    return (
-        await repo.db.scalars(
-            select(Integration).where(Integration.user_id == repo.user_id)
-        )
-    ).first()
+    return (await repo.db.scalars(repo.query(Integration))).first()
 
 
 async def _row_or_create(repo: TenantRepo) -> Integration:

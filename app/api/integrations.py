@@ -19,7 +19,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
 
 from app.db import TenantRepo
 from app.deps import get_tenant_repo, require_user
@@ -72,11 +71,7 @@ def mask(secret: str) -> str:
 
 
 async def _row(repo: TenantRepo) -> Integration | None:
-    return (
-        await repo.db.scalars(
-            select(Integration).where(Integration.user_id == repo.user_id)
-        )
-    ).first()
+    return (await repo.db.scalars(repo.query(Integration))).first()
 
 
 async def _secrets(repo: TenantRepo) -> tuple[Integration | None, dict[str, str]]:

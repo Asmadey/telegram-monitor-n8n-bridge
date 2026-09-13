@@ -20,7 +20,7 @@ photo_base64, и raw_messages_json целиком: двести аватарок
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import delete, func, select
+from sqlalchemy import func
 
 from app.db import TenantRepo, deleted_count
 from app.deps import get_tenant_repo, require_user
@@ -75,9 +75,8 @@ async def _avatars_for(repo: TenantRepo, items) -> dict[int, int]:
     if not wanted:
         return {}
     rows = await repo.db.scalars(
-        select(MonitorChannel)
+        repo.query(MonitorChannel)
         .where(
-            MonitorChannel.user_id == repo.user_id,
             MonitorChannel.monitor_id.in_(wanted),
             MonitorChannel.chat_id.is_not(None),
             MonitorChannel.chat_id != 0,
@@ -133,12 +132,7 @@ async def chat_avatar(
     """Аватарка канала: только юзеру, который мониторит этот канал."""
     monitored = (
         await repo.db.scalars(
-            select(MonitorChannel)
-            .where(
-                MonitorChannel.user_id == repo.user_id,
-                MonitorChannel.chat_id == chat_id,
-            )
-            .limit(1)
+            repo.query(MonitorChannel).where(MonitorChannel.chat_id == chat_id).limit(1)
         )
     ).first()
     if monitored is None:
@@ -175,9 +169,7 @@ async def clear_feed(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
     В монолите (server.py:1971) это `DELETE FROM analysis_feed` без условия:
     в мульти-тенанте один клиент стёр бы ленту всему сервису.
     """
-    result = await repo.db.execute(
-        delete(FeedItem).where(FeedItem.user_id == repo.user_id)
-    )
+    result = await repo.db.execute(repo.delete(FeedItem))
     await repo.db.commit()
     return {"status": "cleared", "removed": deleted_count(result)}
 

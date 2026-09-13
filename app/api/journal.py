@@ -16,7 +16,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import delete, func
+from sqlalchemy import func
 
 from app.db import TenantRepo
 from app.deps import get_tenant_repo, require_user
@@ -125,7 +125,7 @@ async def clear_logs(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
     Сама очистка записывается в журнал: действие, стирающее историю, обязано
     оставлять след, иначе его нельзя отследить постфактум.
     """
-    await repo.db.execute(delete(LogEntry).where(LogEntry.user_id == repo.user_id))
+    await repo.db.execute(repo.delete(LogEntry))
     await repo.db.commit()
     await add_log(
         repo.db,
