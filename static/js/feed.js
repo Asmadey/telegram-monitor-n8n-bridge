@@ -93,17 +93,18 @@ function renderFeedList() {
   feedListContainer.innerHTML = currentFeed.map(item => {
     const isActive = item.id === selectedFeedId;
     const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
-    // Аватарка — с отдельного эндпоинта с кешом браузера (задача 5.4),
-    // не из строки ленты. Ветка photo_base64 — совместимость с монолитом
-    // (server.py, рантайм до закрытия К2): он ещё отдаёт аватарку строкой.
+    // Аватарка — с отдельного эндпоинта с кешом браузера (задача 5.4), не из
+    // строки ленты: колонки photo_base64 нет в модели с 5.4, `_LIST_FIELDS`
+    // исключает её явно, и ветка под неё убрана задачей 12.3. Она читала поле,
+    // которого нет в ответе НИ ОДНОГО из двух эндпоинтов, и ровно этим —
+    // видом рабочего запасного пути — прикрывала отсутствие аватарки у
+    // источников всю фазу 11.
     // У записи источника собственного чата нет — аватарку даёт первый канал
     // (`avatar_chat_id` с сервера). Запасной `chat_id` — для записей до фазы 11.
     const avatarChatId = item.avatar_chat_id || item.chat_id;
-    const avatarHtml = item.photo_base64
-      ? html`<img src="${item.photo_base64}" class="feed-avatar" alt="${item.chat_title}">`
-      : avatarChatId
-        ? html`<img src="/api/avatars/${avatarChatId}" class="feed-avatar" alt="${item.chat_title}" data-initial="${initial}">`
-        : html`<div class="feed-avatar">${initial}</div>`;
+    const avatarHtml = avatarChatId
+      ? html`<img src="/api/avatars/${avatarChatId}" class="feed-avatar" alt="${item.chat_title}" data-initial="${initial}">`
+      : html`<div class="feed-avatar">${initial}</div>`;
 
     const rawMsgs = Array.isArray(item.messages) ? item.messages : [];
     const snippet = item.ai_analysis
@@ -178,9 +179,7 @@ async function selectFeedItem(id) {
   const initial = (item.chat_title || 'Т').charAt(0).toUpperCase();
   const detailAvatarChatId = item.avatar_chat_id || item.chat_id;
   if (feedDetailAvatar) {
-    if (item.photo_base64) {
-      feedDetailAvatar.innerHTML = html`<img src="${item.photo_base64}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
-    } else if (detailAvatarChatId) {
+    if (detailAvatarChatId) {
       // аватарка с эндпоинта (5.4); 404 → буква-заглушка
       feedDetailAvatar.innerHTML = html`<img src="/api/avatars/${detailAvatarChatId}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="">`;
       const img = feedDetailAvatar.querySelector('img');
