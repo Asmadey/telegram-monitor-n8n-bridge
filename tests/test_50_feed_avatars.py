@@ -79,8 +79,9 @@ def test_migration_creates_chat_avatars():
 def test_feed_js_uses_avatar_endpoint():
     """Фронт берёт аватарку с GET /api/avatars/{chat_id} (с кешом браузера),
     а битый img не оставляет: нет строки в chat_avatars / 404 — буква.
-    Ветку photo_base64 сохраняем до закрытия К2: монолит (server.py) ещё
-    рантайм и отдёт аватарки строкой ленты."""
+    Ветки photo_base64 больше нет: колонки нет в модели с 5.4, монолит снят
+    задачей 7.4, а ветка убрана задачей 12.3 — она читала поле, которого в
+    ответе нет, и маскировала отсутствие аватарки у источников."""
     src = (ROOT / "static" / "js" / "feed.js").read_text(encoding="utf-8")
     assert "/api/avatars/" in src, "feed.js не ходит за аватарками на эндпоинт"
     assert "addEventListener('error'" in src, (

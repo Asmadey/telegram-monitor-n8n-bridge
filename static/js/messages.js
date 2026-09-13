@@ -1,9 +1,11 @@
 // messages.js — вкладка «Сообщения»: таблица, фильтры и JSON-модалка
 // (задача 5.1, разрез index.html).
 //
-// currentMessages живёт здесь: каналам (runMonitor) отдаются
-// mergeMessages и setFilterChatOptions — ребро channels → messages,
-// без цикла импортов.
+// currentMessages живёт здесь: источникам отдаётся setFilterChatOptions —
+// ребро sources → messages в одну сторону, без цикла импортов.
+// Парный ему mergeMessages убран задачей 12.3: он вливал в таблицу посты
+// синхронного прогона монолита, а прогон с 11.6 асинхронный (202 queued,
+// работу делает воркер) и постов в ответе не приносит.
 
 import { apiGet } from './api.js';
 import { html, raw, formatTelegramText, showToast, openModalAnimated, closeModalAnimated } from './render.js';
@@ -128,20 +130,6 @@ export function setFilterChatOptions(monitors) {
   // опции фильтра «Канал» наполняет вкладка каналов после renderMonitors
   const options = monitors.map(m => html`<option value="${m.chat_id}">${m.chat_title}</option>`).join('');
   filterChatSelect.innerHTML = html`<option value="ALL">Все каналы</option>${raw(options)}`;
-}
-
-export function mergeMessages(messages, meta) {
-  // ручной запуск канала приносит свежие посты прямо в таблицу
-  const newFormatted = messages.map(msg => ({ ...msg, ...meta }));
-  newFormatted.forEach(msg => {
-    const idx = currentMessages.findIndex(m => String(m.chat_id) === String(msg.chat_id) && String(m.id) === String(msg.id));
-    if (idx >= 0) {
-      currentMessages[idx] = { ...currentMessages[idx], ...msg };
-    } else {
-      currentMessages.unshift(msg);
-    }
-  });
-  renderTable();
 }
 
 export async function loadSavedMessages(append = false) {

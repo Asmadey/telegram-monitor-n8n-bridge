@@ -9,7 +9,7 @@
 // ревью, XSS-сканер 0.4 treats raw( как отсутствие экранирования).
 // Прямой innerHTML со строковой интерполяцией запрещён (test_48).
 //
-// escapeHtml/esc остаются для точек вне билдера: атрибуты внутри raw()
+// escapeHtml остаётся для точек вне билдера: атрибуты внутри raw()
 // и значения, экранируемые до построения разметки.
 
 export function escapeHtml(text) {
@@ -17,12 +17,6 @@ export function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
-}
-
-// Короткий алиас + экранирование кавычек: безопасен и в текстовом узле,
-// и внутри атрибута (escapeHtml кавычки не экранирует).
-export function esc(text) {
-  return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // Чистый (без DOM) escaper для билдера: исполним и в node (test_48),
@@ -101,34 +95,6 @@ export function formatIntervalHuman(minutes) {
     return `Каждые ${h}ч ${m}м`;
   }
   return `Каждые ${minutes} мин`;
-}
-
-// Форматирование времени следующей отправки (last_checked + interval)
-export function formatNextRun(m) {
-  if (!m.is_active) return '<span style="color: var(--mute);">На паузе</span>';
-  if (!m.last_checked && !m.next_run) return '<span style="color: var(--accent-blue-deep);">При первом запуске</span>';
-
-  try {
-    const nextDate = m.next_run ? new Date(m.next_run) : new Date(new Date(m.last_checked).getTime() + (m.interval_minutes || 60) * 60000);
-    const now = new Date();
-    const diffMs = nextDate.getTime() - now.getTime();
-    const timeFormatted = nextDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    if (diffMs <= 0) {
-      return `<b style="color: #008715;">Сейчас</b> (${timeFormatted})`;
-    }
-
-    const diffMins = Math.round(diffMs / 60000);
-    if (diffMins < 60) {
-      return `<b>${timeFormatted}</b> <span style="opacity: 0.75; font-size: 11px;">(${diffMins} мин)</span>`;
-    } else {
-      const hours = Math.floor(diffMins / 60);
-      const remainingMins = diffMins % 60;
-      return `<b>${timeFormatted}</b> <span style="opacity: 0.75; font-size: 11px;">(${hours}ч ${remainingMins}м)</span>`;
-    }
-  } catch (e) {
-    return '—';
-  }
 }
 
 export function openModalAnimated(modalEl) {
