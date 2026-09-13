@@ -440,6 +440,47 @@ class LLMUsage(Base):
     __table_args__ = (UniqueConstraint("user_id", "period"),)
 
 
+class LLMUsageSlice(Base):
+    """Тот же расход, но в разрезе источника и канала (задача 12.7).
+
+    Отдельная таблица, а не колонки в `llm_usage`, — и это не вкусовое
+    решение: месячный гейт читает ОДНУ строку на (тенант, период) через
+    `scalar_one_or_none`, и строки по каналам в той же таблице уронили бы
+    его на второй. Счётчик, на котором держится защита от неограниченного
+    счёта, ломать ради отчёта нельзя.
+
+    Источник назван публичным идентификатором, а не внешним ключом на
+    `monitors`. Внешний ключ дал бы либо каскад (история трат исчезает
+    вместе с источником), либо отказ удаления; вдобавок внутренние
+    BIGINT наружу не отдаются (контракт 9.10), а эти строки и заводятся
+    ради показа. Пустая строка — расход вне источника (переразбор из
+    ленты), `chat_id = 0` — сведение по каналам: канала у него нет.
+    """
+
+    __tablename__ = "llm_usage_slices"
+
+    id: Mapped[int] = mapped_column(BigIntPK, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=False, index=True
+    )
+    period: Mapped[str] = mapped_column(String(7), nullable=False)  # YYYY-MM
+    source_public_id: Mapped[str] = mapped_column(
+        String(36), nullable=False, default=""
+    )
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # имя канала лежит здесь копией намеренно: канал удалят, а строка расхода
+    # останется, и «-1001234567890» вместо названия делает отчёт нечитаемым
+    chat_title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now, onupdate=_now
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "period", "source_public_id", "chat_id"),
+    )
+
+
 class ChatAvatar(Base):
     """Аватарка канала (задача 5.4 PLAN.md): раньше photo_base64 лежала
     в КАЖДОЙ строке ленты и уезжала клиенту списком — мегабайты на запрос.

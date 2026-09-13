@@ -369,6 +369,10 @@ async def dispatch(
             custom_prompt=channel_prompt,
             caller=llm_caller,
             require_success=True,
+            # адрес расхода (12.7); у прямого разбора источника может не быть
+            source_public_id=payload.get("source_public_id") or "",
+            chat_id=payload.get("chat_id") or 0,
+            chat_title=payload.get("chat_title") or "",
             completed=json.loads(item.analysis_progress_json or "[]"),
             checkpoint=checkpoint,
         )
