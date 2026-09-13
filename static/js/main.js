@@ -12,6 +12,7 @@ import { loadSources } from './sources.js';
 import { loadSavedMessages } from './messages.js';
 import { loadOpenRouterConfig, loadTgForwardConfig, loadCleanupConfig } from './integration.js';
 import { loadLogs, loadOpsStatus } from './logs.js';
+import { loadUsage } from './usage.js';
 
 const VALID_TABS = ['feed', 'messages', 'sources', 'integration', 'logs'];
 
@@ -57,6 +58,7 @@ function switchTab(tabId, updateUrl = true) {
     loadSources();
     loadOpenRouterConfig();
     loadTgForwardConfig();
+    loadUsage();
   }
 }
 
