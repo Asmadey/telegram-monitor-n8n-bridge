@@ -115,3 +115,45 @@ def test_no_competing_plan_copy_at_the_repo_root():
         f"PLAN.md в корне снова стал полной копией плана "
         f"({lines} строк) — статус разъедется молча, как в прошлый раз"
     )
+
+
+def _executable_scripts_at(root: Path) -> list[str]:
+    """Модули верхнего уровня, которые запускают руками.
+
+    Пакеты (`app/`, `scripts/`, `alembic/`, `tests/`) не считаются: у них
+    есть место и назначение. Речь о `.py` прямо в корне.
+    """
+    return sorted(
+        path.name
+        for path in root.glob("*.py")
+        if path.is_file() and path.name != "conftest.py"
+    )
+
+
+def test_the_script_sweep_can_see_a_planted_file(tmp_path):
+    """Пустая выборка зеленела бы всегда — проверяем сканер на подложенном."""
+    (tmp_path / "handy_tool.py").write_text("print(1)\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("не .py\n", encoding="utf-8")
+    assert _executable_scripts_at(tmp_path) == ["handy_tool.py"]
+
+
+def test_the_repo_root_is_not_a_toolbox():
+    """Корень — не место для инструментов (задача 12.2).
+
+    Четыре CLI-скрипта (`auth.py`, `reader.py`, `fetch_sample.py`,
+    `create_user_session.py`) работали с локальным `.env` и файлом
+    `personal_account.session` — миром до мульти-тенанта. Сейчас сессии
+    лежат в БД зашифрованными, а вход идёт через веб: модель этих
+    инструментов противоречит архитектуре, и запусти их кто-нибудь —
+    получил бы не результат, а второй клиент на том же auth-key.
+
+    Удалены по решению владельца 2026-09-13; история git их хранит.
+    Правило остаётся: новый инструмент кладут в `scripts/`, где у него
+    есть имя пакета, место в образе и строка в `ruff.toml`.
+    """
+    stray = _executable_scripts_at(REPO)
+    assert not stray, (
+        f"исполняемые скрипты в корне репозитория: {stray}. "
+        "Инструментам место в scripts/ — там их видно и там они не "
+        "притворяются частью приложения"
+    )

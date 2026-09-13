@@ -102,8 +102,12 @@ def _tracked_files() -> set[str]:
     return set(out.stdout.split())
 
 
-def _ruff_literal_exclusions() -> list[str]:
-    src = (ROOT / "ruff.toml").read_text(encoding="utf-8")
+def _ruff_literal_exclusions(source: str | None = None) -> list[str]:
+    src = (
+        source
+        if source is not None
+        else (ROOT / "ruff.toml").read_text(encoding="utf-8")
+    )
     block = re.search(r"extend-exclude\s*=\s*\[(.*?)\]", src, re.S)
     assert block, "в ruff.toml не найден extend-exclude — сканер ослеп"
     return [
@@ -113,10 +117,74 @@ def _ruff_literal_exclusions() -> list[str]:
     ]
 
 
-def test_lint_exclusion_list_is_not_empty():
-    """Антивакуум: пустой разбор списка зеленеет сам по себе."""
-    literals = _ruff_literal_exclusions()
-    assert len(literals) >= 3, f"буквальных исключений разобрано {len(literals)} — мало"
+def test_the_exclusion_parser_reads_literals_and_skips_globs():
+    """Антивакуум на синтетическом списке, а НЕ на живом.
+
+    **Первая версия требовала трёх исключений в самом `ruff.toml`** — так
+    она доказывала, что разбор работает. Доказательство продержалось ровно
+    до задачи 12.2: четыре скрипта из корня удалены, исключения вместе с
+    ними, и в списке осталась одна маска `*.md`. Тест покраснел на
+    ПРАВИЛЬНОМ состоянии — ноль буквальных исключений и есть цель, к
+    которой шли.
+
+    Разбор проверяется на образце: он не устаревает от уборки, а живой
+    список остаётся свободным принимать любое значение, включая пустое.
+    """
+    sample = """extend-exclude = [
+    "legacy.py",   # буквальный путь
+    "*.md",        # маска — не путь
+    "vendor/",     # буквальный каталог
+]"""
+    assert _ruff_literal_exclusions(sample) == ["legacy.py", "vendor/"]
+    assert _ruff_literal_exclusions('extend-exclude = ["*.md"]') == []
+
+
+def _files_matched_by(entry: str, tracked: set[str]) -> list[str]:
+    """Что на самом деле попадёт под исключение.
+
+    Ruff сверяет запись не только с путём, но и с ИМЕНЕМ файла в любом
+    месте дерева. Поэтому запись `auth.py` — это не «файл auth.py в
+    корне», а «каждый auth.py, где бы он ни лежал».
+    """
+    return sorted(
+        path
+        for path in tracked
+        if path == entry or path.rsplit("/", 1)[-1] == entry.rsplit("/", 1)[-1]
+    )
+
+
+def test_the_matcher_knows_an_exclusion_catches_namesakes():
+    """Self-test: на этом и погорели — сканер обязан видеть однофамильцев."""
+    tracked = {"auth.py", "app/api/auth.py", "app/api/feed.py"}
+    assert _files_matched_by("auth.py", tracked) == ["app/api/auth.py", "auth.py"]
+    assert _files_matched_by("app/api/feed.py", tracked) == ["app/api/feed.py"]
+
+
+def test_a_lint_exclusion_does_not_silence_a_namesake():
+    """Исключение обязано попадать ровно в тот файл, ради которого писалось.
+
+    Найдено 2026-09-13 при уборке 12.2. В `extend-exclude` стояло
+    `"auth.py"` — ради одноразового CLI-инструмента в корне. Ruff сверяет
+    запись с именем файла в любом месте дерева, и под неё попадал ещё
+    `app/api/auth.py` — **роутер входа и регистрации**. То есть один из
+    самых чувствительных файлов проекта не проверялся линтером и не
+    форматировался; обнаружилось это только когда удаление скрипта сняло
+    исключение и `ruff format` впервые тронул роутер.
+
+    Ущерб на этот раз оказался косметическим (`ruff check` ошибок не нашёл),
+    но механизм тихий: запись в конфигурации, написанная про один файл,
+    молча выключила проверки у другого.
+    """
+    tracked = _tracked_files()
+    guilty = {}
+    for entry in _ruff_literal_exclusions():
+        matched = _files_matched_by(entry, tracked)
+        if len(matched) > 1:
+            guilty[entry] = matched
+    assert not guilty, (
+        "исключение из линта накрывает однофамильцев — проверки молча "
+        f"выключены не у того файла: {guilty}. Пишите путь от корня (./path/x.py)"
+    )
 
 
 def test_every_lint_exclusion_names_a_file_that_exists():
