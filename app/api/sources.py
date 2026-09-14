@@ -72,26 +72,6 @@ class ChannelUpdate(BaseModel):
     token_limit: int | None = Field(default=None, ge=0, le=MONTHLY_TOKEN_LIMIT)
 
 
-def clean_target(target: str) -> str | int:
-    """@name / https://t.me/name / -100... → то, что понимает get_entity.
-
-    Переехало из `app/api/monitors.py` вместе со снятием того модуля
-    (11.8): два API над одной таблицей неизбежно расходятся, и это уже
-    случилось однажды.
-    """
-    target = target.strip()
-    if "t.me/" in target:
-        target = target.split("t.me/")[-1].replace("+", "").replace("/", "")
-    if target.startswith("@"):
-        target = target[1:]
-    if target.startswith("-") or target.isdigit():
-        try:
-            return int(target)
-        except ValueError:
-            pass
-    return target
-
-
 def _check_prompt(text: str | None, what: str) -> str:
     value = (text or "").strip()
     if len(value) > MAX_PROMPT_CHARS:
@@ -300,6 +280,9 @@ async def add_channel(
             "каждый канал стоит отдельного запроса к модели",
         )
     prompt = _check_prompt(req.extract_prompt, "Промпт извлечения")
+    # Адрес хранится КАК ВВЕДЁН: человек должен узнавать в списке то, что
+    # набрал. Приведение к виду для `get_entity` — забота разрешения канала
+    # (там же и числовой id, который Telethon не понимает строкой).
     target = req.chat_target.strip()
 
     # Сравнение по нормализованному адресу, а не по строке. Буквальное `==`
