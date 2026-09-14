@@ -125,6 +125,46 @@ export function formatNextRun(source, now = new Date()) {
     : `Следующий: ${time} (через ${hours} ч)`;
 }
 
+// Значок исхода проверки канала (13.6): цвет, подпись и пояснение.
+//
+// Три тона, а не два. «Не проверяли» — отдельное состояние: пустое поле,
+// нарисованное зелёным, — тот же класс ошибки, что «совпадений нет» против
+// «не смогли посмотреть» (фаза 9). Поэтому непроверенный канал выглядит
+// серым и говорит об этом словами.
+//
+// Пояснение берётся С СЕРВЕРА: именно там известно, ЧТО нашлось по адресу и
+// почему не читается. Придумывать текст здесь значило бы потерять причину —
+// ровно то, из-за чего человека отсылали в журнал.
+// Имя класса тут ПОЛНОЕ, а не собранное из кусков (`check-dot-${tone}`).
+// Собранное имя не находится ничем — ни поиском по проекту, ни свипом
+// осиротевших стилей (13.6 поймал это на себе же: четыре правила выглядели
+// мусором ровно потому, что их имена нигде не написаны целиком).
+const CHECK_TONES = {
+  ok: { cls: 'check-dot-ok', mark: '✓', fallback: 'канал читается' },
+  no_posts: { cls: 'check-dot-warn', mark: '!', fallback: 'читается, но текста нет' },
+  duplicate: { cls: 'check-dot-warn', mark: '!', fallback: 'дубль внутри источника' },
+  not_found: { cls: 'check-dot-bad', mark: '×', fallback: 'адрес не открылся' },
+  no_access: { cls: 'check-dot-bad', mark: '×', fallback: 'история не читается' },
+  error: { cls: 'check-dot-bad', mark: '×', fallback: 'проверка не удалась' },
+};
+
+export function checkBadge(channel) {
+  const status = (channel || {}).check_status;
+  const known = CHECK_TONES[status];
+  if (!known) {
+    return {
+      cls: 'check-dot-unknown',
+      mark: '?',
+      title: 'Канал ещё не проверяли — нажмите «Проверить»',
+    };
+  }
+  return {
+    cls: known.cls,
+    mark: known.mark,
+    title: (channel || {}).check_detail || known.fallback,
+  };
+}
+
 export function openModalAnimated(modalEl) {
   if (!modalEl) return;
   modalEl.classList.add('active');
