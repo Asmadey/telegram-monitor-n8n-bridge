@@ -231,6 +231,12 @@ class MonitorChannel(Base):
     chat_username: Mapped[str | None] = mapped_column(String(255))
     chat_id: Mapped[int | None] = mapped_column(BigInteger)
     limit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    # Потолок расхода токенов на ЭТОТ канал за период (13.5). Ноль — без
+    # потолка. NOT NULL DEFAULT 0, а не NULL: «не задано» и «ноль токенов»
+    # в запросах выглядели бы одинаково, а значат противоположное.
+    token_limit: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     offset_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=24)
     extract_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # порядок каналов задаёт порядок в сводке, а значит и в сообщении
