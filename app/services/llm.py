@@ -117,6 +117,31 @@ async def monthly_tokens_used(
     return result.scalar_one_or_none() or 0
 
 
+async def channel_tokens_used(
+    db,
+    user_id: int,
+    *,
+    source_public_id: str,
+    chat_id: int,
+    now: datetime.datetime | None = None,
+) -> int:
+    """Расход ОДНОГО канала источника за текущий период (13.5).
+
+    Считается по разрезу 12.7, а не по общему счётчику: общий отвечает на
+    вопрос «сколько всего», а потолок канала — на вопрос «сколько сжёг этот».
+    """
+    now = now or _utcnow()
+    value = await db.scalar(
+        select(LLMUsageSlice.tokens).where(
+            LLMUsageSlice.user_id == user_id,
+            LLMUsageSlice.period == _period(now),
+            LLMUsageSlice.source_public_id == (source_public_id or ""),
+            LLMUsageSlice.chat_id == (chat_id or 0),
+        )
+    )
+    return int(value or 0)
+
+
 async def _add_tokens(
     db,
     user_id: int,

@@ -190,6 +190,8 @@ function renderChannelRows() {
         <div style="display: flex; align-items: center; gap: 8px;">
           <label style="font-size: 12px; color: var(--body-mid);">Лимит</label>
           <input type="number" class="channel-limit" min="1" max="200" value="${c.limit}" style="width: 84px;">
+          <label style="font-size: 12px; color: var(--body-mid);" title="Потолок расхода токенов на этот канал за месяц. 0 — без потолка">Токены</label>
+          <input type="number" class="channel-token-limit" min="0" step="1000" value="${c.token_limit || 0}" style="width: 104px;" title="0 — без потолка">
           <button class="btn btn-danger btn-icon-sm" data-action="remove-channel" data-channel-id="${c.channel_id}" title="Убрать канал из источника">🗑</button>
         </div>
       </div>
@@ -296,9 +298,13 @@ saveSourceBtn.addEventListener('click', async () => {
       const channelId = Number(row.dataset.channelRow);
       const limit = parseInt(row.querySelector('.channel-limit').value, 10) || 20;
       const prompt = row.querySelector('.channel-prompt').value;
+      // `|| 0` нельзя: ноль — законное значение («без потолка»), и он бы
+      // затирался сам собой. NaN от пустого поля превращается в ноль явно.
+      const rawCap = parseInt(row.querySelector('.channel-token-limit').value, 10);
+      const tokenLimit = Number.isFinite(rawCap) && rawCap >= 0 ? rawCap : 0;
       const res = await apiFetch(
         `/api/sources/${editing.public_id}/channels/${channelId}`,
-        { method: 'PATCH', body: { limit, extract_prompt: prompt } }
+        { method: 'PATCH', body: { limit, extract_prompt: prompt, token_limit: tokenLimit } }
       );
       if (!res.ok) {
         const err = await res.json();

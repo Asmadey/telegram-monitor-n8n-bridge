@@ -72,6 +72,7 @@ from app.services.jobs import (
 from app.services.journal import add_log, redact
 from app.services.llm import (
     MonthlyTokenBudgetExhausted,
+    channel_tokens_used,
     process_messages_batch_with_llm,
 )
 from app.services.ops import WORKER_NAME, WORKER_STALE_AFTER, record_heartbeat
@@ -453,6 +454,32 @@ class Worker:
                 # уже разобран прошлой попыткой
                 verdicts.append(group)
                 continue
+            cap = int(group.get("token_limit") or 0)
+            if cap > 0:
+                spent = await channel_tokens_used(
+                    db,
+                    user_id,
+                    source_public_id=source_public_id,
+                    chat_id=int(group.get("chat_id") or 0),
+                )
+                if spent >= cap:
+                    # Потолок КАНАЛА, а не тенанта: остальные каналы источника
+                    # обязаны работать дальше, иначе это тот же общий
+                    # рубильник, только с лишним полем в форме (13.5).
+                    name = group.get("chat_title") or "канал"
+                    unparsed.append(name)
+                    await add_log(
+                        db,
+                        user_id,
+                        "LLM_LIMIT",
+                        f"Канал «{name}» пропущен: свой потолок {cap} токенов "
+                        f"исчерпан (израсходовано {spent}). Остальные каналы "
+                        "источника разобраны как обычно.",
+                        status="ERROR",
+                        chat_title=name,
+                    )
+                    continue
+
             prompt = group.get("extract_prompt") or ""
             if single and answer_prompt:
                 # Один канал — сводить нечего: извлечение и оформление
@@ -943,6 +970,7 @@ class Worker:
                 "limit_count": c.limit_count,
                 "offset_hours": c.offset_hours,
                 "extract_prompt": c.extract_prompt or "",
+                "token_limit": c.token_limit or 0,
             }
             for c in channels
         ]
@@ -1132,6 +1160,7 @@ class Worker:
                         "chat_title": chat_title,
                         "chat_username": chat_username,
                         "extract_prompt": spec["extract_prompt"],
+                        "token_limit": spec.get("token_limit") or 0,
                         "filtered_count": len(filtered),
                         "messages": fresh,
                     }

@@ -25,6 +25,7 @@ from app.models import Job, Monitor, MonitorChannel, SentMessage
 from app.services.channels import normalize_channel_target
 from app.services.jobs import STATUS_DONE, STATUS_FAILED
 from app.services.journal import add_log
+from app.services.llm import MONTHLY_TOKEN_LIMIT
 from app.services.stopwords import MAX_STOP_WORDS, parse_stop_words
 
 router = APIRouter(dependencies=[Depends(require_user)])
@@ -57,6 +58,9 @@ class ChannelCreate(BaseModel):
     limit: int = Field(default=20, ge=1, le=200)
     offset_hours: int = Field(default=24, ge=1, le=720)
     extract_prompt: str = ""
+    # Ноль — без потолка (13.5). Верхняя граница — месячный потолок тенанта:
+    # канальный, который больше общего, ничего не ограничивает.
+    token_limit: int = Field(default=0, ge=0, le=MONTHLY_TOKEN_LIMIT)
 
 
 class ChannelUpdate(BaseModel):
@@ -65,6 +69,7 @@ class ChannelUpdate(BaseModel):
     extract_prompt: str | None = None
     is_active: bool | None = None
     position: int | None = Field(default=None, ge=0, le=MAX_CHANNELS)
+    token_limit: int | None = Field(default=None, ge=0, le=MONTHLY_TOKEN_LIMIT)
 
 
 def clean_target(target: str) -> str | int:
@@ -119,6 +124,7 @@ def _channel_card(channel: MonitorChannel, sent_count: int = 0) -> dict[str, Any
         "limit": channel.limit_count,
         "offset_hours": channel.offset_hours,
         "extract_prompt": channel.extract_prompt,
+        "token_limit": channel.token_limit,
         "position": channel.position,
         "is_active": channel.is_active,
         "last_checked": channel.last_checked,
@@ -317,6 +323,7 @@ async def add_channel(
         limit_count=req.limit,
         offset_hours=req.offset_hours,
         extract_prompt=prompt,
+        token_limit=req.token_limit,
         position=len(existing),
     )
     repo.db.add(channel)
@@ -357,6 +364,8 @@ async def update_channel(
         channel.offset_hours = req.offset_hours
     if req.extract_prompt is not None:
         channel.extract_prompt = _check_prompt(req.extract_prompt, "Промпт извлечения")
+    if req.token_limit is not None:
+        channel.token_limit = req.token_limit
     if req.is_active is not None:
         channel.is_active = req.is_active
         if req.is_active:
