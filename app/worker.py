@@ -632,6 +632,22 @@ class Worker:
             # «обновить» не должно рассылать второе сообщение об одном и
             # том же батче (контракт 9.18).
             return {"status": "reanalyzed", "analysis": analysis}
+        # Внутренний ключ источника — для карточки ленты: `chat_id` у неё
+        # пуст (каналов много), и без источника карточка теряет дорогу
+        # назад — к аватарке первого канала (11.9) и к промптам при
+        # переразборе. Берётся по публичному id И по владельцу: public_id
+        # уникален только внутри кабинета, одного бы хватило, чтобы
+        # привязать свою карточку к чужому источнику.
+        source_id = None
+        if source_public_id:
+            source = (
+                await db.scalars(
+                    TenantRepo(db, user_id)
+                    .query(Monitor)
+                    .where(Monitor.public_id == source_public_id)
+                )
+            ).first()
+            source_id = source.id if source is not None else None
         return await self._dispatch(
             db,
             user_id,
@@ -644,6 +660,7 @@ class Worker:
                 "messages": messages,
             },
             analysis=analysis,
+            monitor_id=source_id,
             **senders,
         )
 
@@ -677,7 +694,17 @@ class Worker:
         """Собрать батч конвейера из сохранённых постов карточки ленты."""
         source = None
         if item.monitor_id is not None:
-            source = await db.get(Monitor, item.monitor_id)
+            # По владельцу, а не по голому ключу: строка ленты переживает
+            # источник (`ON DELETE SET NULL`) и может нести подложенный
+            # `monitor_id` — тогда переразбор своей карточки пошёл бы
+            # промптами чужого кабинета.
+            source = (
+                await db.scalars(
+                    TenantRepo(db, user_id)
+                    .query(Monitor)
+                    .where(Monitor.id == item.monitor_id)
+                )
+            ).first()
         channels = (
             list(
                 await db.scalars(

@@ -304,6 +304,7 @@ async def dispatch(
     *,
     channel_prompt: str | None = None,
     analysis: str | None = None,
+    monitor_id: int | None = None,
     llm_caller=None,
     bot_sender=None,
     webhook_sender=None,
@@ -314,6 +315,12 @@ async def dispatch(
     каналам и сведён, повторять его здесь нечего. Пустая строка при этом
     значит «совпадений нет» — карточка в ленту пишется, а бот и вебхук
     молчат. Это разные вещи: тишина здесь осмысленная, а не отказ.
+
+    `monitor_id` — источник, породивший выборку. У источника нет одного
+    чата, поэтому `chat_id` в карточке пуст, и без этого поля карточка
+    теряет дорогу назад: аватарку рисовать не по чему (11.9), а переразбор
+    не находит ни промпта канала, ни промпта оформления. Разрешать его
+    обязан ВЫЗЫВАЮЩИЙ и по владельцу — здесь ключ только записывается.
     """
     messages = payload.get("messages") or []
     if not messages:
@@ -332,6 +339,7 @@ async def dispatch(
         item = FeedItem(
             user_id=user_id,
             job_id=batch_id,
+            monitor_id=monitor_id,
             chat_id=payload.get("chat_id"),
             chat_title=payload.get("chat_title"),
             chat_username=payload.get("chat_username") or "",
