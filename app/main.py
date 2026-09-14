@@ -13,6 +13,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api import (
+    account,
     admin,
     auth,
     checks,
@@ -80,6 +81,7 @@ app.include_router(checks.router)  # К2: проверочные кнопки и
 app.include_router(cleanup.router)  # К2: автоочистка базы
 app.include_router(ops.router)  # 10.2: база, воркер, возраст очереди
 app.include_router(usage.router)  # 12.7: расход токенов по источникам
+app.include_router(account.router)  # 13.2: экспорт и удаление аккаунта
 
 app.add_middleware(CorsMiddleware)  # раздельный деплой: Vercel ↔ Railway
 

@@ -13,6 +13,7 @@ import { loadSavedMessages } from './messages.js';
 import { loadOpenRouterConfig, loadTgForwardConfig, loadCleanupConfig } from './integration.js';
 import { loadLogs, loadOpsStatus } from './logs.js';
 import { loadUsage } from './usage.js';
+import './account.js';
 
 const VALID_TABS = ['feed', 'messages', 'sources', 'integration', 'logs'];
 
