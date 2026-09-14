@@ -243,3 +243,90 @@ async def test_trimming_does_not_swallow_an_ordinary_error():
 
     assert _reason(ValueError("канал не найден")) == "ValueError: канал не найден"
     assert _reason(TimeoutError()) == "TimeoutError"
+
+
+# --------------------------------------------------------------------------
+# Тот же класс отказа шире одного дубля
+# --------------------------------------------------------------------------
+
+
+async def test_a_failure_while_saving_one_channel_keeps_the_others(
+    db, user, monkeypatch
+):
+    """«Один канал не роняет источник» — правило, а не частный случай.
+
+    В `poll_source` оно применялось только к ВЫБОРКЕ: неудача Telegram
+    ловилась, канал объявлялся неразобранным, прогон шёл дальше. Всё, что
+    после выборки — запись разрешённого канала, дедупликация, два коммита —
+    оставалось незащищённым, и любая ошибка там уносила ВЕСЬ источник вместе
+    с каналами, которые уже разобрались.
+
+    Дубль (см. выше) был одним из способов туда попасть, и он закрыт
+    отдельно. Но способ не единственный: гонка в дедупликации, обрыв
+    соединения посреди цикла, любой отказ СУБД дают то же самое. Поэтому
+    проверяется класс, а не конкретная причина: здесь падает сохранение
+    первого канала, и второй обязан дойти до модели.
+    """
+    from test_112_map_reduce import ChannelTelegram
+
+    import app.worker as worker_module
+
+    source = await _source(
+        db,
+        user,
+        public_id="src-partial",
+        channels=[("@alpha", -1001, 5, "искать А"), ("@beta", -1002, 5, "искать Б")],
+    )
+    telegram = ChannelTelegram(
+        {-1001: ("@alpha", [_post(11)]), -1002: ("@beta", [_post(21)])}
+    )
+    worker = _worker(db, telegram=telegram)
+    llm = RecordingLLM()
+    worker.llm = llm
+
+    real_filter_new = worker_module.filter_new
+
+    async def flaky_filter_new(session, user_id, chat_id, messages, **kwargs):
+        if chat_id == -1001:
+            raise RuntimeError("база моргнула на первом канале")
+        return await real_filter_new(session, user_id, chat_id, messages, **kwargs)
+
+    monkeypatch.setattr(worker_module, "filter_new", flaky_filter_new)
+
+    try:
+        outcome = await worker.poll_source(db, source)
+    except Exception as exc:  # noqa: BLE001 — это и есть проверяемый дефект
+        pytest.fail(
+            "отказ на одном канале вынес весь прогон источника: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+    assert outcome != "failed", "прогон объявлен неудачным целиком"
+    prompts = [call["prompt"] for call in llm.calls]
+    assert any("искать Б" in prompt for prompt in prompts), (
+        f"второй канал потерян вместе с первым: разборов {len(llm.calls)}"
+    )
+
+
+async def test_the_saving_guard_does_not_swallow_a_healthy_run(db, user):
+    """Антивакуум: обработчик, глотающий всё, «проходит» тест выше."""
+    from test_112_map_reduce import ChannelTelegram
+
+    source = await _source(
+        db,
+        user,
+        public_id="src-ok",
+        channels=[("@alpha", -1001, 5, "искать А"), ("@beta", -1002, 5, "искать Б")],
+    )
+    telegram = ChannelTelegram(
+        {-1001: ("@alpha", [_post(11)]), -1002: ("@beta", [_post(21)])}
+    )
+    worker = _worker(db, telegram=telegram)
+    llm = RecordingLLM()
+    worker.llm = llm
+
+    await worker.poll_source(db, source)
+    prompts = [call["prompt"] for call in llm.calls]
+    assert sum("искать" in p for p in prompts) >= 2, (
+        f"здоровый прогон потерял каналы: {prompts}"
+    )
