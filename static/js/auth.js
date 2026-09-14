@@ -30,6 +30,7 @@ const authPhone = document.getElementById('authPhone');
 const authCode = document.getElementById('authCode');
 const auth2faPassword = document.getElementById('auth2faPassword');
 const sendCodeBtn = document.getElementById('sendCodeBtn');
+const tgRiskAccepted = document.getElementById('tgRiskAccepted');
 const submitCodeBtn = document.getElementById('submitCodeBtn');
 const submit2faBtn = document.getElementById('submit2faBtn');
 const backToPhoneBtn = document.getElementById('backToPhoneBtn');
@@ -137,6 +138,15 @@ saveApiKeysBtn.addEventListener('click', async () => {
   }
 });
 
+// Согласие с рисками открывает кнопку и закрывает обратно (13.1). Кнопка
+// заблокирована уже в разметке: блокировка только здесь означала бы, что при
+// медленной загрузке модуля нажать можно раньше, чем прочитать.
+if (tgRiskAccepted) {
+  tgRiskAccepted.addEventListener('change', () => {
+    sendCodeBtn.disabled = !tgRiskAccepted.checked;
+  });
+}
+
 sendCodeBtn.addEventListener('click', async () => {
   const phone = authPhone.value.trim();
   if (!phone) {
@@ -152,7 +162,9 @@ sendCodeBtn.addEventListener('click', async () => {
       body: { phone: phone }
     });
     const data = await res.json();
-    sendCodeBtn.disabled = false;
+    // Не `false`: состояние кнопки диктует согласие, иначе снятая галочка
+    // после неудачной отправки оставляла бы её открытой.
+    sendCodeBtn.disabled = !(tgRiskAccepted && tgRiskAccepted.checked);
     sendCodeBtn.textContent = 'Получить код в Telegram';
 
     if (res.ok && data.status === 'code_sent') {
@@ -163,7 +175,7 @@ sendCodeBtn.addEventListener('click', async () => {
       showToast(data.detail || 'Ошибка отправки кода', true);
     }
   } catch (e) {
-    sendCodeBtn.disabled = false;
+    sendCodeBtn.disabled = !(tgRiskAccepted && tgRiskAccepted.checked);
     sendCodeBtn.textContent = 'Получить код в Telegram';
     showToast('Ошибка отправки кода', true);
   }

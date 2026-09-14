@@ -955,6 +955,45 @@
 
     /* Полоса состояния связи (12.8): показывается классом open, как и
        остальные скрытые блоки — правило проверяет test_118. */
+    /* Предупреждение о рисках подключения Telegram (13.1). Оно обязано
+       читаться, а не сливаться с формой: отсюда рамка и фон. */
+    .risk-notice {
+      border: 1px solid var(--accent-orange);
+      border-left-width: 3px;
+      border-radius: var(--rounded-sm);
+      background: #fff8f2;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: var(--body);
+    }
+
+    .risk-notice-title {
+      font-weight: 600;
+      color: var(--ink-strong);
+      margin-bottom: 6px;
+    }
+
+    .risk-notice ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .risk-notice li {
+      margin-bottom: 5px;
+    }
+
+    .risk-consent {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12.5px;
+      color: var(--body);
+      margin-bottom: 14px;
+      cursor: pointer;
+    }
+
     #connectionBanner {
       display: none;
       position: fixed;
