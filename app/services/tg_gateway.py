@@ -49,6 +49,21 @@ class TelegramGateway:
     async def resolve(self, client, target: str):
         return await client.get_entity(target)
 
+    async def prime(self, client) -> None:
+        """Наполнить кэш сущностей списком диалогов.
+
+        По голому числовому id канал не разрешить без `access_hash`: Telethon
+        пробует `GetChannelsRequest` с нулём и для приватного канала получает
+        `ChannelInvalidError`. Кэш живёт в сессии, а `StringSession` его **не
+        сохраняет** — после каждого перезапуска воркера он пуст.
+
+        `get_dialogs` кладёт в кэш всё, куда аккаунт и так входит, и после
+        этого id начинает разрешаться. Вызывается только когда обычный путь
+        уже не сработал: это лишний запрос к Telegram, и платить им за каждый
+        здоровый канал незачем.
+        """
+        await client.get_dialogs(limit=200)
+
     async def fetch(self, client, entity, *, limit: int, offset_hours: int | None):
         return await fetch_channel_messages(
             client, entity, limit=limit, offset_hours=offset_hours

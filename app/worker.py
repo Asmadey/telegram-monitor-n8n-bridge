@@ -60,6 +60,7 @@ from app.models import (
 from app.security.crypto import key_fingerprint, validate_encryption_key
 from app.security.log_redaction import install_log_redaction
 from app.services.alerts import alert_owner
+from app.services.channels import clean_target
 from app.services.cleanup import purge_older_than
 from app.services.dedup import filter_new
 from app.services.dispatch import dispatch, store_avatar
@@ -877,18 +878,45 @@ class Worker:
         targets: list = []
         if channel.get("chat_id"):
             targets.append(channel["chat_id"])
-        if channel.get("chat_target"):
-            targets.append(channel["chat_target"])
+        raw = channel.get("chat_target")
+        if raw:
+            targets.append(raw)
+            # Числовой id, сохранённый СТРОКОЙ, для Telethon не id, а
+            # испорченное имя пользователя: `get_entity("-100…")` разбирает
+            # строку как имя или телефон и до канала не доходит. Такие строки
+            # уже лежат в базе (до 2026-09-14 адрес сохранялся как введён), и
+            # миграции им не будет — догадываемся здесь.
+            parsed = clean_target(str(raw))
+            if parsed not in targets:
+                targets.append(parsed)
+
         last: Exception | None = None
-        for target in targets:
+        for attempt in range(2):
+            for target in targets:
+                try:
+                    return await _within(
+                        self.telegram.resolve(client, target),
+                        TELEGRAM_TIMEOUT,
+                        f"разрешение канала {target}",
+                    )
+                except Exception as exc:  # noqa: BLE001 — пробуем следующий способ
+                    last = exc
+            # Второй заход — только после прогрева кэша и только если есть
+            # чему помочь: по голому id канал не разрешить без access_hash, а
+            # кэш сущностей живёт в сессии, и `StringSession` его НЕ хранит —
+            # после каждого перезапуска он пуст. Список диалогов наполняет
+            # его тем, куда аккаунт и так входит. Здоровый канал сюда не
+            # доходит и лишнего запроса к Telegram не стоит.
+            if attempt or not any(isinstance(t, int) for t in targets):
+                break
+            primer = getattr(self.telegram, "prime", None)
+            if primer is None:
+                break
             try:
-                return await _within(
-                    self.telegram.resolve(client, target),
-                    TELEGRAM_TIMEOUT,
-                    f"разрешение канала {target}",
-                )
-            except Exception as exc:  # noqa: BLE001 — пробуем следующий способ
-                last = exc
+                await _within(primer(client), TELEGRAM_TIMEOUT, "прогрев кэша каналов")
+            except Exception as exc:  # noqa: BLE001 — прогрев не обязан удаться
+                logger.debug("кэш каналов не прогрет: %s", redact(_reason(exc)))
+                break
         raise last or LookupError("канал нечем разрешить")
 
     async def poll_source(self, db, source: Monitor, **senders) -> str:
@@ -988,6 +1016,10 @@ class Worker:
 
         groups: list[dict] = []
         unparsed: list[str] = []
+        # Причина отказа по каналу — чтобы тревога могла её НАЗВАТЬ, а не
+        # отсылать человека в журнал: смысл тревоги в том, чтобы узнать об
+        # отказе, не заходя в кабинет.
+        why: dict[str, str] = {}
         entities: dict[int, object] = {}
         filtered_total = 0
         for spec in plan:
@@ -1025,6 +1057,7 @@ class Worker:
                         stale.is_active = False
                     await db.commit()
                 unparsed.append(name)
+                why[name] = _reason(exc)
                 await add_log(
                     db,
                     user_id,
@@ -1217,9 +1250,11 @@ class Worker:
                     user_id,
                     key=f"source-failed:{source_public_id}",
                     text=(
-                        f"Источник «{source_title}» не дал ни одной находки: "
-                        f"не разобраны каналы — {', '.join(unparsed)}. "
-                        "Причина в журнале кабинета."
+                        f"Источник «{source_title}» не дал ни одной находки. "
+                        + "; ".join(
+                            f"{channel} — {why.get(channel, 'причина в журнале')}"
+                            for channel in unparsed
+                        )
                     ),
                     **(
                         {"sender": senders["alert_sender"]}
