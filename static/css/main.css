@@ -582,6 +582,109 @@
 
     /* Исход проверки канала (13.6). Четыре тона, а не три: «не
        проверяли» — отдельное состояние, и серый цвет говорит ровно это. */
+    /* Строка канала в окне «Параметры источника» (13.7): свёрнута по
+       умолчанию, разворачивается карандашом. Развёрнутой она была нарисована
+       под источник с ОДНИМ каналом (11.7); при девяти это стена полей. */
+    .channel-row {
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+
+    .channel-row-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 30px;
+    }
+
+    .channel-row-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    .channel-row-limit {
+      font-size: 12px;
+      color: var(--body-mid);
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .channel-row-actions,
+    .channel-row-confirm {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .channel-row-ask {
+      font-size: 12px;
+      color: var(--body);
+    }
+
+    /* В раскрытой строке лимит показан полем ниже — подпись в шапке была бы
+       вторым «Лимит 20» подряд. Скрывается стилем, без лишнего состояния в
+       скрипте; браузер без :has() покажет обе, и это не сломано, а избыточно. */
+    .channel-row:has(.channel-row-edit:not([hidden])) .channel-row-limit {
+      display: none;
+    }
+
+    .channel-row-edit {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--hairline);
+    }
+
+    .channel-row-edit textarea {
+      width: 100%;
+      border: 1px solid var(--hairline);
+      border-radius: var(--rounded-xs);
+      padding: 10px 12px;
+      font-family: inherit;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .channel-row-fields {
+      display: flex;
+      gap: 14px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .channel-row-field {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--body-mid);
+    }
+
+    .channel-row-field input {
+      width: 92px;
+    }
+
+    /* Промпт извлечения задан или пуст. Пустой — законное состояние базы,
+       но не рабочее: каналу нечем объяснить, что искать. */
+    .prompt-dot {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: var(--rounded-xs);
+      font-size: 10px;
+      line-height: 1;
+      color: #fff;
+      cursor: help;
+    }
+
+    .prompt-dot-ok { background: #008715; }
+    .prompt-dot-bad { background: var(--accent-red, #c62828); }
+
     .check-dot {
       display: inline-flex;
       align-items: center;

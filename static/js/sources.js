@@ -12,7 +12,7 @@
 // канала пишет его владелец, а не сервис (0.4).
 
 import { apiFetch, apiGet } from './api.js';
-import { html, raw, formatIntervalHuman, formatNextRun, checkBadge, showToast, openModalAnimated, closeModalAnimated } from './render.js';
+import { html, raw, formatIntervalHuman, formatNextRun, checkBadge, promptBadge, channelRowMarkup, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 import { withSecret, clearSecret, fillSecretField } from './secrets.js';
 import { setFilterChatOptions } from './messages.js';
 
@@ -213,21 +213,104 @@ function renderChannelRows() {
     `;
     return;
   }
-  editChannelsList.innerHTML = editing.channels.map(c => html`
-    <div class="card" data-channel-row="${c.channel_id}" style="padding: 12px; margin-bottom: 10px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
-        <b>${c.chat_title || c.chat_target}</b>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <label style="font-size: 12px; color: var(--body-mid);">Лимит</label>
-          <input type="number" class="channel-limit" min="1" max="200" value="${c.limit}" style="width: 84px;">
-          <label style="font-size: 12px; color: var(--body-mid);" title="Потолок расхода токенов на этот канал за месяц. 0 — без потолка">Токены</label>
-          <input type="number" class="channel-token-limit" min="0" step="1000" value="${c.token_limit || 0}" style="width: 104px;" title="0 — без потолка">
-          <button class="btn btn-danger btn-icon-sm" data-action="remove-channel" data-channel-id="${c.channel_id}" title="Убрать канал из источника">🗑</button>
-        </div>
-      </div>
-      <textarea class="channel-prompt" rows="3" placeholder="Что извлекать именно из этого канала" style="width: 100%; margin-top: 8px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: 10px 12px; font-family: inherit; font-size: 13px; resize: vertical;">${c.extract_prompt || ''}</textarea>
-    </div>
-  `).join('');
+  editChannelsList.innerHTML = editing.channels.map(channelRowMarkup).join('');
+}
+
+// Сколько браузерный сеанс не повторяет проверку одного источника (13.7).
+// Владелец выбрал «проверять при открытии окна»; порог снимает только
+// патологию «открыл-закрыл десять раз подряд» — у источника с девятью
+// каналами это девяносто разрешений в Telegram и FloodWait на весь аккаунт,
+// то есть встанут ВСЕ источники. Отсчёт местный, по моменту ЗАПУСКА: сверять
+// серверный `checked_at` с часами браузера значит зависеть от того, что они
+// сходятся.
+const CHECK_FRESH_MS = 60000;
+const lastCheckStartedAt = new Map();
+// Маркер сеанса окна: закрыли окно или открыли другое — прежний опрос
+// прекращается и чужих вердиктов не пишет.
+let checkSession = 0;
+
+async function checkChannelsOnOpen(publicId) {
+  if (!editing || !editing.channels.length) return;
+  const session = ++checkSession;
+  if (Date.now() - (lastCheckStartedAt.get(publicId) || 0) < CHECK_FRESH_MS) return;
+  lastCheckStartedAt.set(publicId, Date.now());
+  markVerdictsPending();
+  try {
+    const res = await apiFetch(`/api/sources/${publicId}/check`, { method: 'POST' });
+    if (!res.ok) {
+      // Отказ не должен выглядеть как идущая проверка: ⏳ навсегда — это
+      // вечное «идёт работа» там, где работы нет. Возвращаются СОХРАНЁННЫЕ
+      // вердикты: показать последнее, что мы действительно знаем, честно;
+      // дорисовать зелёный — нет.
+      applyCheckVerdicts(editing.channels);
+      return;
+    }
+  } catch (e) {
+    applyCheckVerdicts(editing.channels);
+    return;
+  }
+  await waitForVerdicts(publicId, session);
+}
+
+function markVerdictsPending() {
+  for (const dot of editChannelsList.querySelectorAll('.check-dot')) {
+    dot.className = 'check-dot check-dot-unknown';
+    dot.title = 'Проверяю канал…';
+    dot.textContent = '⏳';
+  }
+}
+
+async function waitForVerdicts(publicId, session, attempt = 0) {
+  if (attempt > 40) {
+    // Обход не отчитался за отведённое время — то же правило, что выше:
+    // лучше последний известный вердикт, чем застывшее «проверяю».
+    if (session === checkSession && editing) applyCheckVerdicts(editing.channels);
+    return;
+  }
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  if (session !== checkSession || !editing || editing.public_id !== publicId) return;
+  try {
+    const res = await apiGet(`/api/sources/${publicId}/status`);
+    if (!res.ok) return;
+    const status = await res.json();
+    if (!status.checking) {
+      const list = await apiGet('/api/sources');
+      if (!list.ok) return;
+      const data = await list.json();
+      const fresh = (data.sources || []).find(s => s.public_id === publicId);
+      if (fresh && session === checkSession && editing) {
+        applyCheckVerdicts(fresh.channels || []);
+      }
+      return;
+    }
+  } catch (e) {
+    /* сеть моргнула — попробуем на следующем круге */
+  }
+  await waitForVerdicts(publicId, session, attempt + 1);
+}
+
+function applyCheckVerdicts(channels) {
+  // Вписываются ТОЛЬКО поля вердикта и обновляются ТОЛЬКО значки. Строки НЕ
+  // перерисовываются: пока шла проверка, человек правил промпт, и
+  // перерисовка стёрла бы набранное. Тот же приём, которым обновляется
+  // счётчик до следующего прогона, не трогая карточку.
+  const byId = new Map(channels.map(c => [c.channel_id, c]));
+  for (const row of editChannelsList.querySelectorAll('[data-channel-row]')) {
+    const incoming = byId.get(Number(row.dataset.channelRow));
+    if (!incoming) continue;
+    const mine = editing.channels.find(c => c.channel_id === incoming.channel_id);
+    if (mine) {
+      mine.check_status = incoming.check_status;
+      mine.check_detail = incoming.check_detail;
+      mine.checked_at = incoming.checked_at;
+    }
+    const dot = row.querySelector('.check-dot');
+    if (!dot) continue;
+    const badge = checkBadge(incoming);
+    dot.className = `check-dot ${badge.cls}`;
+    dot.title = badge.title;
+    dot.textContent = badge.mark;
+  }
 }
 
 export function openSourceModal(publicId) {
@@ -243,6 +326,9 @@ export function openSourceModal(publicId) {
   newChannelTarget.value = '';
   renderChannelRows();
   openModalAnimated(sourceModal);
+  // Проверка не ждётся: окно открывается сразу и пригодно к работе, вердикты
+  // подъезжают в значки по мере обхода.
+  void checkChannelsOnOpen(source.public_id);
 }
 
 function closeSourceModal() {
@@ -280,8 +366,33 @@ addChannelBtn.addEventListener('click', async () => {
 });
 
 editChannelsList.addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-action="remove-channel"]');
+  const button = event.target.closest('[data-action]');
   if (!button || !editing) return;
+  const row = button.closest('[data-channel-row]');
+  if (!row) return;
+  const action = button.dataset.action;
+
+  if (action === 'edit-channel') {
+    // Раскрывается СВОЯ строка: раскрыть все девять одним нажатием — это то,
+    // от чего уходим.
+    const editArea = row.querySelector('.channel-row-edit');
+    if (editArea) editArea.hidden = !editArea.hidden;
+    return;
+  }
+
+  // Удаление спрашивает. Это единственное разрушающее действие кабинета,
+  // которое до 13.7 уходило сразу по нажатию: у «Удалить источник»
+  // подтверждение было с самого начала, у канала — нет, а промах необратим.
+  if (action === 'remove-channel' || action === 'cancel-remove-channel') {
+    const asking = action === 'remove-channel';
+    const actions = row.querySelector('.channel-row-actions');
+    const confirm = row.querySelector('.channel-row-confirm');
+    if (actions) actions.hidden = asking;
+    if (confirm) confirm.hidden = !asking;
+    return;
+  }
+
+  if (action !== 'confirm-remove-channel') return;
   const channelId = Number(button.dataset.channelId);
   try {
     const res = await apiFetch(
@@ -293,6 +404,25 @@ editChannelsList.addEventListener('click', async (event) => {
     renderChannelRows();
   } catch (e) {
     showToast(e.message, true);
+  }
+});
+
+editChannelsList.addEventListener('input', (event) => {
+  // Свёрнутая строка обязана показывать то, что БУДЕТ сохранено, а не то,
+  // что приехало с сервера: иначе набрали промпт — значок красный до
+  // перезагрузки, поправили лимит — подпись врёт.
+  const row = event.target.closest('[data-channel-row]');
+  if (!row) return;
+  if (event.target.classList.contains('channel-limit')) {
+    const label = row.querySelector('[data-limit-label]');
+    if (label) label.textContent = event.target.value || '0';
+  }
+  if (event.target.classList.contains('channel-prompt')) {
+    const dot = row.querySelector('.prompt-dot');
+    if (!dot) return;
+    const badge = promptBadge(event.target.value);
+    dot.className = `prompt-dot ${badge.cls}`;
+    dot.title = badge.title;
   }
 });
 

@@ -48,8 +48,20 @@ def test_source_form_asks_for_what_the_pipeline_needs():
 
 
 def test_channel_row_carries_its_own_limit_and_prompt():
-    """Решение владельца: у каждого канала свой лимит и свой промпт."""
-    source = SOURCES_JS.read_text(encoding="utf-8")
+    """Решение владельца: у каждого канала свой лимит и свой промпт.
+
+    Смотрится вся папка модулей, а не один файл. С задачи 13.7 разметку
+    строки строит `channelRowMarkup` в `render.js`, и проверка, читающая
+    только `sources.js`, зеленела бы с одних упоминаний в обработчиках —
+    поля могли исчезнуть из разметки, а тест этого не заметил бы.
+
+    Сама разметка закреплена сильнее: `test_140` ИСПОЛНЯЕТ билдер и смотрит
+    на то, что он выдал. Здесь — что поле вообще есть в интерфейсе.
+    """
+    js_dir = SOURCES_JS.parent
+    source = "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(js_dir.glob("*.js"))
+    )
     assert "data-channel-id" in source, "строка канала не адресуема"
     for field in ("channel-limit", "channel-prompt"):
         assert field in source, f"в строке канала нет поля {field}"

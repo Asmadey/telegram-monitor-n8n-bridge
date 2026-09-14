@@ -165,6 +165,72 @@ export function checkBadge(channel) {
   };
 }
 
+// Значок заполненности промпта извлечения (13.7). Пустой промпт — законное
+// состояние базы, но не рабочее: канал разбирается ничем. Красный тут значит
+// «это надо заполнить», а не «сломалось».
+//
+// Имена классов, как и у `checkBadge`, написаны ЦЕЛИКОМ: собранное из кусков
+// имя (`prompt-dot-${tone}`) не находится ничем — ни поиском по проекту, ни
+// свипом осиротевших стилей.
+export function promptBadge(prompt) {
+  // Строка из пробелов — пустое поле: модель получит ровно столько же
+  // указаний, сколько при пустом, а зелёная точка сказала бы обратное.
+  const filled = String(prompt || '').trim().length > 0;
+  return filled
+    ? { cls: 'prompt-dot-ok', mark: '✎', title: 'Промпт извлечения задан' }
+    : {
+        cls: 'prompt-dot-bad',
+        mark: '✎',
+        title: 'Промпт извлечения пуст — каналу нечем объяснить, что искать',
+      };
+}
+
+// Строка канала в окне «Параметры источника» (13.7).
+//
+// Свёрнутая по умолчанию: имя, лимит текстом, два значка, карандаш и корзина.
+// Развёрнутая часть — та же, что была всегда, но под `hidden`.
+//
+// **Поля живут в документе ВСЕГДА, свёрнутость — это `hidden`.** Сохранение
+// обходит `[data-channel-row]` и читает `.channel-limit`,
+// `.channel-token-limit`, `.channel-prompt` у каждой строки; если у свёрнутой
+// строки полей нет, `querySelector` вернёт `null`, `.value` уронит цикл, и
+// каналы после первого молча не сохранятся. Так уже было — закрыто `test_121`.
+//
+// Скрыто разметкой, а не скриптом: до первого исполнения скрипта (или при его
+// отказе) человек увидел бы ровно то, от чего уходим, — девять развёрнутых
+// полей (урок 13.1).
+export function channelRowMarkup(channel) {
+  const name = channel.chat_title || channel.chat_target;
+  const link = checkBadge(channel);
+  const prompt = promptBadge(channel.extract_prompt);
+  return html`
+    <div class="card channel-row" data-channel-row="${channel.channel_id}">
+      <div class="channel-row-head">
+        <span class="check-dot ${link.cls}" title="${link.title}">${link.mark}</span>
+        <b class="channel-row-name" title="${channel.chat_target}">${name}</b>
+        <span class="channel-row-limit">Лимит <b data-limit-label>${channel.limit}</b></span>
+        <span class="prompt-dot ${prompt.cls}" title="${prompt.title}">${prompt.mark}</span>
+        <span class="channel-row-actions">
+          <button class="btn btn-secondary btn-icon-sm" type="button" data-action="edit-channel" title="Изменить лимит и промпт">✎</button>
+          <button class="btn btn-danger btn-icon-sm" type="button" data-action="remove-channel" data-channel-id="${channel.channel_id}" title="Убрать канал из источника">🗑</button>
+        </span>
+        <span class="channel-row-confirm" hidden>
+          <span class="channel-row-ask">Удалить канал «${name}»?</span>
+          <button class="btn btn-danger btn-sm" type="button" data-action="confirm-remove-channel" data-channel-id="${channel.channel_id}">Да</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="cancel-remove-channel">Нет</button>
+        </span>
+      </div>
+      <div class="channel-row-edit" hidden>
+        <textarea class="channel-prompt" rows="3" placeholder="Что извлекать именно из этого канала">${channel.extract_prompt || ''}</textarea>
+        <div class="channel-row-fields">
+          <label class="channel-row-field">Лимит <input type="number" class="channel-limit" min="1" max="200" value="${channel.limit}"></label>
+          <label class="channel-row-field" title="Потолок расхода токенов на этот канал за месяц. 0 — без потолка">Токены <input type="number" class="channel-token-limit" min="0" step="1000" value="${channel.token_limit || 0}"></label>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 export function openModalAnimated(modalEl) {
   if (!modalEl) return;
   modalEl.classList.add('active');

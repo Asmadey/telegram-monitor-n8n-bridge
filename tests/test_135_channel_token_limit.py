@@ -197,9 +197,14 @@ async def test_the_ceiling_has_a_field_in_the_source_editor():
     """Потолок, который не выставить из кабинета, выставляет только агент."""
     import pathlib
 
-    module = (
-        pathlib.Path(__file__).resolve().parents[1] / "static" / "js" / "sources.js"
-    ).read_text(encoding="utf-8")
+    # Вся папка модулей, а не один файл: с 13.7 разметку строки строит
+    # `channelRowMarkup` в `render.js`, и проверка, читающая только
+    # `sources.js`, зеленела бы от одного упоминания в цикле сохранения —
+    # поле могло исчезнуть из разметки незамеченным.
+    js_dir = pathlib.Path(__file__).resolve().parents[1] / "static" / "js"
+    module = "\n".join(
+        f.read_text(encoding="utf-8") for f in sorted(js_dir.glob("*.js"))
+    )
     assert "channel-token-limit" in module, "в строке канала нет поля потолка"
     assert "token_limit" in module, "потолок не уходит на сервер при сохранении"
     assert "|| 0;" not in module.split("rawCap")[1][:200], (
