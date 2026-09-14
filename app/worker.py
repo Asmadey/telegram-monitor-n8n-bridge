@@ -55,9 +55,11 @@ from app.models import (
     MonitorChannel,
     SentMessage,
     TelegramAccount,
+    WorkerHeartbeat,
 )
 from app.security.crypto import key_fingerprint, validate_encryption_key
 from app.security.log_redaction import install_log_redaction
+from app.services.alerts import alert_owner
 from app.services.cleanup import purge_older_than
 from app.services.dedup import filter_new
 from app.services.dispatch import dispatch, store_avatar
@@ -72,7 +74,7 @@ from app.services.llm import (
     MonthlyTokenBudgetExhausted,
     process_messages_batch_with_llm,
 )
-from app.services.ops import WORKER_NAME, record_heartbeat
+from app.services.ops import WORKER_NAME, WORKER_STALE_AFTER, record_heartbeat
 from app.services.stopwords import parse_stop_words, split_by_stop_words
 from app.services.tg_gateway import TelegramGateway
 from app.services.tg_pool import TelegramClientPool, flood_guarded_call
@@ -233,6 +235,9 @@ class Worker:
     ):
         self.pool = pool if pool is not None else TelegramClientPool()
         self._tick = tick if tick is not None else self._default_tick
+        # Перерыв в работе случается один раз на запуск процесса, а тиков
+        # после него — сотни. Флаг держит тревогу однократной.
+        self._downtime_reported = False
         self._tick_interval = tick_interval
         # сессиймейкер разрешается лениво: Worker() строится и там, где
         # DATABASE_URL ещё не задан (тест 4.1 на тип пула)
@@ -258,6 +263,17 @@ class Worker:
 
         maker = self._sessionmaker or get_sessionmaker()
         async with maker() as db:
+            # Простой считается ДО отметки: своя свежая отметка стёрла бы
+            # разрыв, о котором и надо сообщить. Один раз на процесс —
+            # перерыв случился один, а тиков после него будет много.
+            if not self._downtime_reported:
+                self._downtime_reported = True
+                try:
+                    await self.report_downtime(db)
+                except Exception as exc:  # noqa: BLE001 — тревога не стоит тика
+                    logger.warning(
+                        "сообщить о простое не удалось: %s", redact(_reason(exc))
+                    )
             # Отметка живости — первым делом в тике (10.2): по ней снаружи
             # видно, что воркер не просто запущен, а доходит до работы.
             # leader=True не допущение: цикл вызывает тик только после
@@ -703,6 +719,57 @@ class Worker:
         except Exception as exc:  # noqa: BLE001 — отметка не стоит падения тика
             logger.debug("отметка не записана: %s", redact(_reason(exc)))
 
+    async def report_downtime(self, db, *, sender=None, now=None) -> int:
+        """Сказать владельцам, что мониторинг стоял (13.3).
+
+        Воркер не может сообщить о собственной смерти — он мёртв. Зато
+        ПОДНЯВШИЙСЯ процесс видит чужую отметку и знает, сколько её не
+        обновляли. Этим ловится самый частый случай: процесс упал,
+        супервайзер поднял, мониторинг молчал полчаса, и никто не узнал.
+
+        Чего это НЕ ловит: воркера, которого не поднимают вовсе. Написано
+        прямо, чтобы не считать защиту большей, чем она есть.
+
+        Отметки нет вообще — это первый запуск, а не простой: молчим.
+
+        Запрос по интеграциям идёт мимо `TenantRepo` намеренно: это не
+        чтение данных тенанта, а рассылка по всем, кого отказ затронул.
+        """
+        now = now or _utcnow()
+        beat = (
+            await db.scalars(
+                select(WorkerHeartbeat).where(WorkerHeartbeat.name == WORKER_NAME)
+            )
+        ).first()
+        if beat is None:
+            return 0
+        gap = (now - _aware(beat.beat_at)).total_seconds()
+        if gap < WORKER_STALE_AFTER:
+            return 0
+
+        minutes = int(gap // 60)
+        text = (
+            f"Опрос источников не шёл {minutes} мин — воркер поднялся после "
+            "перерыва. Источники, чей срок пришёлся на это время, опрошены "
+            "не были: они догонят по расписанию."
+        )
+        owners = list(
+            await db.scalars(
+                select(Integration.user_id).where(
+                    Integration.telegram_bot_token_encrypted != "",
+                    Integration.telegram_sender_id.is_not(None),
+                    Integration.telegram_sender_id != "",
+                )
+            )
+        )
+        told = 0
+        for owner_id in owners:
+            if await alert_owner(
+                db, owner_id, key="worker-downtime", text=text, sender=sender, now=now
+            ):
+                told += 1
+        return told
+
     def _out_of_budget(self, deadline: float) -> bool:
         return asyncio.get_running_loop().time() >= deadline
 
@@ -1110,6 +1177,27 @@ class Worker:
                 # Ни один канал не удалось разобрать — это НЕ «новых нет».
                 # Прогон, посчитанный успешным, скрыл бы отказ: снаружи
                 # тишина выглядела бы нормой (контракт 11.0).
+                #
+                # Запись в журнале для этого мало: чтобы её увидеть, надо
+                # зайти и посмотреть, а отказ выглядит как пустая лента
+                # (13.3). Ключ тревоги — на источник: пять сломанных
+                # источников дадут пять разных писем, один сломанный —
+                # одно в час, а не по одному на каждый прогон.
+                await alert_owner(
+                    db,
+                    user_id,
+                    key=f"source-failed:{source_public_id}",
+                    text=(
+                        f"Источник «{source_title}» не дал ни одной находки: "
+                        f"не разобраны каналы — {', '.join(unparsed)}. "
+                        "Причина в журнале кабинета."
+                    ),
+                    **(
+                        {"sender": senders["alert_sender"]}
+                        if "alert_sender" in senders
+                        else {}
+                    ),
+                )
                 return "failed"
             # «Всё отсеяно» и «новых нет» — разные исходы: слишком широкое
             # стоп-слово иначе выглядит как замолчавший источник (11.3).

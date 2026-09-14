@@ -53,8 +53,15 @@ async def add_log(
     chat_id: int | None = None,
     chat_title: str | None = None,
     messages_count: int = 0,
+    timestamp: datetime.datetime | None = None,
 ) -> LogEntry:
-    """Записать событие в журнал тенанта; details затирается redact."""
+    """Записать событие в журнал тенанта; details затирается redact.
+
+    `timestamp` обычно не передают — время ставит сама запись. Он нужен
+    правилам, которые СЧИТАЮТ по времени журнала: окно повторов системной
+    тревоги (13.3) иначе непроверяемо, потому что тест живёт в своём
+    времени, а запись — в настоящем.
+    """
     entry = LogEntry(
         user_id=user_id,
         event_type=event_type,
@@ -63,7 +70,7 @@ async def add_log(
         chat_id=chat_id,
         chat_title=chat_title,
         messages_count=messages_count,
-        timestamp=datetime.datetime.now(datetime.timezone.utc),
+        timestamp=timestamp or datetime.datetime.now(datetime.timezone.utc),
     )
     db.add(entry)
     await db.commit()
