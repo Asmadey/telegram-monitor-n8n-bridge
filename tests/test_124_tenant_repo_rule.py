@@ -48,6 +48,7 @@ ALLOWED_WITHOUT_REPO = {
     "app/services/tg_attempts.py": "служба, user_id приходит аргументом",
     "app/services/tg_account.py": "служба, user_id приходит аргументом",
     "app/services/integrations.py": "служба, user_id приходит аргументом",
+    "app/services/tg_session.py": "собственные записи: аккаунт и ключи приложения",
 }
 
 

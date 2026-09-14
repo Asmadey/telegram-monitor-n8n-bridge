@@ -352,6 +352,28 @@
         </div>
       </div>
 
+      <!-- ==================== ACCOUNT CARD (13.2) ==================== -->
+      <!-- Право, до которого не дойти из кабинета, правом не является:
+           до 13.2 единственным способом удалить аккаунт была просьба к
+           владельцу сервиса почистить базу руками. -->
+      <div class="card" style="max-width: 800px; margin: 0 auto 24px auto;">
+        <div class="card-header">
+          <div class="card-title">Ваш аккаунт</div>
+        </div>
+        <p style="font-size: 12.5px; color: var(--body-mid); margin: 0 0 12px 0;">
+          Выгрузка содержит источники, ленту и журнал. Ключей и токенов в ней нет:
+          это доступы, а не данные — файл может уехать в почту или мессенджер.
+        </p>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button id="exportAccountBtn" class="btn btn-secondary" type="button">📦 Скачать мои данные</button>
+          <button id="deleteAccountBtn" class="btn btn-danger" type="button">Удалить аккаунт</button>
+        </div>
+        <p style="font-size: 12.5px; color: var(--body-mid); margin: 12px 0 0 0;">
+          Удаление необратимо: уйдут источники, лента, журнал и ключи, а сессия
+          в Telegram будет завершена.
+        </p>
+      </div>
+
       <!-- ==================== TOKEN USAGE CARD (12.10) ==================== -->
       <!-- Расход стоит рядом с ключом и моделью: решение «какой канал
            отключить» принимают здесь же, где включают AI. -->
