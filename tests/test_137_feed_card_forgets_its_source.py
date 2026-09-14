@@ -181,10 +181,18 @@ async def test_migration_gives_the_source_back_to_cards_already_in_the_base(
     from alembic import command
 
     cfg = Config("alembic.ini")
-    command.upgrade(cfg, "0016_channel_token_limit")
-
     engine = create_async_engine(alembic_target_db)
     try:
+        # База миграций одна на прогон, и соседние тесты оставляют её на
+        # head — а `upgrade` на ревизию ПОЗАДИ текущей молча не делает
+        # ничего. Тогда посев ложится в уже обновлённую схему, ревизия не
+        # исполняется, и тест краснеет не по делу (поймано первым прогоном
+        # CI: локально он уходит в skip, и порядок был невиден).
+        async with engine.begin() as conn:
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
+        command.upgrade(cfg, "0016_channel_token_limit")
+
         async with engine.begin() as conn:
 
             async def _user(email: str) -> int:
