@@ -12,7 +12,7 @@
 // канала пишет его владелец, а не сервис (0.4).
 
 import { apiFetch, apiGet } from './api.js';
-import { html, raw, formatIntervalHuman, showToast, openModalAnimated, closeModalAnimated } from './render.js';
+import { html, raw, formatIntervalHuman, formatNextRun, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 import { withSecret, clearSecret, fillSecretField } from './secrets.js';
 import { setFilterChatOptions } from './messages.js';
 
@@ -119,8 +119,13 @@ function renderSources() {
         <div class="meta-timeline-row">
           <span class="timeline-segment">${raw(formatIntervalHuman(s.interval_minutes))}</span>
           <span class="timeline-divider">•</span>
-          <span class="timeline-segment">
-            Прогон: ${s.last_run_at ? new Date(s.last_run_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : 'ещё не было'}
+          <span class="timeline-segment" title="Время последнего прогона">
+            Последний: ${s.last_run_at ? new Date(s.last_run_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : 'ещё не было'}
+          </span>
+          <span class="timeline-divider">•</span>
+          <span class="timeline-next-status ${s.is_active ? 'active' : ''}" title="Расчётное время следующего прогона">
+            <span class="pulse-dot ${s.is_active ? '' : 'paused'}"></span>
+            <span data-next-run="${s.public_id}">${formatNextRun(s)}</span>
           </span>
           ${s.stop_words ? raw(html`<span class="timeline-divider">•</span><span class="timeline-segment">стоп-слова заданы</span>`) : ''}
         </div>
@@ -137,6 +142,24 @@ function renderSources() {
       </div>
     </div>
   `).join('');
+}
+
+// Пересчёт счётчиков обратного отсчёта: их значение стареет само по себе,
+// без единого события. Трогается ТОЛЬКО текст счётчика — не весь список:
+// кнопка «Запустить» гаснет на время запроса к серверу, и перерисовка раз в
+// 15 секунд вернула бы её в строй посреди запроса, то есть позволила бы
+// запустить прогон дважды.
+//
+// Адресация идёт перебором узлов, а не селектором с подстановкой:
+// `public_id` старых источников — это имена каналов, и собирать из них
+// селектор значит зависеть от того, что в них не встретится ничего
+// особенного.
+export function refreshSourceTimers() {
+  if (!sourcesList || currentSources.length === 0) return;
+  sourcesList.querySelectorAll('[data-next-run]').forEach(cell => {
+    const source = currentSources.find(item => item.public_id === cell.dataset.nextRun);
+    if (source) cell.textContent = formatNextRun(source);
+  });
 }
 
 addSourceForm.addEventListener('submit', async (event) => {

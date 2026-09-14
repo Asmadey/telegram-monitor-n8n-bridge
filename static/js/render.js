@@ -97,6 +97,34 @@ export function formatIntervalHuman(minutes) {
   return `Каждые ${minutes} мин`;
 }
 
+// Расчётное время следующего прогона источника — ТЕКСТОМ, а не разметкой.
+// Прежняя версия (до 11.7) возвращала HTML и вставлялась через `raw()`; всё,
+// что идёт через `raw()`, обязано быть доверенным навсегда, включая правки,
+// которых ещё нет, а экранирование по умолчанию (5.2) держится ровно на том,
+// что таких мест мало. Здесь доверять нечему: строку соберёт html``.
+//
+// `now` — параметр, а не `new Date()` внутри: иначе расчёт нельзя проверить,
+// не подменяя часы всему процессу.
+export function formatNextRun(source, now = new Date()) {
+  if (!source || !source.is_active) return 'На паузе';
+  const interval = Number(source.interval_minutes) || 60;
+  const last = source.last_run_at ? new Date(source.last_run_at) : null;
+  // Источник без прогонов и источник с просроченным прогоном — одно и то же
+  // состояние: воркер возьмёт оба ближайшим тиком. Различает их соседний
+  // сегмент («Последний: ещё не было»), и повторять это здесь незачем.
+  if (last === null || Number.isNaN(last.getTime())) return 'Следующий: сейчас';
+  const next = new Date(last.getTime() + interval * 60000);
+  const minutes = Math.round((next.getTime() - now.getTime()) / 60000);
+  if (minutes <= 0) return 'Следующий: сейчас';
+  const time = next.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (minutes < 60) return `Следующий: ${time} (через ${minutes} мин)`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest
+    ? `Следующий: ${time} (через ${hours} ч ${rest} мин)`
+    : `Следующий: ${time} (через ${hours} ч)`;
+}
+
 export function openModalAnimated(modalEl) {
   if (!modalEl) return;
   modalEl.classList.add('active');
