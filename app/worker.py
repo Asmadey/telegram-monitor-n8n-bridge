@@ -949,117 +949,155 @@ class Worker:
                 )
                 continue
 
-            channel = await db.get(MonitorChannel, channel_id)
-            if channel is None:  # источник правили во время прогона
-                continue
+            # Сохранение канала — под тем же правилом, что и выборка:
+            # один канал не роняет источник. Раньше защита кончалась на
+            # выборке, а запись, дедупликация и оба коммита шли голыми — и
+            # любой отказ СУБД уносил ВЕСЬ прогон вместе с каналами, которые
+            # уже разобрались. Дубль канала был одним из способов туда
+            # попасть (закрыт отдельно, выше), но не единственным: гонка в
+            # дедупликации и обрыв соединения дают ровно то же.
+            try:
+                channel = await db.get(MonitorChannel, channel_id)
+                if channel is None:  # источник правили во время прогона
+                    continue
 
-            resolved_id = int(getattr(entity, "id", 0) or channel.chat_id or 0)
-            twin = (
-                await db.scalars(
-                    select(MonitorChannel)
-                    .where(
-                        MonitorChannel.monitor_id == source_id,
-                        MonitorChannel.chat_id == resolved_id,
-                        MonitorChannel.id != channel.id,
+                resolved_id = int(getattr(entity, "id", 0) or channel.chat_id or 0)
+                twin = (
+                    await db.scalars(
+                        select(MonitorChannel)
+                        .where(
+                            MonitorChannel.monitor_id == source_id,
+                            MonitorChannel.chat_id == resolved_id,
+                            MonitorChannel.id != channel.id,
+                        )
+                        .limit(1)
                     )
-                    .limit(1)
+                ).first()
+                if twin is not None:
+                    # Поле снимается в обычную строку СРАЗУ: ниже нет отката, но
+                    # и без него обращение к ORM-объекту после чужого commit —
+                    # ленивая загрузка, то есть MissingGreenlet в async-сессии.
+                    twin_target = twin.chat_target
+                    # Два адреса источника разрешились в ОДИН чат. Проверка на
+                    # входе (12.x) ловит разные написания одного имени, но два
+                    # РАЗНЫХ адреса — публичное имя и приглашение, старое имя
+                    # переименованного канала — сходятся законно, и узнать об
+                    # этом можно только здесь.
+                    #
+                    # Присваивать нельзя: ограничение (monitor_id, chat_id)
+                    # выстрелит на commit, а исключение унесёт ВЕСЬ прогон
+                    # источника вместе с уже разобранными каналами — ровно так
+                    # источник владельца стоял 2026-09-13. Канал объявляется
+                    # неразобранным, остальные идут своим ходом.
+                    #
+                    # Отката здесь нет намеренно: неудачного запроса не было —
+                    # столкновение поймано ДО присваивания. Лишний rollback
+                    # обесценил бы всю сессию (факт 4 CLAUDE.md).
+                    unparsed.append(name)
+                    await add_log(
+                        db,
+                        user_id,
+                        "POLL_ERROR",
+                        f"Канал «{name}» — дубль: он уже есть в источнике как "
+                        f"«{twin_target}». Удалите лишний, иначе канал "
+                        "опрашивался бы дважды и считался дважды",
+                        status="ERROR",
+                        chat_title=name,
+                    )
+                    logger.warning(
+                        "канал %s источника %s тенанта %s — дубль %s",
+                        name,
+                        source_public_id,
+                        user_id,
+                        twin_target,
+                    )
+                    continue
+
+                channel.chat_id = resolved_id
+                channel.chat_title = (
+                    getattr(entity, "title", None) or channel.chat_title
                 )
-            ).first()
-            if twin is not None:
-                # Поле снимается в обычную строку СРАЗУ: ниже нет отката, но
-                # и без него обращение к ORM-объекту после чужого commit —
-                # ленивая загрузка, то есть MissingGreenlet в async-сессии.
-                twin_target = twin.chat_target
-                # Два адреса источника разрешились в ОДИН чат. Проверка на
-                # входе (12.x) ловит разные написания одного имени, но два
-                # РАЗНЫХ адреса — публичное имя и приглашение, старое имя
-                # переименованного канала — сходятся законно, и узнать об
-                # этом можно только здесь.
-                #
-                # Присваивать нельзя: ограничение (monitor_id, chat_id)
-                # выстрелит на commit, а исключение унесёт ВЕСЬ прогон
-                # источника вместе с уже разобранными каналами — ровно так
-                # источник владельца стоял 2026-09-13. Канал объявляется
-                # неразобранным, остальные идут своим ходом.
-                #
-                # Отката здесь нет намеренно: неудачного запроса не было —
-                # столкновение поймано ДО присваивания. Лишний rollback
-                # обесценил бы всю сессию (факт 4 CLAUDE.md).
+                channel.chat_username = (
+                    getattr(entity, "username", None) or channel.chat_username
+                )
+                channel.last_checked = _utcnow()
+                channel.fail_streak = 0
+                entities[channel.chat_id] = entity
+                chat_id = channel.chat_id
+                chat_title = channel.chat_title
+                chat_username = channel.chat_username or ""
+                await db.commit()
+
+                fresh = await filter_new(
+                    db,
+                    user_id,
+                    chat_id,
+                    messages,
+                    monitor_id=source_id,
+                    commit=False,
+                    processed=False,
+                )
+                fresh, filtered = split_by_stop_words(
+                    fresh, parse_stop_words(source_stop_words)
+                )
+                if filtered:
+                    await db.execute(
+                        update(SentMessage)
+                        .where(
+                            SentMessage.monitor_id == source_id,
+                            SentMessage.chat_id == chat_id,
+                            SentMessage.message_id.in_([m["id"] for m in filtered]),
+                        )
+                        .values(processed=True)
+                    )
+                await db.commit()
+                filtered_total += len(filtered)
+                if not fresh:
+                    continue
+                for message in fresh:
+                    # у поста своя принадлежность: в сводке из пяти каналов без
+                    # неё нельзя ни сослаться, ни отметить обработанным
+                    message["chat_id"] = chat_id
+                    message["chat_title"] = chat_title
+                groups.append(
+                    {
+                        "chat_id": chat_id,
+                        "chat_title": chat_title,
+                        "chat_username": chat_username,
+                        "extract_prompt": spec["extract_prompt"],
+                        "filtered_count": len(filtered),
+                        "messages": fresh,
+                    }
+                )
+                await self._beat(db)
+            except Exception as exc:  # noqa: BLE001 — один канал не роняет источник
+                # Откат ОБЕСЦЕНИВАЕТ всю сессию (факт 4 CLAUDE.md), поэтому
+                # ниже нет ни одного обращения к ORM-объектам этой итерации:
+                # `name` — обычная строка из плана, канал перечитывается заново.
+                await db.rollback()
+                stale = await db.get(MonitorChannel, channel_id)
+                if stale is not None:
+                    stale.fail_streak += 1
+                    if stale.fail_streak >= MAX_CHANNEL_FAILURES:
+                        stale.is_active = False
+                    await db.commit()
                 unparsed.append(name)
                 await add_log(
                     db,
                     user_id,
                     "POLL_ERROR",
-                    f"Канал «{name}» — дубль: он уже есть в источнике как "
-                    f"«{twin_target}». Удалите лишний, иначе канал "
-                    "опрашивался бы дважды и считался дважды",
+                    f"Канал «{name}» не сохранён: {_reason(exc)}",
                     status="ERROR",
                     chat_title=name,
                 )
                 logger.warning(
-                    "канал %s источника %s тенанта %s — дубль %s",
+                    "канал %s источника %s тенанта %s: сохранение упало — %s",
                     name,
                     source_public_id,
                     user_id,
-                    twin_target,
+                    _reason(exc),
                 )
                 continue
-
-            channel.chat_id = resolved_id
-            channel.chat_title = getattr(entity, "title", None) or channel.chat_title
-            channel.chat_username = (
-                getattr(entity, "username", None) or channel.chat_username
-            )
-            channel.last_checked = _utcnow()
-            channel.fail_streak = 0
-            entities[channel.chat_id] = entity
-            chat_id = channel.chat_id
-            chat_title = channel.chat_title
-            chat_username = channel.chat_username or ""
-            await db.commit()
-
-            fresh = await filter_new(
-                db,
-                user_id,
-                chat_id,
-                messages,
-                monitor_id=source_id,
-                commit=False,
-                processed=False,
-            )
-            fresh, filtered = split_by_stop_words(
-                fresh, parse_stop_words(source_stop_words)
-            )
-            if filtered:
-                await db.execute(
-                    update(SentMessage)
-                    .where(
-                        SentMessage.monitor_id == source_id,
-                        SentMessage.chat_id == chat_id,
-                        SentMessage.message_id.in_([m["id"] for m in filtered]),
-                    )
-                    .values(processed=True)
-                )
-            await db.commit()
-            filtered_total += len(filtered)
-            if not fresh:
-                continue
-            for message in fresh:
-                # у поста своя принадлежность: в сводке из пяти каналов без
-                # неё нельзя ни сослаться, ни отметить обработанным
-                message["chat_id"] = chat_id
-                message["chat_title"] = chat_title
-            groups.append(
-                {
-                    "chat_id": chat_id,
-                    "chat_title": chat_title,
-                    "chat_username": chat_username,
-                    "extract_prompt": spec["extract_prompt"],
-                    "filtered_count": len(filtered),
-                    "messages": fresh,
-                }
-            )
-            await self._beat(db)
 
         source = await db.get(Monitor, source_id) or source
         source.last_run_at = _utcnow()
