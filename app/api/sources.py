@@ -35,6 +35,7 @@ router = APIRouter(dependencies=[Depends(require_user)])
 MAX_CHANNELS = 10
 MAX_PROMPT_CHARS = 8000
 KIND_POLL = "poll_monitor"
+KIND_CHECK = "check_source"
 
 
 class SourceCreate(BaseModel):
@@ -110,6 +111,11 @@ def _channel_card(channel: MonitorChannel, sent_count: int = 0) -> dict[str, Any
         "last_checked": channel.last_checked,
         "fail_streak": channel.fail_streak,
         "sent_count": sent_count,
+        # Исход проверки (13.6). NULL — «не проверяли», и интерфейс обязан
+        # показать это третьим состоянием, а не зелёным.
+        "check_status": channel.check_status,
+        "check_detail": channel.check_detail,
+        "checked_at": channel.checked_at,
     }
 
 
@@ -377,11 +383,18 @@ async def remove_channel(
     return {"status": "removed", "channel_id": channel_id}
 
 
-async def _live_job(repo: TenantRepo, public_id: str) -> Job | None:
-    """Задача опроса этого источника, которая ещё не завершилась."""
+async def _live_job(
+    repo: TenantRepo, public_id: str, kind: str = KIND_POLL
+) -> Job | None:
+    """Незавершённая задача этого вида по этому источнику.
+
+    Вид — параметр, а не константа: прогон и проверка стоят в одной очереди,
+    и общий поиск «живой задачи» принял бы идущую проверку за идущий прогон,
+    то есть тихо проглотил бы нажатие «Запустить».
+    """
     jobs = await repo.db.scalars(
         repo.query(Job)
-        .where(Job.kind == KIND_POLL, Job.status.not_in([STATUS_DONE, STATUS_FAILED]))
+        .where(Job.kind == kind, Job.status.not_in([STATUS_DONE, STATUS_FAILED]))
         .order_by(Job.id.desc())
     )
     for job in jobs:
@@ -407,6 +420,34 @@ async def run_source(
         repo.db,
         user_id=repo.user_id,
         kind=KIND_POLL,
+        payload={"monitor_public_id": source.public_id},
+    )
+    return {"status": "queued", "job_id": job.id, "public_id": public_id}
+
+
+@router.post("/api/sources/{public_id}/check", status_code=202)
+async def check_source(
+    public_id: str, repo: TenantRepo = Depends(get_tenant_repo)
+) -> dict:
+    """Попросить воркера обойти каналы источника и сказать, читаются ли они.
+
+    Задачей, а не в обработчике: живой Telethon-клиент есть только у воркера
+    (второй процесс на том же auth-key даёт `AUTH_KEY_DUPLICATED` и выбивает
+    владельца из его собственного аккаунта).
+    """
+    source = await _get_or_404(repo, public_id)  # чужой → 404, не 403
+    live = await _live_job(repo, source.public_id, kind=KIND_CHECK)
+    if live is not None:
+        # Идемпотентность на сервере: кнопка про чужой сеанс не знает, а
+        # каждая проверка — это обход всех каналов в Telegram.
+        return {"status": "queued", "job_id": live.id, "public_id": public_id}
+
+    from app.services.jobs import enqueue_job
+
+    job = await enqueue_job(
+        repo.db,
+        user_id=repo.user_id,
+        kind=KIND_CHECK,
         payload={"monitor_public_id": source.public_id},
     )
     return {"status": "queued", "job_id": job.id, "public_id": public_id}
@@ -460,10 +501,14 @@ async def source_status(
     source = await _get_or_404(repo, public_id)
     channels = await _channels_of(repo, source.id)
     live = await _live_job(repo, source.public_id)
+    checking = await _live_job(repo, source.public_id, kind=KIND_CHECK)
     return {
         "public_id": source.public_id,
         "title": source.title,
         "running": live is not None or bool(source.running),
+        # Проверка — отдельное состояние, а не разновидность прогона: их
+        # смешение погасило бы кнопку «Запустить» на время обхода.
+        "checking": checking is not None,
         "job_id": live.id if live is not None else None,
         "last_run_at": source.last_run_at,
         "channels": [

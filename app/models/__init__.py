@@ -249,6 +249,15 @@ class MonitorChannel(Base):
     # сколько прогонов подряд канал не разбирается: мёртвый канал не должен
     # вечно тратить время прогона
     fail_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Исход последней проверки (13.6): ok / no_posts / duplicate / not_found /
+    # no_access / error. NULL — «не проверяли», и это ТРЕТЬЕ состояние, а не
+    # синоним здоровья: пустое поле, читаемое как зелёный вердикт, — тот же
+    # класс, что «совпадений нет» против «не смогли посмотреть» (фаза 9).
+    check_status: Mapped[str | None] = mapped_column(String(32))
+    # Причина словами: что нашлось по адресу и почему прогон отсюда не
+    # прочитает. Смысл проверки в том, чтобы не отсылать человека в журнал.
+    check_detail: Mapped[str | None] = mapped_column(String(512))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Дважды один канал в одном источнике — двойной опрос и двойной счёт.
     # Ключей два: chat_id известен не всегда (канал мог ни разу не

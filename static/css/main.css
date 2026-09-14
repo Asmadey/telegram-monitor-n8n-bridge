@@ -580,6 +580,29 @@
       user-select: none;
     }
 
+    /* Исход проверки канала (13.6). Четыре тона, а не три: «не
+       проверяли» — отдельное состояние, и серый цвет говорит ровно это. */
+    .check-dot {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 13px;
+      height: 13px;
+      margin-right: 4px;
+      border-radius: 50%;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1;
+      color: #fff;
+      background: var(--mute);
+      cursor: help;
+    }
+
+    .check-dot-ok { background: #008715; }
+    .check-dot-warn { background: #b26b00; }
+    .check-dot-bad { background: var(--accent-red, #c62828); }
+    .check-dot-unknown { background: var(--mute); }
+
     .timeline-next-status {
       display: inline-flex;
       align-items: center;

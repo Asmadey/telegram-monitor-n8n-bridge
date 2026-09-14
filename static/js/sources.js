@@ -12,7 +12,7 @@
 // канала пишет его владелец, а не сервис (0.4).
 
 import { apiFetch, apiGet } from './api.js';
-import { html, raw, formatIntervalHuman, formatNextRun, showToast, openModalAnimated, closeModalAnimated } from './render.js';
+import { html, raw, formatIntervalHuman, formatNextRun, checkBadge, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 import { withSecret, clearSecret, fillSecretField } from './secrets.js';
 import { setFilterChatOptions } from './messages.js';
 
@@ -87,11 +87,17 @@ function channelChips(source) {
   if (!source.channels.length) {
     return html`<span class="clean-pill" title="Источник без каналов не опрашивается">Нет каналов</span>`;
   }
-  return source.channels.map(c => html`
+  return source.channels.map(c => {
+    // Исход проверки — на самом чипе: человек спрашивает «все ли источники
+    // встали», и ответ обязан быть там же, где список, а не в другом экране.
+    const badge = checkBadge(c);
+    return html`
     <span class="clean-pill ${c.is_active ? '' : 'clean-pill-muted'}" title="Лимит: ${c.limit} постов за опрос">
+      <span class="check-dot ${badge.cls}" title="${badge.title}">${badge.mark}</span>
       ${c.chat_title || c.chat_target} <span class="clean-pill-sub">• ${c.limit}</span>
     </span>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderSources() {
@@ -137,6 +143,7 @@ function renderSources() {
           <span class="slider"></span>
         </label>
         <button class="btn btn-primary btn-sm" data-action="run" data-source-id="${s.public_id}" title="Запустить прогон сейчас">⚡ Запустить</button>
+        <button class="btn btn-secondary btn-sm" data-action="check" data-source-id="${s.public_id}" title="Проверить, что каждый канал открывается и из него читаются сообщения">🩺 Проверить</button>
         <button class="btn btn-secondary btn-icon-sm" data-action="edit" data-source-id="${s.public_id}" title="Каналы, лимиты и промпты">✎</button>
         <button class="btn btn-danger btn-icon-sm" data-action="delete" data-source-id="${s.public_id}" title="Удалить источник">🗑</button>
       </div>
@@ -363,6 +370,7 @@ document.addEventListener('click', (event) => {
     return;
   }
   if (el.dataset.action === 'run') runSource(id, el);
+  else if (el.dataset.action === 'check') checkSource(id, el);
   else if (el.dataset.action === 'edit') openSourceModal(id);
   else if (el.dataset.action === 'delete') deleteSource(id);
 });
@@ -432,6 +440,100 @@ async function waitForRun(id, button, attempt = 0) {
     /* сеть моргнула — попробуем на следующем круге */
   }
   await waitForRun(id, button, attempt + 1);
+}
+
+async function checkSource(id, button) {
+  // Кнопка гаснет до ответа сервера: сервер идемпотентен, но каждая проверка
+  // — это обход ВСЕХ каналов источника в Telegram, и выглядеть свободной,
+  // пока обход идёт, кнопка не должна.
+  if (button) {
+    button.disabled = true;
+    button.textContent = '⏳ Проверяю';
+  }
+  try {
+    const res = await apiFetch(`/api/sources/${id}/check`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Не удалось запросить проверку');
+    // 202 «queued», а не «готово»: работу делает воркер, и сообщать об
+    // успехе здесь значило бы врать о том, чего ещё не случилось.
+    showToast('Проверка поставлена в очередь — вердикт появится на каналах');
+    await waitForCheck(id, button);
+  } catch (e) {
+    showToast(e.message, true);
+    releaseCheckButton(button);
+  }
+}
+
+function releaseCheckButton(button) {
+  if (!button) return;
+  button.disabled = false;
+  button.textContent = '🩺 Проверить';
+}
+
+async function waitForCheck(id, button, attempt = 0) {
+  // Состояние спрашивается у сервера, а не угадывается по часам браузера:
+  // `checked_at` ставит сервер, и сравнивать его с местным временем значит
+  // зависеть от того, что часы сходятся.
+  if (attempt > 40) {
+    releaseCheckButton(button);
+    await loadSources();
+    return;
+  }
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  try {
+    const res = await apiGet(`/api/sources/${id}/status`);
+    if (!res.ok) return;
+    const status = await res.json();
+    if (!status.checking) {
+      releaseCheckButton(button);
+      await loadSources();
+      return;
+    }
+  } catch (e) {
+    /* сеть моргнула — попробуем на следующем круге */
+  }
+  await waitForCheck(id, button, attempt + 1);
+}
+
+const checkAllSourcesBtn = document.getElementById('checkAllSourcesBtn');
+if (checkAllSourcesBtn) {
+  checkAllSourcesBtn.addEventListener('click', () => checkAllSources(checkAllSourcesBtn));
+}
+
+async function checkAllSources(button) {
+  // Вопрос владельца был про ВСЕ источники сразу: с девятью источниками
+  // «по кнопке на каждый» — это девять кликов и девять мест, где можно
+  // сбиться со счёта.
+  if (currentSources.length === 0) {
+    showToast('Источников пока нет');
+    return;
+  }
+  if (button) {
+    button.disabled = true;
+    button.textContent = '⏳ Проверяю';
+  }
+  let queued = 0;
+  for (const source of currentSources) {
+    try {
+      const res = await apiFetch(`/api/sources/${source.public_id}/check`, { method: 'POST' });
+      if (res.ok) queued += 1;
+    } catch (e) {
+      /* один источник не отменяет остальные */
+    }
+  }
+  showToast(queued
+    ? `Проверка поставлена в очередь: источников ${queued}`
+    : 'Не удалось поставить проверку в очередь');
+  // Вердикты подъезжают по мере обхода, поэтому список перечитывается
+  // несколько раз: одно обновление показало бы только первый источник.
+  for (let round = 0; round < 20; round += 1) {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    await loadSources();
+  }
+  if (button) {
+    button.disabled = false;
+    button.textContent = '🩺 Проверить все';
+  }
 }
 
 async function deleteSource(id) {

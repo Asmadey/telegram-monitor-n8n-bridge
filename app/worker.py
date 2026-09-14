@@ -60,7 +60,17 @@ from app.models import (
 from app.security.crypto import key_fingerprint, validate_encryption_key
 from app.security.log_redaction import install_log_redaction
 from app.services.alerts import alert_owner
-from app.services.channels import clean_target
+from app.services.channels import (
+    CHECK_DUPLICATE,
+    CHECK_NO_ACCESS,
+    CHECK_NO_POSTS,
+    CHECK_NOT_FOUND,
+    CHECK_OK,
+    CHECK_PROBE_LIMIT,
+    clean_target,
+    describe_entity,
+    entity_name,
+)
 from app.services.cleanup import purge_older_than
 from app.services.dedup import filter_new
 from app.services.dispatch import dispatch, store_avatar
@@ -155,6 +165,12 @@ MAX_ERROR_CHARS = 1000
 KIND_POLL = "poll_monitor"
 KIND_REANALYZE = "reanalyze_feed_item"
 KIND_BATCH = "process_batch"
+KIND_CHECK = "check_source"
+# Событие журнала: у проверки своя история отказов, и искать её человек
+# будет не среди опросов.
+EVENT_CHECK = "SOURCE_CHECK"
+# Причина проверки — в колонку на 512; режется с запасом.
+MAX_CHECK_DETAIL = 480
 RETRY_SECONDS = 60
 LEADER_RETRY_INTERVAL = 5.0
 
@@ -405,6 +421,20 @@ class Worker:
                 )
         elif job.kind == KIND_REANALYZE:
             await self._reanalyze(db, job.user_id, payload.get("feed_item_id"))
+        elif job.kind == KIND_CHECK:
+            # Владелец — из строки задачи, как и у опроса: `public_id`
+            # уникален только в пределах кабинета, и одного его хватило бы,
+            # чтобы проверить чужой источник.
+            source = (
+                await db.scalars(
+                    TenantRepo(db, job.user_id)
+                    .query(Monitor)
+                    .where(Monitor.public_id == payload.get("monitor_public_id"))
+                )
+            ).first()
+            if source is None:
+                raise LookupError("источник не найден у владельца задачи")
+            await self.check_source(db, source)
         else:
             raise ValueError(f"неизвестный вид задачи: {job.kind}")
 
@@ -893,8 +923,15 @@ class Worker:
             await self._beat(db)
         return polled
 
-    async def _resolve_channel(self, client, channel: dict):
+    async def _resolve_channel(self, client, channel: dict, trace: list | None = None):
         """Сначала по `chat_id`, потом по ссылке — и обновить оба.
+
+        `trace` — необязательный след для проверки источника (13.6): в него
+        кладётся, чем именно канал открылся и понадобился ли прогрев кэша.
+        Прогону это не нужно, а проверке нужно: «открылся только со второй
+        попытки» — то, о чём человек вправе узнать до отказа, а не после.
+        Отдельного пути разрешения у проверки быть не должно — проверка,
+        которая ходит своей дорогой, проверяет себя, а не прогон.
 
         Порядок неочевиден и важен. По ссылке первым нельзя: у
         переименованного канала username меняется, а рабочий `chat_id`
@@ -921,13 +958,17 @@ class Worker:
         for attempt in range(2):
             for target in targets:
                 try:
-                    return await _within(
+                    entity = await _within(
                         self.telegram.resolve(client, target),
                         TELEGRAM_TIMEOUT,
                         f"разрешение канала {target}",
                     )
                 except Exception as exc:  # noqa: BLE001 — пробуем следующий способ
                     last = exc
+                    continue
+                if trace is not None:
+                    trace.append({"target": target, "primed": bool(attempt)})
+                return entity
             # Второй заход — только после прогрева кэша и только если есть
             # чему помочь: по голому id канал не разрешить без access_hash, а
             # кэш сущностей живёт в сессии, и `StringSession` его НЕ хранит —
@@ -945,6 +986,219 @@ class Worker:
                 logger.debug("кэш каналов не прогрет: %s", redact(_reason(exc)))
                 break
         raise last or LookupError("канал нечем разрешить")
+
+    async def check_source(self, db, source: Monitor) -> dict:
+        """Пройти каналы источника и сказать по каждому, будет ли он читаться.
+
+        **Зачем.** Канал «VASILE LUNGO | INSIDER» не разрешался ни разу с
+        момента добавления, и узнать об этом было неоткуда: источник просто
+        не давал находок. «Сегодня пусто» и «не открывался никогда» выглядели
+        одинаково — молчанием.
+
+        **Как.** Тем же путём, каким канал читает прогон: `_resolve_channel`
+        со всеми его запасными ходами и прогревом кэша, затем короткая проба
+        чтения. Проверка, которая разрешает канал по-своему, зелена там, где
+        прогон красен, — это хуже, чем её отсутствие.
+
+        Проверяются ВСЕ каналы источника, включая выключенные: человек
+        выключил канал и вправе знать, в каком тот состоянии, не включая его
+        ради ответа.
+
+        Проба намеренно идёт мимо дедупликации: `filter_new` здесь не
+        вызывается и `sent_messages` не пишется. Иначе проверка съедала бы
+        посты, ближайший прогон промолчал бы, и это выглядело бы как
+        «проверил и сломал».
+        """
+        user_id = source.user_id
+        source_id = source.id
+        source_title = source.title
+        channels = list(
+            await db.scalars(
+                select(MonitorChannel)
+                .where(MonitorChannel.monitor_id == source_id)
+                .order_by(MonitorChannel.position, MonitorChannel.id)
+            )
+        )
+        if not channels:
+            await add_log(
+                db,
+                user_id,
+                EVENT_CHECK,
+                f"Проверка «{source_title}»: у источника нет каналов.",
+                status="SKIPPED",
+                chat_title=source_title,
+            )
+            return {"status": "no_channels", "checked": 0}
+
+        client = await self.telegram.client_for(db, user_id)
+        if client is None:
+            # Один ответ про источник, а не N одинаковых про каналы: чинится
+            # это в одном месте — подключением аккаунта.
+            await add_log(
+                db,
+                user_id,
+                EVENT_CHECK,
+                f"Проверка «{source_title}» не состоялась: Telegram-аккаунт "
+                "не подключён.",
+                status="ERROR",
+                chat_title=source_title,
+            )
+            return {"status": "no_account", "checked": 0}
+
+        # Поля снимаются в обычные словари ДО обхода: ниже есть откаты, а
+        # `rollback()` аннулирует ВСЮ сессию, а не один объект (факт 4).
+        plan = [
+            {
+                "id": c.id,
+                "chat_target": c.chat_target,
+                "chat_id": c.chat_id,
+                "name": c.chat_title or c.chat_target,
+            }
+            for c in channels
+        ]
+
+        account = (
+            await db.scalars(TenantRepo(db, user_id).query(TelegramAccount))
+        ).first()
+
+        async def _flood(exc) -> None:
+            """FloodWait — про весь аккаунт: соседний канал упрётся в тот же
+            лимит, поэтому обход прекращается целиком."""
+            if account is not None:
+                account.retry_after = _utcnow() + datetime.timedelta(
+                    seconds=max(1, getattr(exc, "seconds", RETRY_SECONDS))
+                )
+                await db.commit()
+
+        taken: dict[int, str] = {}
+        tally: dict[str, int] = {}
+        problems: list[str] = []
+        for spec in plan:
+            trace: list[dict] = []
+            entity = None
+            status = CHECK_NOT_FOUND
+            detail = ""
+
+            # Замыкание, а не лямбда: у лямбды с умолчаниями mypy не
+            # выводит тип, и тот же приём уже применён в `poll_source`.
+            async def _open(spec=spec, trace=trace):
+                return await self._resolve_channel(client, spec, trace)
+
+            try:
+                entity = await flood_guarded_call(_open, on_flood_wait=_flood)
+            except Exception as exc:  # noqa: BLE001 — один канал не роняет обход
+                detail = f"Адрес не открылся: {_reason(exc)}"
+            else:
+                if entity is None:
+                    await add_log(
+                        db,
+                        user_id,
+                        EVENT_CHECK,
+                        f"Проверка «{source_title}» прервана: Telegram просит "
+                        "подождать.",
+                        status="ERROR",
+                        chat_title=source_title,
+                    )
+                    return {"status": "flood_wait", "checked": sum(tally.values())}
+                status, detail = await self._verdict(client, entity, spec, trace, taken)
+
+            if status != CHECK_OK:
+                problems.append(f"{spec['name']} — {detail}")
+            tally[status] = tally.get(status, 0) + 1
+            await self._record_check(db, spec, entity, status, detail)
+            # Долгий, но идущий обход обязан выглядеть живым (11.0).
+            await self._beat(db)
+
+        ok = tally.get(CHECK_OK, 0)
+        summary = f"Проверка «{source_title}»: годных каналов {ok} из {len(plan)}"
+        if problems:
+            summary = f"{summary}. {'; '.join(problems)}"
+        await add_log(
+            db,
+            user_id,
+            EVENT_CHECK,
+            summary[:MAX_CHECK_DETAIL],
+            status="SUCCESS" if not problems else "ERROR",
+            chat_title=source_title,
+        )
+        return {"status": "checked", "checked": len(plan), "ok": ok, "tally": tally}
+
+    async def _verdict(self, client, entity, spec: dict, trace: list, taken: dict):
+        """Исход по одному разрешённому каналу: что это и читается ли оно."""
+        chat_id = int(getattr(entity, "id", 0) or 0)
+        kind = describe_entity(entity)
+        name = entity_name(entity) or spec["name"]
+
+        twin = taken.get(chat_id)
+        if twin is not None:
+            # Два адреса источника сошлись в один чат. Присваивать `chat_id`
+            # нельзя (ограничение `(monitor_id, chat_id)` выстрелит), но
+            # сказать об этом ДО прогона — ровно то, ради чего проверка.
+            return (
+                CHECK_DUPLICATE,
+                f"{kind} «{name}» уже есть в источнике как «{twin}» — "
+                "опрашивался бы дважды и считался бы дважды",
+            )
+        taken[chat_id] = spec["chat_target"]
+
+        try:
+            posts = await _within(
+                self.telegram.fetch(
+                    client, entity, limit=CHECK_PROBE_LIMIT, offset_hours=None
+                ),
+                TELEGRAM_TIMEOUT,
+                f"проба чтения {name}",
+            )
+        except Exception as exc:  # noqa: BLE001 — «не пускает» лечится иначе
+            return (
+                CHECK_NO_ACCESS,
+                f"{kind} «{name}» найден, но история не читается: "
+                f"{_reason(exc)}. Обычно это значит, что аккаунт не состоит "
+                "в нём",
+            )
+
+        note = ""
+        if trace and trace[-1].get("primed"):
+            note = (
+                ". Открылся только со второй попытки, после прогрева кэша "
+                "каналов: это лишний запрос к Telegram на каждом прогоне — "
+                "надёжнее указать @имя или пригласительную ссылку"
+            )
+        if not posts:
+            return (
+                CHECK_NO_POSTS,
+                f"{kind} «{name}» читается, но среди последних "
+                f"{CHECK_PROBE_LIMIT} сообщений нет текста — извлекать "
+                f"нечего{note}",
+            )
+        return CHECK_OK, f"{kind} «{name}» — читается{note}"
+
+    async def _record_check(self, db, spec: dict, entity, status: str, detail: str):
+        """Записать исход в строку канала.
+
+        Разрешённый чат запоминается заодно: иначе «всё встало» остаётся
+        словами — ближайший прогон снова пойдёт разрешать адрес с нуля и
+        снова может не дойти. При дубле присваивать НЕЛЬЗЯ: ограничение
+        `(monitor_id, chat_id)` выстрелит на commit и унесёт с собой весь
+        обход (так источник владельца стоял 2026-09-13).
+        """
+        try:
+            row = await db.get(MonitorChannel, spec["id"])
+            if row is None:  # источник правили во время проверки
+                return
+            row.check_status = status
+            row.check_detail = detail[:MAX_CHECK_DETAIL]
+            row.checked_at = _utcnow()
+            if entity is not None and status != CHECK_DUPLICATE:
+                row.chat_id = int(getattr(entity, "id", 0) or 0) or row.chat_id
+                row.chat_title = entity_name(entity) or row.chat_title
+                row.chat_username = (
+                    getattr(entity, "username", None) or row.chat_username
+                )
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001 — одна строка не роняет обход
+            await db.rollback()
+            logger.warning("исход проверки не записан: %s", redact(_reason(exc)))
 
     async def poll_source(self, db, source: Monitor, **senders) -> str:
         """Обойти каналы источника и поставить общий разбор в очередь.
