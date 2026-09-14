@@ -8,7 +8,7 @@
 import { apiGet } from './api.js';
 import { checkHealth, showAccount } from './auth.js';
 import { loadFeed } from './feed.js';
-import { loadSources } from './sources.js';
+import { loadSources, refreshSourceTimers } from './sources.js';
 import { loadSavedMessages } from './messages.js';
 import { loadOpenRouterConfig, loadTgForwardConfig, loadCleanupConfig } from './integration.js';
 import { loadLogs, loadOpsStatus } from './logs.js';
@@ -133,9 +133,13 @@ async function start() {
     loadFeed(true);
   }, 8000);
 
-  // Периодический пересчет таймеров обратного отсчета (каждые 15 секунд)
+  // Периодический пересчёт таймеров обратного отсчёта (каждые 15 секунд).
+  // С 11.7 и до 2026-09-14 тело здесь было ПУСТЫМ: вызов унесло переездом
+  // `channels.js` → `sources.js`, а таймер и комментарий остались, и обещание
+  // исполнялось четырежды в минуту, ничего не делая.
   setInterval(() => {
-      }, 15000);
+    refreshSourceTimers();
+  }, 15000);
 }
 
 start();
