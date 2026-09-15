@@ -236,7 +236,7 @@
             <label for="sourceAnswerPrompt">Промпт оформления ответа (опционально):</label>
             <textarea id="sourceAnswerPrompt" rows="4" placeholder="Как свести находки со всех каналов и как оформить итог" class="u-w-full u-bd-1-solid-hairline u-rad-xs u-p-md-md u-ff-inherit u-fs-body-sm u-lh-1_5 u-rs-vertical"></textarea>
             <p class="u-fs-caption u-c-body-mid u-mt-xs">
-              Что искать — задаётся отдельно у каждого канала. Здесь только про то, как собрать и подать результат.
+              Второй шаг прогона: после разбора каналов модель получает найденное и собирает из него итоговое сообщение — то, что придёт в ленту и в бота. Что искать — задаётся у каждого канала отдельно; здесь только вид ответа. Пусто — оформления не будет: у источника с одним каналом уйдёт результат разбора как есть, у источника с несколькими их сведёт стандартный промпт.
             </p>
           </div>
           <button type="submit" class="btn btn-primary btn-block">Создать источник</button>
@@ -527,8 +527,8 @@
               <label for="newChannelTarget">Добавить канал:</label>
               <input type="text" id="newChannelTarget" placeholder="@channel или https://t.me/..." spellcheck="false">
             </div>
-            <button id="openDialogsModalBtn" class="btn btn-secondary btn-sm" type="button">Из диалогов</button>
-            <button id="addChannelBtn" class="btn btn-secondary btn-sm" type="button">+ Добавить</button>
+            <button id="openDialogsModalBtn" class="btn btn-secondary btn-field" type="button">Из диалогов</button>
+            <button id="addChannelBtn" class="btn btn-secondary btn-field" type="button">+ Добавить</button>
           </div>
         </div>
 
@@ -543,6 +543,9 @@
         <div class="form-group">
           <label for="editSourceAnswerPrompt">Промпт оформления ответа:</label>
           <textarea id="editSourceAnswerPrompt" rows="6" placeholder="Как свести находки со всех каналов и оформить итог" class="u-w-full u-minh-140 u-bd-1-solid-hairline u-rad-xs u-p-md-md u-ff-inherit u-fs-body-sm u-lh-1_5 u-rs-vertical"></textarea>
+          <p class="u-fs-caption u-c-body-mid u-mt-xs">
+            Второй шаг прогона: после разбора каналов модель получает найденное и собирает из него итоговое сообщение — то, что придёт в ленту и в бота. Что искать — задаётся у каждого канала отдельно; здесь только вид ответа. Пусто — оформления не будет: у источника с одним каналом уйдёт результат разбора как есть, у источника с несколькими их сведёт стандартный промпт.
+          </p>
         </div>
       </div>
       <div class="modal-footer">

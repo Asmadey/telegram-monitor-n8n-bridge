@@ -373,6 +373,30 @@
       cursor: pointer;
     }
 
+    /* Выпадающий список рисуем сами. Отступы и шрифт у него те же, что у
+       поля ввода — правило выше одно на всех, — а высота выходила на 2px
+       больше: нативный контрол считает свою внутреннюю геометрию сам, и
+       наши отступы её не выравнивают (найдено владельцем: 34,5px против
+       36,5px в одной строке). `appearance: none` снимает и чужую геометрию,
+       и чужую стрелку — та рисовалась вне дизайн-системы.
+
+       Стрелка собрана двумя градиентами из токена палитры. Картинкой её не
+       нарисовать, не зашив цвет внутрь data-URI, а цвет мимо системы — ровно
+       то, от чего уходили шаги 2 и 2b: переменная в data-URI не проникает. */
+    select {
+      appearance: none;
+      -webkit-appearance: none;
+      padding-right: var(--space-2xl);
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--mute) 50%),
+        linear-gradient(135deg, var(--mute) 50%, transparent 50%);
+      background-size: 5px 5px, 5px 5px;
+      background-position:
+        right calc(var(--space-md) + 5px) center,
+        right var(--space-md) center;
+      background-repeat: no-repeat;
+    }
+
     input:focus, select:focus, textarea:focus {
       outline: none;
       border-color: var(--ink);
@@ -457,6 +481,18 @@
     .btn-sm {
       padding: var(--space-xs) var(--space-md);
       font-size: var(--text-caption);
+    }
+
+    /* Кнопка ростом с поле ввода: те же отступы и тот же размер текста —
+       значит и та же высота, без magic number. Нужна там, где кнопка стоит
+       в одной строке с полем («Добавить канал»): `btn-sm` рядом с полем
+       выглядел утонувшим — 25px против 34,5px (найдено владельцем).
+
+       Стоит НИЖЕ `.btn-sm`: вес у них одинаковый (0,1,0), а при равном весе
+       побеждает последний по файлу. */
+    .btn-field {
+      padding: var(--space-sm) var(--space-md);
+      font-size: var(--text-body-sm);
     }
 
     .btn.btn-icon-sm {
