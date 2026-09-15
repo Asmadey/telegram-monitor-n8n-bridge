@@ -278,9 +278,23 @@ async def test_empty_answer_is_logged_not_swallowed(db, user):
     assert "AI_EMPTY" in events, f"пустой ответ модели нигде не отмечен: {events}"
 
 
-async def test_single_channel_costs_one_call(db, user):
-    """Частый случай не должен стоить вдвое: сведение не нужно."""
-    source = await _source(db, user, channels=[("@alpha", -1001, 20, "первый")])
+async def test_single_channel_without_formatting_costs_one_call(db, user):
+    """Ошибка этого теста, исправлена в тесте (находка владельца 2026-09-15).
+
+    Прежняя версия требовала ОДИН запрос на источник из одного канала при
+    любом раскладе — «сведению сводить нечего». Посылка верна наполовину:
+    сводить при одном канале действительно нечего, а **оформлять есть что**,
+    и это разные шаги. Требование закрепляло склейку промпта канала с
+    промптом источника в один запрос, и модель получала «верни только JSON»
+    и «оформи в HTML» разом — в ленту уезжал сырой вердикт разбора.
+
+    Условие сужено до случая, ради которого экономия и заводилась: промпта
+    оформления нет — оформлять нечем — второй запрос не нужен. Случай с
+    промптом оформления держит `test_142`.
+    """
+    source = await _source(
+        db, user, channels=[("@alpha", -1001, 20, "первый")], answer_prompt=""
+    )
     llm = RecordingLLM()
     worker = _worker(db, telegram=ChannelTelegram(THREE))
     worker.llm = llm
@@ -288,7 +302,7 @@ async def test_single_channel_costs_one_call(db, user):
     await _run(db, source, worker)
 
     assert len(llm.calls) == 1, (
-        f"на один канал ушло {len(llm.calls)} запросов — сведению сводить нечего"
+        f"на один канал без оформления ушло {len(llm.calls)} запросов"
     )
 
 
