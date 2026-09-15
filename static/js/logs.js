@@ -105,11 +105,11 @@ function renderLogs() {
 
   logsTableBody.innerHTML = currentLogs.map(log => html`
     <tr>
-      <td style="color: var(--body-mid); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap;">
+      <td style="color: var(--body-mid); font-size: var(--text-caption); font-variant-numeric: tabular-nums; white-space: nowrap;">
         ${new Date(log.timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'})}
       </td>
       <td>
-        <span class="meta-tag" style="font-size: 11px;">${log.event_type}</span>
+        <span class="meta-tag" style="font-size: var(--text-eyebrow-sm);">${log.event_type}</span>
       </td>
       <td>
         <div style="font-weight: 500; color: var(--ink);">${log.chat_title || '—'}</div>
@@ -117,7 +117,7 @@ function renderLogs() {
       <td>
         <span class="status-tag ${log.status}">${log.status}</span>
       </td>
-      <td style="font-size: 12.5px; color: var(--body); word-break: break-word;">
+      <td style="font-size: var(--text-caption); color: var(--body); word-break: break-word;">
         ${log.details || ''}
       </td>
     </tr>

@@ -81,12 +81,12 @@ export function renderTable() {
     return html`
     <tr>
       <td><span class="badge-metric">${msg.id}</span></td>
-      <td style="color: var(--body-mid); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap;">
+      <td style="color: var(--body-mid); font-size: var(--text-caption); font-variant-numeric: tabular-nums; white-space: nowrap;">
         ${new Date(msg.date).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
       </td>
       <td>
         <div style="font-weight: 600; color: var(--ink);">${msg.chat_title || 'Канал'}</div>
-        <div style="font-size: 11px; color: var(--body-mid);">${msg.sender || ''}</div>
+        <div style="font-size: var(--text-eyebrow-sm); color: var(--body-mid);">${msg.sender || ''}</div>
       </td>
       <td class="msg-text-cell">
         <div class="msg-text" id="msg-text-${msg.chat_id}-${msg.id}">${raw(formatTelegramText(msg.text))}</div>
