@@ -181,6 +181,7 @@ addSourceForm.addEventListener('submit', async (event) => {
         interval_minutes: parseInt(document.getElementById('sourceInterval').value, 10),
         stop_words: document.getElementById('sourceStopWords').value,
         answer_prompt: document.getElementById('sourceAnswerPrompt').value,
+        assembly_mode: document.getElementById('sourceAssemblyMode').value,
       },
     });
     if (!res.ok) {
@@ -323,6 +324,7 @@ export function openSourceModal(publicId) {
   editSourceInterval.value = String(source.interval_minutes || 60);
   editSourceStopWords.value = source.stop_words || '';
   editSourceAnswerPrompt.value = source.answer_prompt || '';
+  document.getElementById('editSourceAssemblyMode').value = source.assembly_mode || 'prompt';
   newChannelTarget.value = '';
   renderChannelRows();
   openModalAnimated(sourceModal);
@@ -443,6 +445,7 @@ saveSourceBtn.addEventListener('click', async () => {
         interval_minutes: parseInt(editSourceInterval.value, 10),
         stop_words: editSourceStopWords.value,
         answer_prompt: editSourceAnswerPrompt.value,
+        assembly_mode: document.getElementById('editSourceAssemblyMode').value,
       },
     });
     if (!patched.ok) {

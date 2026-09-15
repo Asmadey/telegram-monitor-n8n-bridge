@@ -222,6 +222,7 @@ async def process_messages_batch_with_llm(
     source_public_id: str = "",
     chat_id: int = 0,
     chat_title: str = "",
+    schema: dict | None = None,
 ) -> str | None:
     """Анализ батча с гейтами и устойчивыми checkpoints.
 
@@ -295,7 +296,7 @@ async def process_messages_batch_with_llm(
         )
 
     effective_prompt = (custom_prompt or "").strip() or DEFAULT_SYSTEM_PROMPT
-    payload = {
+    payload: dict = {
         "model": integration.openrouter_model,
         "messages": [
             {"role": "system", "content": effective_prompt},
@@ -305,6 +306,45 @@ async def process_messages_batch_with_llm(
             },
         ],
     }
+
+    if schema is not None:
+        # Строгий режим: провайдер САМ не даст модели ответить мимо схемы —
+        # ни обёрткой в ограждение, ни пояснением, ни оборванной структурой.
+        # `require_parameters` обязателен: без него OpenRouter спокойно уводит
+        # запрос к провайдеру, который параметр молча игнорирует, и строгость
+        # существует только на бумаге.
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "findings", "strict": True, "schema": schema},
+        }
+        payload["provider"] = {"require_parameters": True}
+
+    async def ask(batch_payload: dict):
+        """Запрос к модели с одним запасным ходом: без схемы.
+
+        Структурный вывод умеют не все модели OpenRouter, а модель выбирает
+        пользователь. Без этого запасного хода смена модели в настройках
+        молча убила бы все источники — отказ приходил бы на каждом канале.
+
+        Повторяется ТОЛЬКО отказ про `response_format`: нехватка денег,
+        лимиты и падения провайдера остаются отказами.
+        """
+        try:
+            return await caller(batch_payload)
+        except httpx.HTTPStatusError as exc:
+            unsupported = (
+                "response_format" in batch_payload
+                and exc.response is not None
+                and exc.response.status_code in (400, 404, 422)
+                and "response_format" in (exc.response.text or "")
+            )
+            if not unsupported:
+                raise
+            logger.info("модель не умеет json_schema — повтор без неё")
+            retry = dict(batch_payload)
+            retry.pop("response_format", None)
+            retry.pop("provider", None)
+            return await caller(retry)
 
     try:
         analyses = list(completed or [])
@@ -320,7 +360,7 @@ async def process_messages_batch_with_llm(
             payload["messages"][1]["content"] = json.dumps(
                 {"post": batch}, ensure_ascii=False, indent=2
             )
-            result, used = await caller(payload)
+            result, used = await ask(payload)
             if require_success and not result:
                 raise RuntimeError("LLM returned empty analysis")
             if result:

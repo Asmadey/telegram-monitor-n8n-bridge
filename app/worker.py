@@ -74,6 +74,13 @@ from app.services.channels import (
 from app.services.cleanup import purge_older_than
 from app.services.dedup import filter_new
 from app.services.dispatch import dispatch, store_avatar
+from app.services.findings import (
+    CHANNEL_CONTRACT,
+    merge_findings,
+    parse_findings,
+    render_findings,
+    response_schema,
+)
 from app.services.jobs import (
     claim_next_job,
     fail_job,
@@ -486,6 +493,9 @@ class Worker:
         # несут — тогда расход попадёт в «вне источника», а не потеряется.
         source_public_id = batch.get("source_public_id") or ""
         answer_prompt = payload.get("answer_prompt") or ""
+        # Режим сборки (13.9). 'template' — итог собирает КОД из находок
+        # каналов, второго вызова модели нет вовсе; 'prompt' — прежний путь.
+        template = (payload.get("assembly_mode") or "prompt") == "template"
         unparsed = list(batch.get("unparsed") or [])
         verdicts: list[dict] = []
         caller = senders.get("llm_caller")
@@ -543,6 +553,12 @@ class Worker:
             # в HTML» разом. Модель выполняла первое, следующего шага не
             # существовало, и в ленту уезжал сырой вердикт разбора.
             prompt = group.get("extract_prompt") or ""
+            if template:
+                # Контракт формата дописывает СЕРВИС: промпт пользователя
+                # говорит, что искать, а как отвечать — не его забота.
+                # Промпт, описывающий формат сам, расходится со схемой в
+                # первый же день и молча ломает разбор.
+                prompt = f"{prompt}\n\n{CHANNEL_CONTRACT}".strip()
 
             async def _chunk_done(done, group=group):
                 """Удачные куски длинного канала переживают повтор.
@@ -563,6 +579,10 @@ class Worker:
                         custom_prompt=prompt,
                         caller=caller,
                         require_success=True,
+                        # Схема уходит провайдеру: модель тогда физически не
+                        # может ни обернуть ответ в ограждение, ни дописать
+                        # пояснение, ни оборвать структуру.
+                        schema=response_schema() if template else None,
                         completed=list(group.get("completed") or []),
                         checkpoint=_chunk_done,
                         # адрес расхода (12.7): по общему счётчику не видно,
@@ -633,7 +653,36 @@ class Worker:
             await self._beat(db)
 
         analysis = ""
-        if verdicts and single and not answer_prompt:
+        findings: list[dict] | None = None
+        if verdicts and template:
+            # Сборка кодом: второго вызова модели нет. Разбираем вердикт
+            # каждого канала схемой, объединяем, дедуплицируем и рисуем.
+            groups_parsed: list[dict] = []
+            raw_blocks: list[tuple[str, str]] = []
+            off_schema: list[str] = []
+            for item in verdicts:
+                parsed, leftover = parse_findings(item["verdict"])
+                name = item.get("chat_title") or "канал"
+                if parsed:
+                    groups_parsed.append({"chat_title": name, "items": parsed})
+                if leftover:
+                    # Находки дороже схемы: ответ не по контракту уходит
+                    # текстом под именем своего канала, а не пропадает.
+                    raw_blocks.append((name, leftover))
+                    off_schema.append(name)
+            findings = merge_findings(groups_parsed)
+            analysis = render_findings(findings, raw_blocks=raw_blocks)
+            if off_schema:
+                await add_log(
+                    db,
+                    user_id,
+                    "AI_OFF_SCHEMA",
+                    "Ответ не по схеме, текст сохранён как есть: "
+                    + ", ".join(off_schema),
+                    status="ERROR",
+                    chat_title=batch.get("chat_title"),
+                )
+        elif verdicts and single and not answer_prompt:
             # Один канал и оформлять нечем: вердикт разбора и есть ответ.
             # Второй запрос тут был бы пустой тратой — но ровно до тех пор,
             # пока промпта оформления нет. Сводить при одном канале нечего,
@@ -723,7 +772,7 @@ class Worker:
             # Переразбор обновляет карточку и НИЧЕГО не отправляет: нажатие
             # «обновить» не должно рассылать второе сообщение об одном и
             # том же батче (контракт 9.18).
-            return {"status": "reanalyzed", "analysis": analysis}
+            return {"status": "reanalyzed", "analysis": analysis, "findings": findings}
         # Внутренний ключ источника — для карточки ленты: `chat_id` у неё
         # пуст (каналов много), и без источника карточка теряет дорогу
         # назад — к аватарке первого канала (11.9) и к промптам при
@@ -752,6 +801,7 @@ class Worker:
                 "messages": messages,
             },
             analysis=analysis,
+            findings=findings,
             monitor_id=source_id,
             **senders,
         )
@@ -776,8 +826,13 @@ class Worker:
         payload = await self._batch_from_feed(db, user_id, item, messages)
         result = await self._run_source_batch(db, user_id, payload, deliver=False)
         analysis = result.get("analysis") or ""
+        findings = result.get("findings")
         if analysis:
             item.ai_analysis = analysis
+            if findings is not None:
+                # Переразбор обновляет и ДАННЫЕ, иначе карточка рисовалась бы
+                # из находок прошлого разбора поверх нового текста.
+                item.findings_json = json.dumps(findings, ensure_ascii=False)
             await db.commit()
 
     async def _batch_from_feed(
@@ -830,6 +885,7 @@ class Worker:
                 "unparsed": [],
             },
             "answer_prompt": source.answer_prompt if source is not None else "",
+            "assembly_mode": (source.assembly_mode if source is not None else "prompt"),
         }
 
     # ------------------------------------------------------------------
@@ -1324,6 +1380,7 @@ class Worker:
         source_title = source.title
         source_stop_words = source.stop_words or ""
         source_answer_prompt = source.answer_prompt or ""
+        source_assembly_mode = source.assembly_mode or "prompt"
         source_public_id = source.public_id
 
         # Поля снимаются ДО обхода, все сразу. Rollback в ветке ошибки
@@ -1644,6 +1701,7 @@ class Worker:
                         "unparsed": unparsed,
                     },
                     "answer_prompt": source_answer_prompt,
+                    "assembly_mode": source_assembly_mode,
                 },
                 ensure_ascii=False,
             ),

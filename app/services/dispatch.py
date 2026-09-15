@@ -328,6 +328,7 @@ async def dispatch(
     *,
     channel_prompt: str | None = None,
     analysis: str | None = None,
+    findings: list[dict] | None = None,
     monitor_id: int | None = None,
     llm_caller=None,
     bot_sender=None,
@@ -427,6 +428,12 @@ async def dispatch(
     analysis = item.ai_analysis or ""
     if analysis:
         payload["ai_analysis"] = analysis
+    if findings is not None:
+        # Находки СТРУКТУРОЙ: в ленту — колонкой, в n8n — массивом. До 13.9
+        # обе поверхности получали отрисованный текст и разбирали его сами.
+        item.findings_json = json.dumps(findings, ensure_ascii=False)
+        payload["findings"] = findings
+        await db.commit()
     if silent:
         # Совпадений нет — говорить нечего. Карточка в ленте остаётся, и по
         # ней видно, что прогон был: тишина не должна выглядеть как отказ.

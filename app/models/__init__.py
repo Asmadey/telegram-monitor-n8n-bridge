@@ -188,6 +188,13 @@ class Monitor(Base):
     answer_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # по строке на слово; отсев ДО обращения к модели, чтобы не жечь токены
     stop_words: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 'prompt' — итог сочиняет модель по промпту оформления (как было);
+    # 'template' — итог собирает КОД из находок каналов (13.9). Умолчание
+    # прежнее: у существующих источников промпт написан, и менять им
+    # поведение на выкладке было бы сюрпризом.
+    assembly_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="prompt", server_default="prompt"
+    )
     # собственные часы источника: `last_checked` уехал в канал, и без этого
     # поля расписание либо не сработает никогда, либо будет срабатывать
     # каждый тик (дефект, найденный аудитом плана, а не прогоном)
@@ -340,6 +347,9 @@ class FeedItem(Base):
     chat_username: Mapped[str | None] = mapped_column(String(255))
     messages_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ai_analysis: Mapped[str | None] = mapped_column(Text)
+    # Находки СТРУКТУРОЙ, а не отрисовкой (13.9): кабинет рисует карточки из
+    # данных, n8n получает массив, переотрисовка не требует модели.
+    findings_json: Mapped[str | None] = mapped_column(Text)
     raw_messages_json: Mapped[str | None] = mapped_column(Text)
     model_name: Mapped[str | None] = mapped_column(String(128))
     delivery_status: Mapped[str | None] = mapped_column(String(32))

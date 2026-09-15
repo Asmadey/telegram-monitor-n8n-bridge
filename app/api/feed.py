@@ -44,6 +44,9 @@ _LIST_FIELDS = (
     "chat_username",
     "messages_count",
     "ai_analysis",
+    # Находки СТРУКТУРОЙ (13.9): кабинет рисует карточки из данных, а не
+    # разбирает отрисованный текст обратно.
+    "findings_json",
     "model_name",
     "delivery_status",
 )
@@ -58,6 +61,13 @@ def _card(item: FeedItem, avatars: dict[int, int] | None = None) -> dict:
     порядку — тот, что идёт первым и в сводке.
     """
     card = {name: getattr(item, name) for name in _LIST_FIELDS}
+    # Наружу — разобранный список, а не строка JSON: разбирать её заново в
+    # кабинете и в n8n значит писать один и тот же разбор дважды.
+    raw = card.pop("findings_json", None)
+    try:
+        card["findings"] = json.loads(raw) if raw else []
+    except ValueError:
+        card["findings"] = []
     card["avatar_chat_id"] = item.chat_id or (avatars or {}).get(item.monitor_id or 0)
     return card
 
