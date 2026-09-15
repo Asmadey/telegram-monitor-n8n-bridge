@@ -486,3 +486,50 @@ def test_the_tracking_comes_from_the_document():
         "трекинг основного текста не совпадает с ролью body-md документа"
     )
     assert "var(--tracking-body)" in rule_body(CSS, "body")
+
+
+# --------------------------------------------------------------------------
+# Экраны входа — одна система, а не вторая
+# --------------------------------------------------------------------------
+
+AUTH_PAGES = [
+    ROOT / "static" / name
+    for name in ("login.html", "signup.html", "password-reset.html")
+]
+
+
+def test_the_entrance_screens_have_no_palette_of_their_own():
+    """Первый экран продукта был нарисован в другой системе, чем кабинет.
+
+    У каждой из трёх страниц был собственный `:root`: `--accent: #5533ff`
+    (такого цвета в документе нет вовсе), `--ink: #1b1b2b` вместо `#080808`,
+    `--hairline: #e5e7eb` вместо `#d8d8d8`. Правка палитры до них не доходила,
+    потому что палитры было две.
+    """
+    for page in AUTH_PAGES:
+        src = page.read_text(encoding="utf-8")
+        assert ":root" not in src, (
+            f"{page.name}: снова объявляет свои переменные — это вторая система"
+        )
+        assert "<style" not in src, (
+            f"{page.name}: стили вернулись в разметку. Пока они там, "
+            "`style-src 'unsafe-inline'` из политики не убрать"
+        )
+        assert "/static/css/main.css" in src, f"{page.name}: не подключает общие токены"
+        stray = _HEX.findall(src)
+        assert not stray, f"{page.name}: цвета мимо системы — {stray}"
+
+
+def test_the_entrance_screens_fetch_nothing_from_outside():
+    """Страница входа не ходит к третьей стороне до того, как человек вошёл.
+
+    Правило закреплено `test_49` и здесь не дублируется, а объясняется: из-за
+    него Inter на этих страницах НЕ подключается, и стек `--font-sans`
+    деградирует до system-ui. Это осознанный размен — одна палитра и одна
+    шкала важнее одинакового начертания, а запрос к Google с экрана входа
+    хуже обоих.
+    """
+    for page in AUTH_PAGES:
+        assert "fonts.googleapis" not in page.read_text(encoding="utf-8"), (
+            f"{page.name}: экран входа потянул шрифт со стороны"
+        )

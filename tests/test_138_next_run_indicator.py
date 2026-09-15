@@ -37,7 +37,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 JS_DIR = ROOT / "static" / "js"
 SOURCES_JS = (JS_DIR / "sources.js").read_text(encoding="utf-8")
 MAIN_JS = (JS_DIR / "main.js").read_text(encoding="utf-8")
-CSS = (ROOT / "static" / "css" / "main.css").read_text(encoding="utf-8")
+# Все таблицы стилей, а не одна: с появлением `auth.css` (экраны входа)
+# свип по одному файлу оставил бы вторую таблицу без присмотра — ровно
+# так и заводится вторая система рядом с первой.
+CSS = "\n".join(
+    p.read_text(encoding="utf-8")
+    for p in sorted((ROOT / "static" / "css").glob("*.css"))
+)
 
 
 def _node(body: str) -> subprocess.CompletedProcess:
