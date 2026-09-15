@@ -95,7 +95,7 @@ function renderLogs() {
   if (currentLogs.length === 0) {
     logsTableBody.innerHTML = html`
       <tr>
-        <td colspan="5" style="text-align: center; padding: 48px; color: var(--mute);">
+        <td colspan="5" style="text-align: center; padding: var(--space-3xl); color: var(--mute);">
           Записи в журнале логов отсутствуют.
         </td>
       </tr>

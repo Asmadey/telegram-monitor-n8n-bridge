@@ -61,7 +61,7 @@ export function formatTelegramText(text) {
   safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 
   // 3. Моноширинный инлайн-код: `текст` -> <code>текст</code>
-  safe = safe.replace(/`([^`]+)`/g, '<code style="background: var(--canvas-soft); padding: 2px 5px; border-radius: var(--rounded-xs); font-family: monospace; font-size: var(--text-eyebrow-sm); border: 1px solid var(--hairline);">$1</code>');
+  safe = safe.replace(/`([^`]+)`/g, '<code style="background: var(--canvas-soft); padding: var(--space-xxs) var(--space-xs); border-radius: var(--rounded-xs); font-family: monospace; font-size: var(--text-eyebrow-sm); border: 1px solid var(--hairline);">$1</code>');
 
   return safe;
 }
@@ -173,14 +173,23 @@ export function checkBadge(channel) {
 // имя (`prompt-dot-${tone}`) не находится ничем — ни поиском по проекту, ни
 // свипом осиротевших стилей.
 export function promptBadge(prompt) {
+  // Подпись словом, а не глиф. Первая версия рисовала карандаш — тот же знак,
+  // что и у кнопки правки рядом: в строке оказывалось два карандаша подряд,
+  // зелёный и серый, и первый читался как вторая кнопка (найдено владельцем).
+  // Показатель состояния не должен выглядеть как действие.
+  //
   // Строка из пробелов — пустое поле: модель получит ровно столько же
-  // указаний, сколько при пустом, а зелёная точка сказала бы обратное.
+  // указаний, сколько при пустом, а зелёная подпись сказала бы обратное.
   const filled = String(prompt || '').trim().length > 0;
   return filled
-    ? { cls: 'prompt-dot-ok', mark: '✎', title: 'Промпт извлечения задан' }
+    ? {
+        cls: 'prompt-flag-ok',
+        label: 'Промпт',
+        title: 'Промпт извлечения задан',
+      }
     : {
-        cls: 'prompt-dot-bad',
-        mark: '✎',
+        cls: 'prompt-flag-bad',
+        label: 'Промпт',
         title: 'Промпт извлечения пуст — каналу нечем объяснить, что искать',
       };
 }
@@ -209,7 +218,7 @@ export function channelRowMarkup(channel) {
         <span class="check-dot ${link.cls}" title="${link.title}">${link.mark}</span>
         <b class="channel-row-name" title="${channel.chat_target}">${name}</b>
         <span class="channel-row-limit">Лимит <b data-limit-label>${channel.limit}</b></span>
-        <span class="prompt-dot ${prompt.cls}" title="${prompt.title}">${prompt.mark}</span>
+        <span class="prompt-flag ${prompt.cls}" title="${prompt.title}">${prompt.label}</span>
         <span class="channel-row-actions">
           <button class="btn btn-secondary btn-icon-sm" type="button" data-action="edit-channel" title="Изменить лимит и промпт">✎</button>
           <button class="btn btn-danger btn-icon-sm" type="button" data-action="remove-channel" data-channel-id="${channel.channel_id}" title="Убрать канал из источника">🗑</button>

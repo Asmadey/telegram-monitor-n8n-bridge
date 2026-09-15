@@ -106,7 +106,7 @@ function renderSources() {
 
   if (currentSources.length === 0) {
     sourcesList.innerHTML = html`
-      <div style="text-align: center; color: var(--mute); padding: 40px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-md);">
+      <div style="text-align: center; color: var(--mute); padding: var(--space-3xl); background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-md);">
         Источников пока нет. Нажмите <b>«+ Создать источник»</b> — это задача поиска, в которую потом добавляются каналы.
       </div>
     `;
@@ -137,7 +137,7 @@ function renderSources() {
         </div>
       </div>
 
-      <div class="channel-actions-group" style="display: flex; align-items: center; gap: 8px;">
+      <div class="channel-actions-group" style="display: flex; align-items: center; gap: var(--space-sm);">
         <label class="switch" title="Включить / приостановить источник">
           <input type="checkbox" ${s.is_active ? 'checked' : ''} data-action="toggle" data-source-id="${s.public_id}">
           <span class="slider"></span>
@@ -207,7 +207,7 @@ function renderChannelRows() {
   editChannelsCount.textContent = editing.channels.length;
   if (!editing.channels.length) {
     editChannelsList.innerHTML = html`
-      <div style="color: var(--mute); font-size: var(--text-caption); padding: 10px 0;">
+      <div style="color: var(--mute); font-size: var(--text-caption); padding: var(--space-sm) 0;">
         Каналов нет. Источник без каналов не опрашивается.
       </div>
     `;
@@ -418,11 +418,11 @@ editChannelsList.addEventListener('input', (event) => {
     if (label) label.textContent = event.target.value || '0';
   }
   if (event.target.classList.contains('channel-prompt')) {
-    const dot = row.querySelector('.prompt-dot');
-    if (!dot) return;
+    const flag = row.querySelector('.prompt-flag');
+    if (!flag) return;
     const badge = promptBadge(event.target.value);
-    dot.className = `prompt-dot ${badge.cls}`;
-    dot.title = badge.title;
+    flag.className = `prompt-flag ${badge.cls}`;
+    flag.title = badge.title;
   }
 });
 
@@ -763,7 +763,7 @@ const openDialogsBtn = document.getElementById('openDialogsModalBtn');
 if (openDialogsBtn) {
   openDialogsBtn.addEventListener('click', async () => {
     openModalAnimated(dialogsModal);
-    dialogsModalBody.innerHTML = html`<div style="text-align: center; padding: 24px; color: var(--mute);">Загрузка диалогов...</div>`;
+    dialogsModalBody.innerHTML = html`<div style="text-align: center; padding: var(--space-2xl); color: var(--mute);">Загрузка диалогов...</div>`;
     try {
       const res = await apiGet('/api/telegram/dialogs?limit=30');
       const data = await res.json();
@@ -774,7 +774,7 @@ if (openDialogsBtn) {
         </div>
       `).join('');
     } catch (e) {
-      dialogsModalBody.innerHTML = html`<div style="color: var(--accent-red); padding: 20px;">Ошибка загрузки диалогов</div>`;
+      dialogsModalBody.innerHTML = html`<div style="color: var(--accent-red); padding: var(--space-xl);">Ошибка загрузки диалогов</div>`;
     }
   });
 }
