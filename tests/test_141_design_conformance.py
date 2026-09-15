@@ -424,3 +424,65 @@ def test_the_spacing_scale_matches_the_document():
         if declared.get(f"--space-{name}") != value
     }
     assert not wrong, f"шкала отступов разошлась с документом: {wrong}"
+
+
+# --------------------------------------------------------------------------
+# Начертание и компоненты
+# --------------------------------------------------------------------------
+
+
+def rule_body(css: str, selector: str) -> str:
+    """Тело одного правила. Одни и те же объявления встречаются в разных
+    правилах, и поиск по всему файлу отвечал бы не на тот вопрос."""
+    match = re.search(r"^\s*" + re.escape(selector) + r"\s*\{", css, re.M)
+    assert match, f"правило {selector} не найдено"
+    return css[match.end() : css.index("\n    }", match.end())]
+
+
+def test_the_font_stack_is_the_one_the_document_names():
+    """Документ называет WF Visual Sans, а первым доступным — Inter.
+
+    До 2026-09-15 Inter не подключался вовсе: кабинет рисовался системным
+    стеком. При этом `font-feature-settings: "cv02"…` в `body` стояли с самого
+    начала — это варианты знаков ИНТЕРА, то есть шрифт подразумевался и просто
+    не доехал.
+    """
+    stack = declared_variables(CSS).get("--font-sans", "")
+    assert "Inter" in stack, f"Inter не в стеке начертаний: {stack!r}"
+    assert "WF Visual Sans" in stack, "первое начертание документа не названо"
+    assert "var(--font-sans)" in rule_body(CSS, "body"), (
+        "body не пользуется стеком — токен есть, а начертание прежнее"
+    )
+    index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    assert "family=Inter" in index, (
+        "Inter объявлен в стеке, но не загружается — браузер молча возьмёт "
+        "следующий шрифт, и это выглядит как «так задумано»"
+    )
+
+
+def test_the_components_have_the_measurements_of_the_document():
+    """`components` документа задаёт отступы и радиусы поимённо."""
+    expected = {
+        # button-primary / button-secondary: rounded.sm, padding {md xl}
+        ".btn": ("var(--space-md) var(--space-xl)", "var(--rounded-sm)"),
+        # card-feature: rounded.md, padding {3xl}
+        ".card": ("var(--space-3xl)", "var(--rounded-md)"),
+        # badge-info: rounded.sm, padding {xs sm}
+        ".clean-pill": ("var(--space-xs) var(--space-sm)", "var(--rounded-sm)"),
+    }
+    for selector, (padding, radius) in expected.items():
+        body = rule_body(CSS, selector)
+        assert f"padding: {padding};" in body, (
+            f"{selector}: отступ разошёлся с документом — ожидался {padding}"
+        )
+        assert f"border-radius: {radius};" in body, (
+            f"{selector}: радиус разошёлся с документом — ожидался {radius}"
+        )
+
+
+def test_the_tracking_comes_from_the_document():
+    declared = declared_variables(CSS)
+    assert declared.get("--tracking-body") == "-0.16px", (
+        "трекинг основного текста не совпадает с ролью body-md документа"
+    )
+    assert "var(--tracking-body)" in rule_body(CSS, "body")
