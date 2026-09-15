@@ -359,3 +359,59 @@ def test_the_scale_matches_the_document():
         if declared.get(name) != value
     }
     assert not wrong, f"шкала разошлась с ролями документа: {wrong}"
+
+
+# --------------------------------------------------------------------------
+# Свип: отступ живёт в шкале
+# --------------------------------------------------------------------------
+
+_SPACING_PROP = re.compile(
+    r"\b(?:padding|margin|gap|row-gap|column-gap)(?:-top|-right|-bottom|-left)?\s*:"
+    r"\s*([^;\"'}\n]+)"
+)
+_PX = re.compile(r"(-?)([\d.]+)px")
+
+
+def spacing_literals() -> dict[str, list[str]]:
+    """Отступы, заданные числом. Отрицательные не в счёт: сдвиг элемента —
+    приём вёрстки, а не ступень шкалы."""
+    found: dict[str, list[str]] = {}
+    for path in COLOUR_FILES:
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if _DECLARATION.match(line):
+                continue
+            for value in _SPACING_PROP.findall(line):
+                for sign, digits in _PX.findall(value):
+                    if sign:
+                        continue
+                    found.setdefault(f"{digits}px", []).append(f"{path.name}:{number}")
+    return found
+
+
+def test_the_spacing_scanner_reads_only_spacing():
+    assert _SPACING_PROP.findall("padding: 12px 14px;") == ["12px 14px"]
+    assert _SPACING_PROP.findall("gap: var(--space-sm);") == ["var(--space-sm)"]
+    assert _PX.findall("var(--space-sm)") == [], "токен принят за литерал"
+    # Ширина и радиус — не отступы, шкала их не касается.
+    assert _SPACING_PROP.findall("width: 13px; border-radius: 2px;") == []
+
+
+def test_every_gap_comes_from_the_scale():
+    stray = spacing_literals()
+    assert not stray, (
+        f"отступы мимо шкалы: {stray}. До 2026-09-15 их было 24 разных в 272 "
+        "местах, включая 4.5px; пустые состояния в шести местах имели 36, 40 "
+        "и 48 — один блок, три числа"
+    )
+
+
+def test_the_spacing_scale_matches_the_document():
+    declared = declared_variables(CSS)
+    expected = flat_section(DOC, "spacing")
+    assert len(expected) >= 6, f"разобрано {len(expected)} ступеней — не весь раздел"
+    wrong = {
+        name: (value, declared.get(f"--space-{name}"))
+        for name, value in expected.items()
+        if declared.get(f"--space-{name}") != value
+    }
+    assert not wrong, f"шкала отступов разошлась с документом: {wrong}"

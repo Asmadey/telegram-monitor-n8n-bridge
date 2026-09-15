@@ -64,7 +64,7 @@ export function renderTable() {
   if (filtered.length === 0) {
     messagesTableBody.innerHTML = html`
       <tr>
-        <td colspan="6" style="text-align: center; padding: 48px; color: var(--mute);">
+        <td colspan="6" style="text-align: center; padding: var(--space-3xl); color: var(--mute);">
           Сообщения по заданным фильтрам не найдены.
         </td>
       </tr>
@@ -93,7 +93,7 @@ export function renderTable() {
         ${msg.text && msg.text.length > 140 ? raw(html`<button class="expand-btn" data-expand="${msg.chat_id}-${msg.id}">Развернуть / Свернуть</button>`) : ''}
       </td>
       <td>
-        <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+        <div style="display: flex; flex-direction: column; gap: var(--space-xs); align-items: flex-start;">
           ${msg.views !== null && msg.views !== undefined ? raw(`<span class="badge-metric" title="Просмотры">👁️ ${Number(msg.views).toLocaleString('ru-RU')}</span>`) : ''}
           ${hasReactions ? raw(html`<span class="badge-metric" style="color: var(--accent-pink); background: color-mix(in srgb, var(--accent-pink) 8%, transparent); border-color: color-mix(in srgb, var(--accent-pink) 25%, transparent);" title="${reactionsTitle}">❤️ ${totalReactions}</span>`) : ''}
           ${msg.forwards ? raw(`<span class="badge-metric" title="Пересылки">↗️ ${Number(msg.forwards).toLocaleString('ru-RU')}</span>`) : ''}

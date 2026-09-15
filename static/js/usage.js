@@ -35,19 +35,19 @@ export function usageMarkup(data) {
   const rows = sources.map(source => {
     const channels = Array.isArray(source.channels) ? source.channels : [];
     const lines = channels.map(channel => html`
-      <div style="display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: var(--text-caption);">
+      <div style="display: flex; justify-content: space-between; gap: var(--space-md); padding: var(--space-xxs) 0; font-size: var(--text-caption);">
         <span style="color: var(--body-mid);">${channel.chat_title}</span>
         <span>${plural(channel.tokens)}</span>
       </div>`).join('');
     const summary = source.summary_tokens
-      ? html`<div style="display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: var(--text-caption);">
+      ? html`<div style="display: flex; justify-content: space-between; gap: var(--space-md); padding: var(--space-xxs) 0; font-size: var(--text-caption);">
           <span style="color: var(--mute);">сведение по каналам</span>
           <span style="color: var(--mute);">${plural(source.summary_tokens)}</span>
         </div>`
       : '';
     return html`
-      <div style="padding: 10px 0; border-top: 1px solid var(--hairline-subtle);">
-        <div style="display: flex; justify-content: space-between; gap: 12px; font-weight: 600; font-size: var(--text-body-sm);">
+      <div style="padding: var(--space-sm) 0; border-top: 1px solid var(--hairline-subtle);">
+        <div style="display: flex; justify-content: space-between; gap: var(--space-md); font-weight: 600; font-size: var(--text-body-sm);">
           <span>${source.title}</span>
           <span>${plural(source.tokens)}</span>
         </div>
@@ -59,14 +59,14 @@ export function usageMarkup(data) {
   // Расход вне источников показывается всегда, когда он есть: без него
   // сумма на экране не сходится с общим числом, и веры экрану нет.
   const outsideRow = outside
-    ? html`<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--hairline-subtle); font-size: var(--text-body-sm);">
+    ? html`<div style="display: flex; justify-content: space-between; gap: var(--space-md); padding: var(--space-sm) 0; border-top: 1px solid var(--hairline-subtle); font-size: var(--text-body-sm);">
         <span style="color: var(--body-mid);">Вне источников (переразбор из ленты)</span>
         <span>${plural(outside)}</span>
       </div>`
     : '';
 
   return html`
-    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md);">
       <span style="font-size: var(--text-body-sm); color: var(--body-mid);">Период ${period}</span>
       <span style="font-size: var(--text-body-md); font-weight: 600;">${plural(total)}${limit ? ` из ${plural(limit)}` : ''}</span>
     </div>
