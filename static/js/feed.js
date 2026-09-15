@@ -80,9 +80,9 @@ function renderFeedList() {
   if (!feedListContainer) return;
   if (currentFeed.length === 0) {
     feedListContainer.innerHTML = html`
-      <div style="text-align: center; padding: 48px 16px; color: var(--mute); font-size: 13px;">
+      <div style="text-align: center; padding: 48px 16px; color: var(--mute); font-size: var(--text-body-sm);">
         Пока нет выполненных задач анализа.<br>
-        <span style="font-size: 11.5px; color: var(--body-mid); display: inline-block; margin-top: 6px;">
+        <span style="font-size: var(--text-caption); color: var(--body-mid); display: inline-block; margin-top: 6px;">
           Запустите опрос канала на вкладке «Каналы».
         </span>
       </div>
@@ -219,19 +219,19 @@ async function selectFeedItem(id) {
   if (feedRawCount) feedRawCount.textContent = msgs.length;
   if (feedRawMessagesList) {
     if (msgs.length === 0) {
-      feedRawMessagesList.innerHTML = '<div style="color: var(--mute); font-size: 12.5px;">Нет исходных постов в этой выборке.</div>';
+      feedRawMessagesList.innerHTML = '<div style="color: var(--mute); font-size: var(--text-caption);">Нет исходных постов в этой выборке.</div>';
     } else {
       feedRawMessagesList.innerHTML = msgs.map((m, idx) => html`
         <div class="feed-raw-post">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <div style="font-size: 12px; font-weight: 600; color: var(--ink);">
+            <div style="font-size: var(--text-eyebrow-sm); font-weight: 600; color: var(--ink);">
               Пост #${m.id || idx + 1}
             </div>
-            <div style="font-size: 12px; color: var(--body-mid); font-variant-numeric: tabular-nums;">
+            <div style="font-size: var(--text-eyebrow-sm); color: var(--body-mid); font-variant-numeric: tabular-nums;">
               ${m.date ? new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
             </div>
           </div>
-          <div style="font-size: 13px; line-height: 1.5; color: var(--body); margin-bottom: 8px;">
+          <div style="font-size: var(--text-body-sm); line-height: 1.5; color: var(--body); margin-bottom: 8px;">
             ${raw(formatTelegramText(m.text || ''))}
           </div>
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">

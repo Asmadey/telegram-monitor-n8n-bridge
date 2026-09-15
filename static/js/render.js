@@ -61,7 +61,7 @@ export function formatTelegramText(text) {
   safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 
   // 3. Моноширинный инлайн-код: `текст` -> <code>текст</code>
-  safe = safe.replace(/`([^`]+)`/g, '<code style="background: var(--canvas-soft); padding: 2px 5px; border-radius: var(--rounded-xs); font-family: monospace; font-size: 12px; border: 1px solid var(--hairline);">$1</code>');
+  safe = safe.replace(/`([^`]+)`/g, '<code style="background: var(--canvas-soft); padding: 2px 5px; border-radius: var(--rounded-xs); font-family: monospace; font-size: var(--text-eyebrow-sm); border: 1px solid var(--hairline);">$1</code>');
 
   return safe;
 }

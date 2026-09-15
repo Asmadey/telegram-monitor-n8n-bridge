@@ -126,9 +126,9 @@ function renderModelsDropdown(query = '') {
 
   if (filtered.length === 0) {
     openrouterModelsDropdown.innerHTML = html`
-      <div style="padding: 14px; text-align: center; color: var(--mute); font-size: 12.5px;">
+      <div style="padding: 14px; text-align: center; color: var(--mute); font-size: var(--text-caption);">
         Модели по запросу <b>"${query}"</b> не найдены в каталоге.<br>
-        <span style="font-size: 11px; color: var(--body-mid);">Вы можете использовать введенный ID модели.</span>
+        <span style="font-size: var(--text-eyebrow-sm); color: var(--body-mid);">Вы можете использовать введенный ID модели.</span>
       </div>
     `;
     showModelsDropdown();
@@ -160,7 +160,7 @@ function renderModelsDropdown(query = '') {
     else groups['Другие модели'].push(m);
   });
 
-  let dropdownHtml = html`<div style="padding: 6px 12px; font-size: 11px; color: var(--accent-purple); background: var(--surface-accent-soft); border-bottom: 1px solid var(--hairline); font-weight: 600;">Найдено моделей: ${filtered.length} ${q ? raw(`по запросу "${escapeHtml(q)}"`) : ''}</div>`;
+  let dropdownHtml = html`<div style="padding: 6px 12px; font-size: var(--text-eyebrow-sm); color: var(--accent-purple); background: var(--surface-accent-soft); border-bottom: 1px solid var(--hairline); font-weight: 600;">Найдено моделей: ${filtered.length} ${q ? raw(`по запросу "${escapeHtml(q)}"`) : ''}</div>`;
   for (const [groupName, groupModels] of Object.entries(groups)) {
     if (groupModels.length > 0) {
       dropdownHtml += html`<div class="autocomplete-group-header">🌟 ${groupName} (${groupModels.length})</div>`;
@@ -176,7 +176,7 @@ function renderModelsDropdown(query = '') {
               <div class="autocomplete-item-name">${raw(nameHtml)}</div>
               <div class="autocomplete-item-id">${raw(idHtml)}</div>
             </div>
-            ${isCurrent ? raw(`<span style="font-size: 12px; color: var(--accent-purple); font-weight: 700;">✓</span>`) : ''}
+            ${isCurrent ? raw(`<span style="font-size: var(--text-eyebrow-sm); color: var(--accent-purple); font-weight: 700;">✓</span>`) : ''}
           </div>
         `;
       }).join('');

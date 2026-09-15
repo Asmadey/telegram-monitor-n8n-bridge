@@ -291,3 +291,71 @@ def test_no_chromatic_colour_hides_in_an_rgba_literal():
         "такого места не дойдёт — это та же утечка, что hex, только её не "
         "видно свипом по «#»"
     )
+
+
+# --------------------------------------------------------------------------
+# Свип: размер текста живёт в шкале
+# --------------------------------------------------------------------------
+
+# Размеры, которым позволено остаться литералом. Оба — ЗНАК внутри значка
+# фиксированного размера, а не текст: самый мелкий размер документа (12px) в
+# кружок 13×13 не помещается. Шкала описывает текст, и растягивать её на
+# глифы значило бы сломать вёрстку ради красивого отчёта.
+ALLOWED_FONT_SIZES = {
+    "9px": ".check-dot — знак в кружке 13×13",
+    "10px": ".prompt-dot — знак в квадрате 18×18",
+}
+
+_FONT_SIZE = re.compile(r"font-size:\s*([\d.]+px)")
+
+
+def font_size_literals() -> dict[str, list[str]]:
+    found: dict[str, list[str]] = {}
+    for path in COLOUR_FILES:
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if _DECLARATION.match(line):
+                continue
+            for size in _FONT_SIZE.findall(line):
+                found.setdefault(size, []).append(f"{path.name}:{number}")
+    return found
+
+
+def test_the_font_size_scanner_tells_a_literal_from_a_token():
+    assert _FONT_SIZE.findall("font-size: 12.5px;") == ["12.5px"]
+    assert _FONT_SIZE.findall("font-size: var(--text-caption);") == [], (
+        "сканер видит литерал там, где токен"
+    )
+
+
+def test_every_text_size_comes_from_the_scale():
+    literals = font_size_literals()
+    stray = {
+        size: places
+        for size, places in literals.items()
+        if size not in ALLOWED_FONT_SIZES
+    }
+    assert not stray, (
+        f"размеры мимо шкалы: {stray}. До 2026-09-15 их было семнадцать — "
+        "включая 12.5, 11.5, 13.5 и 10.5, взятые ниоткуда: каждый экран "
+        "дрейфовал сам по себе, и сравнить его было не с чем"
+    )
+
+
+def test_the_scale_matches_the_document():
+    """Шкала — не своё изобретение: каждый токен назван ролью документа."""
+    declared = declared_variables(CSS)
+    expected = {
+        "--text-eyebrow-sm": "12px",  # eyebrow-uppercase-sm
+        "--text-caption": "12.8px",  # caption
+        "--text-body-sm": "14px",  # body-sm
+        "--text-body-md": "16px",  # body-md
+        "--text-display-xs": "20px",  # display-xs
+        "--text-display-sm": "24px",  # display-sm
+        "--text-display-md": "32px",  # display-md
+    }
+    wrong = {
+        name: (value, declared.get(name))
+        for name, value in expected.items()
+        if declared.get(name) != value
+    }
+    assert not wrong, f"шкала разошлась с ролями документа: {wrong}"

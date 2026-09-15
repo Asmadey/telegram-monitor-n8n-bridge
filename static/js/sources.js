@@ -207,7 +207,7 @@ function renderChannelRows() {
   editChannelsCount.textContent = editing.channels.length;
   if (!editing.channels.length) {
     editChannelsList.innerHTML = html`
-      <div style="color: var(--mute); font-size: 12.5px; padding: 10px 0;">
+      <div style="color: var(--mute); font-size: var(--text-caption); padding: 10px 0;">
         Каналов нет. Источник без каналов не опрашивается.
       </div>
     `;

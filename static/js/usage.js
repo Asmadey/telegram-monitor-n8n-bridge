@@ -26,7 +26,7 @@ export function usageMarkup(data) {
   // пустое место вместо ответа делает его неотличимым от поломки. Тот же
   // класс ошибки, что ловили всю фазу 9.
   if (!total && !sources.length) {
-    return html`<p style="color: var(--body-mid); font-size: 13px;">
+    return html`<p style="color: var(--body-mid); font-size: var(--text-body-sm);">
       За ${period} ничего не потрачено: расход появится после первого разбора.
     </p>`;
   }
@@ -35,19 +35,19 @@ export function usageMarkup(data) {
   const rows = sources.map(source => {
     const channels = Array.isArray(source.channels) ? source.channels : [];
     const lines = channels.map(channel => html`
-      <div style="display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 12.5px;">
+      <div style="display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: var(--text-caption);">
         <span style="color: var(--body-mid);">${channel.chat_title}</span>
         <span>${plural(channel.tokens)}</span>
       </div>`).join('');
     const summary = source.summary_tokens
-      ? html`<div style="display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: 12.5px;">
+      ? html`<div style="display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: var(--text-caption);">
           <span style="color: var(--mute);">сведение по каналам</span>
           <span style="color: var(--mute);">${plural(source.summary_tokens)}</span>
         </div>`
       : '';
     return html`
       <div style="padding: 10px 0; border-top: 1px solid var(--hairline-subtle);">
-        <div style="display: flex; justify-content: space-between; gap: 12px; font-weight: 600; font-size: 13px;">
+        <div style="display: flex; justify-content: space-between; gap: 12px; font-weight: 600; font-size: var(--text-body-sm);">
           <span>${source.title}</span>
           <span>${plural(source.tokens)}</span>
         </div>
@@ -59,7 +59,7 @@ export function usageMarkup(data) {
   // Расход вне источников показывается всегда, когда он есть: без него
   // сумма на экране не сходится с общим числом, и веры экрану нет.
   const outsideRow = outside
-    ? html`<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--hairline-subtle); font-size: 13px;">
+    ? html`<div style="display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--hairline-subtle); font-size: var(--text-body-sm);">
         <span style="color: var(--body-mid);">Вне источников (переразбор из ленты)</span>
         <span>${plural(outside)}</span>
       </div>`
@@ -67,8 +67,8 @@ export function usageMarkup(data) {
 
   return html`
     <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px;">
-      <span style="font-size: 13px; color: var(--body-mid);">Период ${period}</span>
-      <span style="font-size: 15px; font-weight: 600;">${plural(total)}${limit ? ` из ${plural(limit)}` : ''}</span>
+      <span style="font-size: var(--text-body-sm); color: var(--body-mid);">Период ${period}</span>
+      <span style="font-size: var(--text-body-md); font-weight: 600;">${plural(total)}${limit ? ` из ${plural(limit)}` : ''}</span>
     </div>
     ${raw(rows)}
     ${raw(outsideRow)}`;
