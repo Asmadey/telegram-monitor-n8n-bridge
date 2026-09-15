@@ -250,3 +250,44 @@ def test_no_colour_lives_outside_the_token_system():
         f"{sum(len(p) for p in stray.values())} вхождений — {stray}. Каждый "
         "литерал живёт своей жизнью: правка палитры в документе его не догонит"
     )
+
+
+# Цвет в записи `rgba(...)` — та же утечка, что hex, только незаметнее: свип
+# по `#` его не видит. Нейтральная альфа при этом РАЗРЕШЕНА и это не поблажка:
+# тень и затемнение под модалкой — не фирменный цвет, а примитив, и шкалы
+# прозрачности в документе нет вовсе.
+_NEUTRAL = {(0, 0, 0), (255, 255, 255)}
+_RGBA = re.compile(r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)")
+
+
+def chromatic_rgba() -> dict[str, list[str]]:
+    found: dict[str, list[str]] = {}
+    for path in COLOUR_FILES:
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if _DECLARATION.match(line):
+                continue
+            for red, green, blue in _RGBA.findall(line):
+                channels = (int(red), int(green), int(blue))
+                if channels in _NEUTRAL:
+                    continue
+                found.setdefault(f"rgb{channels}", []).append(f"{path.name}:{number}")
+    return found
+
+
+def test_the_rgba_scanner_tells_chromatic_from_neutral():
+    """Self-test: иначе свип, пропускающий всё, неотличим от свипа, которому
+    нечего ловить."""
+    assert _RGBA.findall("background: rgba(0, 215, 34, 0.08);") == [("0", "215", "34")]
+    assert (0, 0, 0) in _NEUTRAL and (255, 255, 255) in _NEUTRAL
+    assert (
+        _RGBA.findall("color-mix(in srgb, var(--accent-green) 8%, transparent)") == []
+    )
+
+
+def test_no_chromatic_colour_hides_in_an_rgba_literal():
+    stray = chromatic_rgba()
+    assert not stray, (
+        f"фирменный цвет записан числами: {stray}. Смена значения токена до "
+        "такого места не дойдёт — это та же утечка, что hex, только её не "
+        "видно свипом по «#»"
+    )

@@ -95,7 +95,7 @@ export function renderTable() {
       <td>
         <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
           ${msg.views !== null && msg.views !== undefined ? raw(`<span class="badge-metric" title="Просмотры">👁️ ${Number(msg.views).toLocaleString('ru-RU')}</span>`) : ''}
-          ${hasReactions ? raw(html`<span class="badge-metric" style="color: var(--accent-pink); background: rgba(237, 82, 203, 0.08); border-color: rgba(237, 82, 203, 0.25);" title="${reactionsTitle}">❤️ ${totalReactions}</span>`) : ''}
+          ${hasReactions ? raw(html`<span class="badge-metric" style="color: var(--accent-pink); background: color-mix(in srgb, var(--accent-pink) 8%, transparent); border-color: color-mix(in srgb, var(--accent-pink) 25%, transparent);" title="${reactionsTitle}">❤️ ${totalReactions}</span>`) : ''}
           ${msg.forwards ? raw(`<span class="badge-metric" title="Пересылки">↗️ ${Number(msg.forwards).toLocaleString('ru-RU')}</span>`) : ''}
           ${msg.has_media ? raw(`<span class="badge-media">📎 Медиа</span>`) : ''}
         </div>
