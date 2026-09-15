@@ -1,0 +1,153 @@
+/* Экраны входа: раскладка поверх общих токенов (main.css).
+ *
+ * До 2026-09-15 каждая из трёх страниц несла собственный `:root` с палитрой,
+ * которой нет в документе: `--accent: #5533ff`, `--ink: #1b1b2b`,
+ * `--hairline: #e5e7eb`. Первый экран продукта был нарисован в другой системе,
+ * чем весь остальной кабинет, и правка палитры до него не доходила.
+ *
+ * Шрифт здесь остаётся системным намеренно: `test_49` запрещает этим
+ * страницам внешние ресурсы, то есть Google Fonts подключать нельзя. Это
+ * верное правило — экран входа не должен ходить к третьей стороне до того,
+ * как человек вошёл. Стек `--font-sans` деградирует до system-ui сам.
+ */
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: var(--text-body-sm);
+  line-height: 1.5;
+  letter-spacing: var(--tracking-body);
+  color: var(--ink);
+  background: var(--canvas-alt);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  margin: var(--space-2xl);
+  padding: var(--space-3xl);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+}
+
+.auth-card h1 {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--text-display-sm);
+}
+
+.auth-card h2 {
+  margin: var(--space-2xl) 0 var(--space-md);
+  font-size: var(--text-body-md);
+}
+
+.muted {
+  margin: 0 0 var(--space-xl);
+  color: var(--mute);
+  font-size: var(--text-body-sm);
+}
+
+.auth-card label {
+  display: block;
+  margin-bottom: var(--space-md);
+  font-weight: 600;
+  font-size: var(--text-body-sm);
+}
+
+.auth-card input,
+.auth-card select {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-xs);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-sm);
+  font-family: inherit;
+  font-size: var(--text-body-md);
+  background: var(--canvas);
+}
+
+.auth-card input[type="hidden"] {
+  display: none;
+}
+
+.auth-card input:focus,
+.auth-card select:focus {
+  outline: 2px solid var(--accent-purple);
+  outline-offset: 1px;
+  border-color: var(--accent-purple);
+}
+
+/* Первичная кнопка документа залита `primary`, а не акцентом — той же
+   чернотой, что и в кабинете. Фиолетовая кнопка входа была частью второй
+   системы. */
+.auth-card button {
+  width: 100%;
+  margin-top: var(--space-xs);
+  padding: var(--space-md) var(--space-xl);
+  border: 1px solid transparent;
+  border-radius: var(--rounded-sm);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-family: inherit;
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-body);
+  cursor: pointer;
+}
+
+.auth-card button:hover {
+  opacity: 0.9;
+}
+
+.form-error {
+  min-height: 20px;
+  margin: var(--space-sm) 0;
+  color: var(--accent-red);
+  font-size: var(--text-body-sm);
+}
+
+.form-success {
+  min-height: 20px;
+  margin: var(--space-sm) 0 0;
+  color: var(--accent-green-deep);
+  font-size: var(--text-body-sm);
+}
+
+.alt-signin {
+  margin-top: var(--space-md);
+}
+
+.google-btn {
+  background: var(--canvas);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+}
+
+.google-btn:hover {
+  background: var(--canvas-soft);
+  opacity: 1;
+}
+
+.google-error {
+  min-height: 18px;
+  margin: var(--space-sm) 0 0;
+  color: var(--accent-red);
+  font-size: var(--text-body-sm);
+}
+
+.links {
+  margin: var(--space-lg) 0 0;
+  text-align: center;
+  font-size: var(--text-body-sm);
+}
+
+.links a {
+  color: var(--accent-purple);
+  text-decoration: none;
+  margin: 0 var(--space-xs);
+}
