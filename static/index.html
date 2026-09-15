@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/utilities.css">
 </head>
 <body>
 
@@ -54,7 +55,7 @@
              чужая незакрытая сессия в браузере выглядит как своя, а
              «Выйти» в модалке MTProto отключает Telegram-аккаунт —
              совсем другое действие. -->
-        <span id="accountEmail" class="status-pill" hidden style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+        <span id="accountEmail" class="status-pill u-maxw-220 u-ov-hidden u-tov-ellipsis u-ws-nowrap" hidden ></span>
         <button id="signOutBtn" class="btn btn-secondary btn-sm" type="button" hidden>Выйти</button>
       </div>
     </header>
@@ -65,7 +66,7 @@
         <!-- Left: Feed Jobs List -->
         <div class="feed-sidebar">
           <div class="feed-sidebar-header">
-            <div style="font-size: var(--text-body-sm); font-weight: 600; color: var(--ink);">
+            <div class="u-fs-body-sm u-fw-600 u-c-ink">
               Выполненные задачи (<span id="feedTotalCount">0</span>)
             </div>
             <button id="refreshFeedBtn" class="btn btn-secondary btn-icon-sm" type="button" title="Обновить ленту">
@@ -73,45 +74,45 @@
             </button>
           </div>
           <div id="feedListContainer" class="feed-list">
-            <div style="text-align: center; padding: var(--space-3xl) var(--space-lg); color: var(--mute); font-size: var(--text-caption);">
+            <div class="u-ta-center u-p-3xl-lg u-c-mute u-fs-caption">
               Загрузка выполненных задач...
             </div>
           </div>
-          <button id="loadMoreFeedBtn" class="btn btn-secondary btn-sm" type="button" hidden style="margin: var(--space-sm) auto;">
+          <button id="loadMoreFeedBtn" class="btn btn-secondary btn-sm u-m-sm-auto" type="button" hidden >
             Загрузить ещё
           </button>
         </div>
 
         <!-- Right: Feed Detail View -->
         <div class="feed-detail-panel" id="feedDetailPanel">
-          <div id="feedDetailPlaceholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 380px; color: var(--mute); text-align: center;">
-            <div style="font-size: var(--text-display-md); margin-bottom: var(--space-md);">📑</div>
-            <div style="font-size: var(--text-body-md); font-weight: 600; color: var(--ink); margin-bottom: var(--space-xs);">Выберите задачу из списка слева</div>
-            <div style="font-size: var(--text-caption); color: var(--body-mid); max-width: 320px;">
+          <div id="feedDetailPlaceholder" class="u-d-flex u-flexdir-column u-items-center u-justify-center u-h-380 u-c-mute u-ta-center">
+            <div class="u-fs-display-md u-mb-md">📑</div>
+            <div class="u-fs-body-md u-fw-600 u-c-ink u-mb-xs">Выберите задачу из списка слева</div>
+            <div class="u-fs-caption u-c-body-mid u-maxw-320">
               Здесь отобразится AI Summary, статистика выборки и исходные посты Telegram-канала.
             </div>
           </div>
 
-          <div id="feedDetailContent" style="display: none;">
+          <div id="feedDetailContent" hidden>
             <div class="feed-detail-header">
-              <div style="display: flex; align-items: center; gap: var(--space-md);">
-                <div id="feedDetailAvatar" class="feed-avatar" style="width: 48px; height: 48px; font-size: var(--text-display-xs);"></div>
+              <div class="u-d-flex u-items-center u-gap-md">
+                <div id="feedDetailAvatar" class="feed-avatar u-w-48 u-h-48 u-fs-display-xs" ></div>
                 <div>
-                  <h2 id="feedDetailTitle" style="font-size: var(--text-display-xs); font-weight: 700; color: var(--ink); margin: 0 0 var(--space-xs) 0;"></h2>
-                  <div class="feed-card-meta" style="display: flex; align-items: center; gap: var(--space-xs); font-size: var(--text-caption); line-height: 1;">
-                    <span id="feedDetailTime" style="font-size: var(--text-caption); color: var(--body-mid); font-variant-numeric: tabular-nums;"></span>
-                    <span style="color: var(--mute-soft); opacity: 0.6;">•</span>
-                    <span id="feedDetailRelativeTime" style="font-size: var(--text-caption); color: var(--accent-blue-deep); font-weight: 500; font-variant-numeric: tabular-nums;"></span>
-                    <span style="color: var(--mute-soft); opacity: 0.6;">•</span>
-                    <span id="feedDetailCount" style="font-size: var(--text-caption); color: var(--accent-green-deep); font-weight: 500; font-variant-numeric: tabular-nums;"></span>
+                  <h2 id="feedDetailTitle" class="u-fs-display-xs u-fw-700 u-c-ink u-m-0-0-xs-0"></h2>
+                  <div class="feed-card-meta u-d-flex u-items-center u-gap-xs u-fs-caption u-lh-1" >
+                    <span id="feedDetailTime" class="u-fs-caption u-c-body-mid u-fvn-tabular-nums"></span>
+                    <span class="u-c-mute-soft u-op-0_6">•</span>
+                    <span id="feedDetailRelativeTime" class="u-fs-caption u-c-accent-blue-deep u-fw-500 u-fvn-tabular-nums"></span>
+                    <span class="u-c-mute-soft u-op-0_6">•</span>
+                    <span id="feedDetailCount" class="u-fs-caption u-c-accent-green-deep u-fw-500 u-fvn-tabular-nums"></span>
                   </div>
                 </div>
               </div>
 
-              <div style="display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap;">
+              <div class="u-d-flex u-gap-sm u-items-center u-wrap-wrap">
                 <button id="reanalyzeFeedItemBtn" class="btn btn-secondary btn-sm" type="button" title="Перезапустить AI анализ постов этой задачи через OpenRouter">🔄 Обновить анализ</button>
                 <button id="copyFeedSummaryBtn" class="btn btn-secondary btn-sm" type="button">📋 Скопировать Summary</button>
-                <a id="feedDetailTgLink" href="#" target="_blank" class="btn btn-secondary btn-sm" style="display: none;">🔗 В Telegram</a>
+                <a id="feedDetailTgLink" href="#" target="_blank" class="btn btn-secondary btn-sm" hidden>🔗 В Telegram</a>
                 <button id="deleteFeedItemBtn" class="btn btn-danger btn-icon-sm" type="button" title="Удалить из ленты">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                 </button>
@@ -119,8 +120,8 @@
             </div>
 
             <!-- AI Summary Card -->
-            <div style="margin-bottom: var(--space-2xl);">
-              <div style="font-size: var(--text-eyebrow-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--body-mid); margin-bottom: var(--space-sm);">
+            <div class="u-mb-2xl">
+              <div class="u-fs-eyebrow-sm u-fw-700 u-tt-uppercase u-ls-0_6 u-c-body-mid u-mb-sm">
                 ✨ AI Summary & Анализ
               </div>
               <div id="feedDetailSummary" class="feed-summary-box"></div>
@@ -128,7 +129,7 @@
 
             <!-- Raw Telegram Messages List -->
             <div>
-              <div style="font-size: var(--text-eyebrow-sm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--body-mid); margin-bottom: var(--space-md);">
+              <div class="u-fs-eyebrow-sm u-fw-700 u-tt-uppercase u-ls-0_6 u-c-body-mid u-mb-md">
                 📥 Исходные посты Telegram (<span id="feedRawCount">0</span>)
               </div>
               <div id="feedRawMessagesList"></div>
@@ -142,30 +143,30 @@
     <div id="tab-messages" class="tab-pane">
       <div class="table-container">
         <div class="table-toolbar">
-          <div class="toolbar-filters" style="display: flex; flex-wrap: wrap; gap: var(--space-sm); align-items: center; max-width: none; flex: 1;">
-            <div class="search-input" style="min-width: 200px; flex: 1.5;">
+          <div class="toolbar-filters u-d-flex u-wrap-wrap u-gap-sm u-items-center u-maxw-none u-flex-1" >
+            <div class="search-input u-minw-200 u-flex-1_5" >
               <span class="search-icon">🔍</span>
               <input type="text" id="tableSearch" placeholder="Поиск по тексту...">
             </div>
-            <select id="filterChatSelect" style="width: 170px; background: var(--canvas-soft);">
+            <select id="filterChatSelect" class="u-w-170 u-bg-canvas-soft">
               <option value="ALL">Все каналы</option>
             </select>
-            <div class="input-with-icon" style="width: 145px;">
+            <div class="input-with-icon u-w-145" >
               <span class="input-icon">👁️</span>
-              <input type="text" inputmode="numeric" id="filterMinViews" placeholder="Просмотры от..." style="width: 100%;">
+              <input type="text" inputmode="numeric" id="filterMinViews" placeholder="Просмотры от..." class="u-w-full">
             </div>
-            <div class="input-with-icon" style="width: 135px;">
+            <div class="input-with-icon u-w-135" >
               <span class="input-icon">❤️</span>
-              <input type="text" inputmode="numeric" id="filterMinReactions" placeholder="Реакции от..." style="width: 100%;">
+              <input type="text" inputmode="numeric" id="filterMinReactions" placeholder="Реакции от..." class="u-w-full">
             </div>
-            <select id="sortMessagesSelect" style="width: 175px; background: var(--canvas-soft);">
+            <select id="sortMessagesSelect" class="u-w-175 u-bg-canvas-soft">
               <option value="date_desc">📅 Сначала новые</option>
               <option value="views_desc">👁️ Больше просмотров</option>
               <option value="reactions_desc">❤️ Больше реакций</option>
               <option value="date_asc">📅 Сначала старые</option>
             </select>
           </div>
-          <div style="display: flex; gap: var(--space-sm); align-items: center;">
+          <div class="u-d-flex u-gap-sm u-items-center">
             <button id="refreshAllBtn" class="btn btn-secondary btn-sm">🔄 Обновить</button>
             <button id="viewJsonBtn" class="btn btn-secondary btn-sm">📄 JSON</button>
             <button id="loadMoreMessagesBtn" class="btn btn-secondary btn-sm" type="button" hidden>Загрузить ещё</button>
@@ -176,17 +177,17 @@
           <table>
             <thead>
               <tr>
-                <th style="width: 60px;">ID</th>
-                <th style="width: 140px;">Дата</th>
-                <th style="width: 170px;">Канал</th>
+                <th class="u-w-60">ID</th>
+                <th class="u-w-140">Дата</th>
+                <th class="u-w-170">Канал</th>
                 <th>Текст сообщения</th>
-                <th style="width: 110px;">Метрики</th>
-                <th style="width: 110px;">Пост</th>
+                <th class="u-w-110">Метрики</th>
+                <th class="u-w-110">Пост</th>
               </tr>
             </thead>
             <tbody id="messagesTableBody">
               <tr>
-                <td colspan="6" style="text-align: center; padding: var(--space-3xl); color: var(--mute);">
+                <td colspan="6" class="u-ta-center u-p-3xl u-c-mute">
                   Загрузка сообщений из активных каналов...
                 </td>
               </tr>
@@ -200,7 +201,7 @@
     <div id="tab-sources" class="tab-pane">
 
       <!-- Создание источника: задача поиска, каналы добавляются в неё -->
-      <div id="addSourceDrawer" class="card" style="margin-bottom: var(--space-2xl);">
+      <div id="addSourceDrawer" class="card u-mb-2xl" >
         <div class="card-header">
           <div>
             <span class="eyebrow">Новый источник</span>
@@ -228,13 +229,13 @@
             </div>
             <div class="form-group">
               <label for="sourceStopWords">Стоп-слова (по одному на строку):</label>
-              <textarea id="sourceStopWords" rows="3" placeholder="разработчик&#10;стажировка" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: var(--space-sm) var(--space-md); font-family: inherit; font-size: var(--text-body-sm); resize: vertical;"></textarea>
+              <textarea id="sourceStopWords" rows="3" placeholder="разработчик&#10;стажировка" class="u-w-full u-bd-1-solid-hairline u-rad-xs u-p-sm-md u-ff-inherit u-fs-body-sm u-rs-vertical"></textarea>
             </div>
           </div>
           <div class="form-group">
             <label for="sourceAnswerPrompt">Промпт оформления ответа (опционально):</label>
-            <textarea id="sourceAnswerPrompt" rows="4" placeholder="Как свести находки со всех каналов и как оформить итог" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: var(--space-md) var(--space-md); font-family: inherit; font-size: var(--text-body-sm); line-height: 1.5; resize: vertical;"></textarea>
-            <p style="font-size: var(--text-caption); color: var(--body-mid); margin-top: var(--space-xs);">
+            <textarea id="sourceAnswerPrompt" rows="4" placeholder="Как свести находки со всех каналов и как оформить итог" class="u-w-full u-bd-1-solid-hairline u-rad-xs u-p-md-md u-ff-inherit u-fs-body-sm u-lh-1_5 u-rs-vertical"></textarea>
+            <p class="u-fs-caption u-c-body-mid u-mt-xs">
               Что искать — задаётся отдельно у каждого канала. Здесь только про то, как собрать и подать результат.
             </p>
           </div>
@@ -242,27 +243,27 @@
         </form>
       </div>
 
-      <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: var(--space-lg); gap: var(--space-sm);">
-        <span id="sourcesCount" style="display: none;">0</span>
+      <div class="u-d-flex u-justify-flex-end u-items-center u-mb-lg u-gap-sm">
+        <span id="sourcesCount" hidden>0</span>
         <button id="checkAllSourcesBtn" class="btn btn-secondary btn-sm" type="button" title="Обойти каналы всех источников и показать, какие из них читаются">🩺 Проверить все</button>
         <button id="toggleAddSourceBtn" class="btn btn-primary btn-sm">+ Создать источник</button>
       </div>
 
       <div id="sourcesList" class="channels-list">
-        <div style="text-align: center; color: var(--mute); padding: var(--space-3xl); background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--rounded-md);">Загрузка источников...</div>
+        <div class="u-ta-center u-c-mute u-p-3xl u-bg-canvas u-bd-1-solid-hairline u-rad-md">Загрузка источников...</div>
       </div>
 
     </div>
 
     <!-- ==================== TAB 3: INTEGRATION ==================== -->
     <div id="tab-integration" class="tab-pane">
-      <div class="card" style="max-width: 800px; margin: 0 auto var(--space-2xl) auto;">
+      <div class="card u-maxw-800 u-m-0-auto-2xl-auto" >
         <div class="card-header">
           <div class="card-title">n8n Webhook</div>
-          <div style="display: flex; align-items: center; gap: var(--space-md);">
+          <div class="u-d-flex u-items-center u-gap-md">
             <button id="openJsonExampleModalBtn" class="btn btn-secondary btn-sm" type="button">📋 Пример JSON</button>
-            <div style="display: flex; align-items: center; gap: var(--space-sm);">
-              <span style="font-size: var(--text-eyebrow-sm); color: var(--body-mid);">Webhook:</span>
+            <div class="u-d-flex u-items-center u-gap-sm">
+              <span class="u-fs-eyebrow-sm u-c-body-mid">Webhook:</span>
               <label class="switch" title="Включить / Выключить отправку сообщений в n8n">
                 <input type="checkbox" id="autoWebhook" checked>
                 <span class="slider"></span>
@@ -273,28 +274,28 @@
         
         <div class="form-group">
           <label for="webhookUrl">Webhook URL (n8n Webhook Node):</label>
-          <div style="display: flex; gap: var(--space-sm);">
-            <input type="text" id="webhookUrl" placeholder="https://piramiza.com/webhook/..." style="flex: 1;" spellcheck="false">
-            <button type="button" id="clearWebhookBtn" class="btn btn-secondary btn-sm" style="padding: 0 var(--space-md);" title="Удалить сохранённый адрес">🗑️</button>
+          <div class="u-d-flex u-gap-sm">
+            <input type="text" id="webhookUrl" placeholder="https://piramiza.com/webhook/..." spellcheck="false" class="u-flex-1">
+            <button type="button" id="clearWebhookBtn" class="btn btn-secondary btn-sm u-p-0-md" title="Удалить сохранённый адрес">🗑️</button>
           </div>
-          <p id="webhookUrlStatus" style="font-size: var(--text-caption); margin-top: var(--space-xs);"></p>
-          <p style="font-size: var(--text-caption); color: var(--body-mid); margin-top: var(--space-xs);">
+          <p id="webhookUrlStatus" class="u-fs-caption u-mt-xs"></p>
+          <p class="u-fs-caption u-c-body-mid u-mt-xs">
             Используйте Production URL после включения Workflow в n8n.
           </p>
         </div>
 
-        <div style="display: flex; gap: var(--space-sm); margin-top: var(--space-lg);">
-          <button id="saveWebhookBtn" class="btn btn-primary" style="flex: 1;">Сохранить настройки Webhook</button>
+        <div class="u-d-flex u-gap-sm u-mt-lg">
+          <button id="saveWebhookBtn" class="btn btn-primary u-flex-1" >Сохранить настройки Webhook</button>
           <button id="testWebhookBtn" class="btn btn-secondary">Отправить тест</button>
         </div>
       </div>
 
       <!-- ==================== OPENROUTER AI CARD ==================== -->
-      <div class="card" style="max-width: 800px; margin: 0 auto var(--space-2xl) auto;">
+      <div class="card u-maxw-800 u-m-0-auto-2xl-auto" >
         <div class="card-header">
           <div class="card-title">OpenRouter LLM</div>
-          <div style="display: flex; align-items: center; gap: var(--space-sm);">
-            <span style="font-size: var(--text-eyebrow-sm); color: var(--body-mid);">AI Обработка:</span>
+          <div class="u-d-flex u-items-center u-gap-sm">
+            <span class="u-fs-eyebrow-sm u-c-body-mid">AI Обработка:</span>
             <label class="switch" title="Включить автоматическую AI-обработку сообщений перед отправкой">
               <input type="checkbox" id="openrouterEnabled">
               <span class="slider"></span>
@@ -302,23 +303,23 @@
           </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1.25fr 0.85fr; gap: var(--space-lg); align-items: start; margin-bottom: var(--space-lg);">
-          <div class="form-group" style="margin-bottom: 0;">
+        <div class="u-d-grid u-gtc-1_25fr-0_85fr u-gap-lg u-items-start u-mb-lg">
+          <div class="form-group u-mb-0" >
             <label for="openrouterBaseUrl">Base URL (OpenRouter API):</label>
             <input type="text" id="openrouterBaseUrl" placeholder="https://openrouter.ai/api/v1" value="https://openrouter.ai/api/v1" spellcheck="false">
           </div>
 
-          <div class="form-group" style="margin-bottom: 0; position: relative;">
+          <div class="form-group u-mb-0 u-pos-relative" >
             <label for="openrouterModel">Модель (Model):</label>
-            <div style="display: flex; gap: var(--space-sm); align-items: center;">
-              <div style="position: relative; flex: 1;">
-                <input type="text" id="openrouterModel" name="openrouter_model" placeholder="Поиск модели (deepseek, claude, gpt)..." value="deepseek/deepseek-v4-flash" spellcheck="false" autocomplete="off" style="width: 100%; padding-right: var(--space-2xl);">
-                <span id="modelDropdownTrigger" style="position: absolute; right: 9px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--body-mid); font-size: var(--text-eyebrow-sm); user-select: none;" title="Показать каталог моделей">▼</span>
+            <div class="u-d-flex u-gap-sm u-items-center">
+              <div class="u-pos-relative u-flex-1">
+                <input type="text" id="openrouterModel" name="openrouter_model" placeholder="Поиск модели (deepseek, claude, gpt)..." value="deepseek/deepseek-v4-flash" spellcheck="false" autocomplete="off" class="u-w-full u-pr-2xl">
+                <span id="modelDropdownTrigger" title="Показать каталог моделей" class="u-pos-absolute u-right-9 u-top-50pct u-tf-translateY-50pct u-cur-pointer u-c-body-mid u-fs-eyebrow-sm u-us-none">▼</span>
                 
                 <!-- Autocomplete Dropdown List -->
-                <div id="openrouterModelsDropdown" class="autocomplete-dropdown" style="top: 100%; margin-top: var(--space-xxs);"></div>
+                <div id="openrouterModelsDropdown" class="autocomplete-dropdown u-top-full u-mt-xxs" ></div>
               </div>
-              <button type="button" id="refreshModelsBtn" class="btn btn-secondary btn-icon-sm" title="Загрузить актуальный каталог моделей с OpenRouter" style="height: 38px; width: 38px; padding: 0; flex-shrink: 0;">
+              <button type="button" id="refreshModelsBtn" class="btn btn-secondary btn-icon-sm u-h-38 u-w-38 u-p-0 u-fsh-0" title="Загрузить актуальный каталог моделей с OpenRouter" >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
               </button>
             </div>
@@ -327,28 +328,28 @@
 
         <div class="form-group">
           <label for="openrouterApiKey">API Ключ OpenRouter (sk-or-v1-...):</label>
-          <div style="display: flex; gap: var(--space-sm);">
-            <input type="password" id="openrouterApiKey" name="openrouter_api_key" autocomplete="new-password" placeholder="sk-or-v1-..." style="flex: 1;" spellcheck="false">
-            <button type="button" id="toggleApiKeyVisibility" class="btn btn-secondary btn-sm" style="padding: 0 var(--space-md);" title="Показать/скрыть ключ">👁️</button>
-            <button type="button" id="clearApiKeyBtn" class="btn btn-secondary btn-sm" style="padding: 0 var(--space-md);" title="Удалить сохранённый ключ">🗑️</button>
+          <div class="u-d-flex u-gap-sm">
+            <input type="password" id="openrouterApiKey" name="openrouter_api_key" autocomplete="new-password" placeholder="sk-or-v1-..." spellcheck="false" class="u-flex-1">
+            <button type="button" id="toggleApiKeyVisibility" class="btn btn-secondary btn-sm u-p-0-md" title="Показать/скрыть ключ">👁️</button>
+            <button type="button" id="clearApiKeyBtn" class="btn btn-secondary btn-sm u-p-0-md" title="Удалить сохранённый ключ">🗑️</button>
           </div>
-          <p id="openrouterKeyStatus" style="font-size: var(--text-caption); margin-top: var(--space-xs);"></p>
-          <p style="font-size: var(--text-caption); color: var(--body-mid); margin-top: var(--space-xs);">
-            Ключ хранится в базе данных в зашифрованном виде. Получить ключ: <a href="https://openrouter.ai/keys" target="_blank" style="color: var(--accent-blue-deep); text-decoration: underline;">openrouter.ai/keys</a>.
+          <p id="openrouterKeyStatus" class="u-fs-caption u-mt-xs"></p>
+          <p class="u-fs-caption u-c-body-mid u-mt-xs">
+            Ключ хранится в базе данных в зашифрованном виде. Получить ключ: <a href="https://openrouter.ai/keys" target="_blank" class="u-c-accent-blue-deep u-td-underline">openrouter.ai/keys</a>.
           </p>
         </div>
 
-        <div style="font-size: var(--text-eyebrow-sm); color: var(--body-mid); background: var(--canvas-soft); padding: var(--space-sm) var(--space-md); border-radius: var(--rounded-xs); border: 1px solid var(--hairline); margin-bottom: var(--space-lg); line-height: 1.5;">
+        <div class="u-fs-eyebrow-sm u-c-body-mid u-bg-canvas-soft u-p-sm-md u-rad-xs u-bd-1-solid-hairline u-mb-lg u-lh-1_5">
           Промпт настраивается индивидуально для каждого источника во вкладке <b>«Каналы»</b>.
         </div>
 
-        <div id="openrouterTestResultBox" style="display: none; padding: var(--space-md); background: var(--canvas-soft); border: 1px solid var(--hairline); border-radius: var(--rounded-sm); margin-bottom: var(--space-lg);">
-          <div style="font-size: var(--text-eyebrow-sm); font-weight: 600; text-transform: uppercase; color: var(--accent-green-deep); margin-bottom: var(--space-xs);">Ответ модели OpenRouter:</div>
-          <div id="openrouterTestResultText" style="font-size: var(--text-body-sm); color: var(--ink); white-space: pre-wrap; line-height: 1.5;"></div>
+        <div id="openrouterTestResultBox" hidden class="u-p-md u-bg-canvas-soft u-bd-1-solid-hairline u-rad-sm u-mb-lg">
+          <div class="u-fs-eyebrow-sm u-fw-600 u-tt-uppercase u-c-accent-green-deep u-mb-xs">Ответ модели OpenRouter:</div>
+          <div id="openrouterTestResultText" class="u-fs-body-sm u-c-ink u-ws-pre-wrap u-lh-1_5"></div>
         </div>
 
-        <div style="display: flex; gap: var(--space-sm); margin-top: var(--space-sm);">
-          <button id="saveOpenRouterBtn" class="btn btn-primary" style="flex: 1;">Сохранить настройки OpenRouter</button>
+        <div class="u-d-flex u-gap-sm u-mt-sm">
+          <button id="saveOpenRouterBtn" class="btn btn-primary u-flex-1" >Сохранить настройки OpenRouter</button>
           <button id="testOpenRouterBtn" class="btn btn-secondary">Тест OpenRouter</button>
         </div>
       </div>
@@ -357,19 +358,19 @@
       <!-- Право, до которого не дойти из кабинета, правом не является:
            до 13.2 единственным способом удалить аккаунт была просьба к
            владельцу сервиса почистить базу руками. -->
-      <div class="card" style="max-width: 800px; margin: 0 auto var(--space-2xl) auto;">
+      <div class="card u-maxw-800 u-m-0-auto-2xl-auto" >
         <div class="card-header">
           <div class="card-title">Ваш аккаунт</div>
         </div>
-        <p style="font-size: var(--text-caption); color: var(--body-mid); margin: 0 0 var(--space-md) 0;">
+        <p class="u-fs-caption u-c-body-mid u-m-0-0-md-0">
           Выгрузка содержит источники, ленту и журнал. Ключей и токенов в ней нет:
           это доступы, а не данные — файл может уехать в почту или мессенджер.
         </p>
-        <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap;">
+        <div class="u-d-flex u-gap-sm u-wrap-wrap">
           <button id="exportAccountBtn" class="btn btn-secondary" type="button">📦 Скачать мои данные</button>
           <button id="deleteAccountBtn" class="btn btn-danger" type="button">Удалить аккаунт</button>
         </div>
-        <p style="font-size: var(--text-caption); color: var(--body-mid); margin: var(--space-md) 0 0 0;">
+        <p class="u-fs-caption u-c-body-mid u-m-md-0-0-0">
           Удаление необратимо: уйдут источники, лента, журнал и ключи, а сессия
           в Telegram будет завершена.
         </p>
@@ -378,7 +379,7 @@
       <!-- ==================== TOKEN USAGE CARD (12.10) ==================== -->
       <!-- Расход стоит рядом с ключом и моделью: решение «какой канал
            отключить» принимают здесь же, где включают AI. -->
-      <div class="card" style="max-width: 800px; margin: 0 auto var(--space-2xl) auto;">
+      <div class="card u-maxw-800 u-m-0-auto-2xl-auto" >
         <div class="card-header">
           <div class="card-title">Расход токенов за месяц</div>
         </div>
@@ -386,11 +387,11 @@
       </div>
 
       <!-- ==================== TELEGRAM BOT FORWARD CARD ==================== -->
-      <div class="card" style="max-width: 800px; margin: 0 auto var(--space-2xl) auto;">
+      <div class="card u-maxw-800 u-m-0-auto-2xl-auto" >
         <div class="card-header">
           <div class="card-title">Отправка в Telegram</div>
-          <div style="display: flex; align-items: center; gap: var(--space-sm);">
-            <span style="font-size: var(--text-eyebrow-sm); color: var(--body-mid);">Отправка:</span>
+          <div class="u-d-flex u-items-center u-gap-sm">
+            <span class="u-fs-eyebrow-sm u-c-body-mid">Отправка:</span>
             <label class="switch" title="Включить авто-отправку постов ботом в целевой канал/чат">
               <input type="checkbox" id="tgForwardEnabled">
               <span class="slider"></span>
@@ -400,27 +401,27 @@
 
         <div class="form-group">
           <label for="tgBotToken">Токен Telegram-бота:</label>
-          <div style="display: flex; gap: var(--space-sm);">
-            <input type="password" id="tgBotToken" name="telegram_bot_token" autocomplete="new-password" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" style="flex: 1;" spellcheck="false">
-            <button type="button" id="toggleTgBotTokenVisibility" class="btn btn-secondary btn-sm" style="padding: 0 var(--space-md);" title="Показать/скрыть токен">👁️</button>
-            <button type="button" id="clearTgBotTokenBtn" class="btn btn-secondary btn-sm" style="padding: 0 var(--space-md);" title="Удалить сохранённый токен">🗑️</button>
+          <div class="u-d-flex u-gap-sm">
+            <input type="password" id="tgBotToken" name="telegram_bot_token" autocomplete="new-password" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" spellcheck="false" class="u-flex-1">
+            <button type="button" id="toggleTgBotTokenVisibility" class="btn btn-secondary btn-sm u-p-0-md" title="Показать/скрыть токен">👁️</button>
+            <button type="button" id="clearTgBotTokenBtn" class="btn btn-secondary btn-sm u-p-0-md" title="Удалить сохранённый токен">🗑️</button>
           </div>
-          <p id="tgBotTokenStatus" style="font-size: var(--text-caption); margin-top: var(--space-xs);"></p>
-          <p style="font-size: var(--text-caption); color: var(--body-mid); margin-top: var(--space-xs);">
-            Токен из <a href="https://t.me/BotFather" target="_blank" style="color: var(--accent-blue-deep); text-decoration: underline;">@BotFather</a>.
+          <p id="tgBotTokenStatus" class="u-fs-caption u-mt-xs"></p>
+          <p class="u-fs-caption u-c-body-mid u-mt-xs">
+            Токен из <a href="https://t.me/BotFather" target="_blank" class="u-c-accent-blue-deep u-td-underline">@BotFather</a>.
           </p>
         </div>
 
         <div class="form-group">
           <label for="tgSenderId">ID получателя (чат или канал):</label>
           <input type="text" id="tgSenderId" placeholder="-1001234567890 или @channel_name" spellcheck="false">
-          <div style="font-size: var(--text-caption); color: var(--body-mid); margin-top: var(--space-xs); line-height: 1.5; background: var(--canvas-soft); padding: var(--space-sm) var(--space-md); border-radius: var(--rounded-xs); border: 1px solid var(--hairline);">
-            ID можно узнать через <a href="https://t.me/myidbot" target="_blank" style="color: var(--accent-blue-deep); font-weight: 500; text-decoration: underline;">@myidbot</a> или <a href="https://t.me/UsernameToId_roBot" target="_blank" style="color: var(--accent-blue-deep); font-weight: 500; text-decoration: underline;">@UsernameToId_roBot</a>. Бот должен быть администратором канала с правом публикации.
+          <div class="u-fs-caption u-c-body-mid u-mt-xs u-lh-1_5 u-bg-canvas-soft u-p-sm-md u-rad-xs u-bd-1-solid-hairline">
+            ID можно узнать через <a href="https://t.me/myidbot" target="_blank" class="u-c-accent-blue-deep u-fw-500 u-td-underline">@myidbot</a> или <a href="https://t.me/UsernameToId_roBot" target="_blank" class="u-c-accent-blue-deep u-fw-500 u-td-underline">@UsernameToId_roBot</a>. Бот должен быть администратором канала с правом публикации.
           </div>
         </div>
 
-        <div style="display: flex; gap: var(--space-sm); margin-top: var(--space-lg);">
-          <button id="saveTgForwardBtn" class="btn btn-primary" style="flex: 1;">Сохранить настройки бота</button>
+        <div class="u-d-flex u-gap-sm u-mt-lg">
+          <button id="saveTgForwardBtn" class="btn btn-primary u-flex-1" >Сохранить настройки бота</button>
           <button id="testTgForwardBtn" class="btn btn-secondary">Отправить тест</button>
         </div>
       </div>
@@ -431,17 +432,17 @@
       <!-- Состояние сервиса (10.2). Web и worker — разные процессы, и
            здоровье первого ничего не говорит о втором: молчащий воркер
            снаружи выглядит как «ничего не происходит». -->
-      <div id="opsStatus" class="table-container" style="padding: var(--space-sm) var(--space-md); margin-bottom: var(--space-md); display: flex; gap: var(--space-lg); flex-wrap: wrap; font-size: var(--text-body-sm);">
+      <div id="opsStatus" class="table-container u-p-sm-md u-mb-md u-d-flex u-gap-lg u-wrap-wrap u-fs-body-sm" >
         <span>База: <b id="opsDb">…</b></span>
         <span>Воркер: <b id="opsWorker">…</b></span>
         <span>Очередь: <b id="opsQueue">…</b></span>
         <span>Ключ шифрования: <b id="opsKey">…</b></span>
       </div>
       <div class="table-container">
-        <div class="table-toolbar" style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="table-toolbar u-d-flex u-justify-space-between u-items-center" >
           <div class="toolbar-filters">
-            <label style="margin: 0; font-size: var(--text-body-sm); font-weight: 500;">Статус:</label>
-            <select id="filterLogStatus" style="width: 180px; background: var(--canvas-soft);">
+            <label class="u-m-0 u-fs-body-sm u-fw-500">Статус:</label>
+            <select id="filterLogStatus" class="u-w-180 u-bg-canvas-soft">
               <option value="ALL">Все события</option>
               <option value="SUCCESS">Только SUCCESS</option>
               <option value="ERROR">Только ERROR</option>
@@ -449,9 +450,9 @@
               <option value="INFO">Только INFO</option>
             </select>
           </div>
-          <div style="display: flex; gap: var(--space-sm); align-items: center;">
+          <div class="u-d-flex u-gap-sm u-items-center">
             <button id="openCleanupModalBtn" class="btn btn-secondary btn-sm" type="button" title="Настроить автоматическую очистку старых записей">
-              🧹 Автоочистка: <span id="cleanupStatusLabel" style="font-weight: 600; color: var(--body-mid); margin-left: var(--space-xxs);">Выкл</span>
+              🧹 Автоочистка: <span id="cleanupStatusLabel" class="u-fw-600 u-c-body-mid u-ml-xxs">Выкл</span>
             </button>
             <button id="refreshLogsBtn" class="btn btn-secondary btn-sm">Обновить логи</button>
             <button id="loadMoreLogsBtn" class="btn btn-secondary btn-sm" type="button" hidden>Загрузить ещё</button>
@@ -463,16 +464,16 @@
           <table>
             <thead>
               <tr>
-                <th style="width: 140px;">Время</th>
-                <th style="width: 130px;">Событие</th>
-                <th style="width: 170px;">Канал</th>
-                <th style="width: 120px;">Статус</th>
+                <th class="u-w-140">Время</th>
+                <th class="u-w-130">Событие</th>
+                <th class="u-w-170">Канал</th>
+                <th class="u-w-120">Статус</th>
                 <th>Детали события</th>
               </tr>
             </thead>
             <tbody id="logsTableBody">
               <tr>
-                <td colspan="5" style="text-align: center; padding: var(--space-3xl); color: var(--mute);">
+                <td colspan="5" class="u-ta-center u-p-3xl u-c-mute">
                   Загрузка журнала...
                 </td>
               </tr>
@@ -486,7 +487,7 @@
 
   <!-- Modal: Edit Monitor (Интервал и Лимиты) -->
   <div id="sourceModal" class="modal-overlay">
-    <div class="modal" style="max-width: 760px; width: 94%;">
+    <div class="modal u-maxw-760 u-w-94pct" >
       <div class="modal-header">
         <div>
           <span class="eyebrow">Параметры источника</span>
@@ -496,7 +497,7 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="editSourceId">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-lg);">
+        <div class="u-d-grid u-gtc-1fr-1fr u-gap-lg">
           <div class="form-group">
             <label for="editSourceTitle">Название источника:</label>
             <input type="text" id="editSourceTitle" spellcheck="false">
@@ -517,12 +518,12 @@
 
         <div class="form-group">
           <label>Каналы источника <span id="editChannelsCount" class="tab-badge">0</span></label>
-          <p style="font-size: var(--text-caption); color: var(--body-mid); margin: var(--space-xs) 0 var(--space-sm);">
+          <p class="u-fs-caption u-c-body-mid u-m-xs-0-sm">
             У каждого канала свой лимит постов и свой промпт извлечения: шумный канал публикует полсотни постов в день, тихий — пять, и искать в них надо разное.
           </p>
           <div id="editChannelsList"></div>
-          <div style="display: flex; gap: var(--space-sm); margin-top: var(--space-sm); align-items: flex-end;">
-            <div class="form-group" style="flex: 1; margin: 0;">
+          <div class="u-d-flex u-gap-sm u-mt-sm u-items-flex-end">
+            <div class="form-group u-flex-1 u-m-0" >
               <label for="newChannelTarget">Добавить канал:</label>
               <input type="text" id="newChannelTarget" placeholder="@channel или https://t.me/..." spellcheck="false">
             </div>
@@ -533,15 +534,15 @@
 
         <div class="form-group">
           <label for="editSourceStopWords">Стоп-слова (по одному на строку):</label>
-          <textarea id="editSourceStopWords" rows="3" style="width: 100%; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: var(--space-sm) var(--space-md); font-family: inherit; font-size: var(--text-body-sm); resize: vertical;" placeholder="разработчик"></textarea>
-          <p style="font-size: var(--text-caption); color: var(--body-mid); margin-top: var(--space-xs);">
+          <textarea id="editSourceStopWords" rows="3" placeholder="разработчик" class="u-w-full u-bd-1-solid-hairline u-rad-xs u-p-sm-md u-ff-inherit u-fs-body-sm u-rs-vertical"></textarea>
+          <p class="u-fs-caption u-c-body-mid u-mt-xs">
             Пост со стоп-словом не доходит до модели вовсе. Отсеянные считаются и видны в журнале.
           </p>
         </div>
 
         <div class="form-group">
           <label for="editSourceAnswerPrompt">Промпт оформления ответа:</label>
-          <textarea id="editSourceAnswerPrompt" rows="6" style="width: 100%; min-height: 140px; border: 1px solid var(--hairline); border-radius: var(--rounded-xs); padding: var(--space-md) var(--space-md); font-family: inherit; font-size: var(--text-body-sm); line-height: 1.5; resize: vertical;" placeholder="Как свести находки со всех каналов и оформить итог"></textarea>
+          <textarea id="editSourceAnswerPrompt" rows="6" placeholder="Как свести находки со всех каналов и оформить итог" class="u-w-full u-minh-140 u-bd-1-solid-hairline u-rad-xs u-p-md-md u-ff-inherit u-fs-body-sm u-lh-1_5 u-rs-vertical"></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -562,14 +563,14 @@
         <button id="closeSettingsModal" class="btn btn-secondary btn-sm">✕</button>
       </div>
       <div class="modal-body">
-        <div style="margin-bottom: var(--space-2xl);">
+        <div class="u-mb-2xl">
           <span class="eyebrow">1. Ключи вашего приложения (my.telegram.org)</span>
           <!-- Ключи принадлежат ПОЛЬЗОВАТЕЛЮ, а не сервису (открытый вопрос №1
                плана, решён 2026-09-07): каждый регистрирует своё приложение и
                подключает свой аккаунт только через него. api_hash — секрет: он
                уходит на сервер, шифруется и обратно в браузер не возвращается,
                поэтому в поле стоит плейсхолдер, а не значение. -->
-          <div class="form-row" style="margin-top: var(--space-sm);">
+          <div class="form-row u-mt-sm" >
             <div class="form-group">
               <label for="settingsApiId">API ID:</label>
               <input type="text" id="settingsApiId" spellcheck="false" placeholder="1234567" inputmode="numeric">
@@ -579,27 +580,27 @@
               <input type="password" id="settingsApiHash" spellcheck="false" autocomplete="off" placeholder="••••••••">
             </div>
           </div>
-          <div style="display: flex; align-items: center; gap: var(--space-sm); margin-top: var(--space-sm);">
+          <div class="u-d-flex u-items-center u-gap-sm u-mt-sm">
             <button id="saveApiKeysBtn" class="btn btn-secondary btn-sm" type="button">Сохранить ключи</button>
-            <span id="apiKeysHint" style="font-size: var(--text-caption); color: var(--body-mid);"></span>
+            <span id="apiKeysHint" class="u-fs-caption u-c-body-mid"></span>
           </div>
-          <div style="font-size: var(--text-caption); color: var(--body-mid); margin-top: var(--space-sm);">
+          <div class="u-fs-caption u-c-body-mid u-mt-sm">
             Получите свои значения на <a href="https://my.telegram.org" target="_blank" rel="noopener">my.telegram.org</a> →
             API development tools. Они нужны, чтобы подключить именно ваш аккаунт;
             общих ключей сервиса нет. Оставьте поле API HASH пустым, чтобы сохранить прежний.
           </div>
         </div>
 
-        <hr style="border: 0; border-top: 1px solid var(--hairline); margin: var(--space-xl) 0;">
+        <hr class="u-bd-0 u-bdt-1-solid-hairline u-m-xl-0">
 
         <div>
           <span class="eyebrow">2. Авторизация аккаунта Telegram</span>
           
-          <div id="authStatusBox" class="auth-box" style="display: none; border-left: 3px solid var(--accent-green); background: var(--surface-ok);">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div id="authStatusBox" class="auth-box u-bdl-3-solid-accent-green u-bg-surface-ok" hidden >
+            <div class="u-d-flex u-justify-space-between u-items-center">
               <div>
-                <div style="font-weight: 600; color: var(--accent-green-deep); font-size: var(--text-body-sm);">✅ Аккаунт авторизован</div>
-                <div id="authUserDetails" style="font-size: var(--text-caption); color: var(--body-mid); margin-top: var(--space-xs);"></div>
+                <div class="u-fw-600 u-c-accent-green-deep u-fs-body-sm">✅ Аккаунт авторизован</div>
+                <div id="authUserDetails" class="u-fs-caption u-c-body-mid u-mt-xs"></div>
               </div>
               <button id="logoutBtn" class="btn btn-danger btn-sm">Выйти</button>
             </div>
@@ -638,7 +639,7 @@
             </div>
 
             <div id="stepCode" class="auth-step">
-              <div style="font-size: var(--text-caption); color: var(--accent-blue-deep); margin-bottom: var(--space-md);">
+              <div class="u-fs-caption u-c-accent-blue-deep u-mb-md">
                 📩 Код подтверждения отправлен в приложение Telegram на номер <b id="phoneDisplay"></b>
               </div>
               <div class="form-group">
@@ -646,11 +647,11 @@
                 <input type="text" id="authCode" placeholder="97519" maxlength="8">
               </div>
               <button id="submitCodeBtn" class="btn btn-primary btn-block">Подтвердить вход</button>
-              <button id="backToPhoneBtn" class="btn btn-secondary btn-sm btn-block" style="margin-top: var(--space-sm);">← Изменить номер</button>
+              <button id="backToPhoneBtn" class="btn btn-secondary btn-sm btn-block u-mt-sm" >← Изменить номер</button>
             </div>
 
             <div id="step2fa" class="auth-step">
-              <div style="font-size: var(--text-caption); color: var(--accent-orange); margin-bottom: var(--space-md);">
+              <div class="u-fs-caption u-c-accent-orange u-mb-md">
                 🔐 Включена двухфакторная аутентификация (2FA). Введите ваш облачный пароль:
               </div>
               <div class="form-group">
@@ -678,14 +679,14 @@
         <button id="closeDialogsModal" class="btn btn-secondary btn-sm">✕</button>
       </div>
       <div id="dialogsModalBody" class="modal-body">
-        <div style="text-align: center; padding: var(--space-2xl); color: var(--mute);">Загрузка диалогов...</div>
+        <div class="u-ta-center u-p-2xl u-c-mute">Загрузка диалогов...</div>
       </div>
     </div>
   </div>
 
   <!-- Modal: JSON Viewer -->
   <div id="jsonModal" class="modal-overlay">
-    <div class="modal" style="max-width: 780px;">
+    <div class="modal u-maxw-780" >
       <div class="modal-header">
         <div>
           <span class="eyebrow">Payload Inspector</span>
@@ -705,13 +706,13 @@
 
   <!-- Modal: n8n JSON Example Popup -->
   <div id="jsonExampleModal" class="modal-overlay">
-    <div class="modal" style="max-width: 760px; width: 92%;">
+    <div class="modal u-maxw-760 u-w-92pct" >
       <div class="modal-header">
-        <h3 style="font-size: var(--text-body-md); font-weight: 600; color: var(--ink); margin: 0;">Пример JSON-пакета для вебхука</h3>
+        <h3 class="u-fs-body-md u-fw-600 u-c-ink u-m-0">Пример JSON-пакета для вебхука</h3>
         <button id="closeJsonExampleModalBtn" class="btn btn-secondary btn-sm">✕</button>
       </div>
       <div class="modal-body">
-        <pre id="jsonExampleCode" class="json-code" style="max-height: 480px; overflow-y: auto;">{
+        <pre id="jsonExampleCode" class="json-code u-maxh-480 u-ovy-auto" >{
   "source": "telethon_monitor",
   "event": "telegram_messages_batch",
   "timestamp": "2026-08-29T15:20:00Z",
@@ -747,16 +748,16 @@
 
   <!-- Modal: Database Auto-Cleanup Settings -->
   <div id="cleanupModal" class="modal-overlay">
-    <div class="modal" style="max-width: 520px; width: 92%;">
+    <div class="modal u-maxw-520 u-w-92pct" >
       <div class="modal-header">
-        <h3 style="font-size: var(--text-body-md); font-weight: 600; color: var(--ink); margin: 0;">Автоматическая очистка базы</h3>
+        <h3 class="u-fs-body-md u-fw-600 u-c-ink u-m-0">Автоматическая очистка базы</h3>
         <button id="closeCleanupModalBtn" class="btn btn-secondary btn-sm" type="button">✕</button>
       </div>
       <div class="modal-body">
-        <div class="form-group" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-md); background: var(--canvas-soft); border-radius: var(--rounded-sm); border: 1px solid var(--hairline); margin-bottom: var(--space-lg);">
+        <div class="form-group u-d-flex u-justify-space-between u-items-center u-p-md u-bg-canvas-soft u-rad-sm u-bd-1-solid-hairline u-mb-lg" >
           <div>
-            <div style="font-size: var(--text-body-sm); font-weight: 600; color: var(--ink);">Фоновая автоочистка</div>
-            <div style="font-size: var(--text-caption); color: var(--body-mid);">Ежедневно удалять устаревшие логи и историю сообщений</div>
+            <div class="u-fs-body-sm u-fw-600 u-c-ink">Фоновая автоочистка</div>
+            <div class="u-fs-caption u-c-body-mid">Ежедневно удалять устаревшие логи и историю сообщений</div>
           </div>
           <label class="switch" title="Включить / Выключить автоочистку базы">
             <input type="checkbox" id="cleanupEnabledInput">
@@ -766,7 +767,7 @@
 
         <div class="form-group">
           <label for="cleanupDaysSelect">Удалять записи старше:</label>
-          <select id="cleanupDaysSelect" style="background: var(--canvas-soft);">
+          <select id="cleanupDaysSelect" class="u-bg-canvas-soft">
             <option value="7">7 дней (1 неделя)</option>
             <option value="14">14 дней (2 недели)</option>
             <option value="30" selected>30 дней (1 месяц — рекомендовано)</option>
@@ -774,18 +775,18 @@
             <option value="90">90 дней (3 месяца)</option>
             <option value="180">180 дней (полгода)</option>
           </select>
-          <p style="font-size: var(--text-caption); color: var(--body-mid); margin-top: var(--space-xs); line-height: 1.5;">
+          <p class="u-fs-caption u-c-body-mid u-mt-xs u-lh-1_5">
             Фоновая задача раз в сутки удаляет старые логи и записи сообщений старше указанного срока. Текущие каналы и настройки не затрагиваются.
           </p>
         </div>
 
-        <div id="cleanupLastRunBox" style="font-size: var(--text-caption); color: var(--body-mid); padding: var(--space-sm) var(--space-md); background: var(--canvas-soft); border-radius: var(--rounded-xs); border: 1px solid var(--hairline); margin-top: var(--space-sm);">
-          Последняя очистка: <span id="cleanupLastRunDate" style="font-weight: 500; color: var(--ink);">еще не выполнялась</span>
+        <div id="cleanupLastRunBox" class="u-fs-caption u-c-body-mid u-p-sm-md u-bg-canvas-soft u-rad-xs u-bd-1-solid-hairline u-mt-sm">
+          Последняя очистка: <span id="cleanupLastRunDate" class="u-fw-500 u-c-ink">еще не выполнялась</span>
         </div>
       </div>
-      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+      <div class="modal-footer u-d-flex u-justify-space-between u-items-center" >
         <button id="runCleanupNowBtn" class="btn btn-secondary btn-sm" type="button">⚡ Очистить сейчас</button>
-        <div style="display: flex; gap: var(--space-sm);">
+        <div class="u-d-flex u-gap-sm">
           <button id="closeCleanupModalBtn2" class="btn btn-secondary btn-sm" type="button">Закрыть</button>
           <button id="saveCleanupConfigBtn" class="btn btn-primary btn-sm" type="button">Сохранить</button>
         </div>

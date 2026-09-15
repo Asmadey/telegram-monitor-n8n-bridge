@@ -385,7 +385,7 @@ if (clearApiKeyBtn) {
 testOpenRouterBtn.addEventListener('click', async () => {
   testOpenRouterBtn.disabled = true;
   testOpenRouterBtn.textContent = 'Тестирование LLM...';
-  openrouterTestResultBox.style.display = 'none';
+  openrouterTestResultBox.hidden = true;
 
   try {
     const res = await apiFetch('/api/openrouter/test', {
@@ -401,7 +401,7 @@ testOpenRouterBtn.addEventListener('click', async () => {
     if (res.ok && data.status === 'ok') {
       showToast(`Тест успешен (${data.result.model})!`);
       openrouterTestResultText.textContent = data.result.response;
-      openrouterTestResultBox.style.display = 'block';
+      openrouterTestResultBox.hidden = false;
     } else {
       showToast(data.detail || 'Ошибка тестирования OpenRouter', true);
     }

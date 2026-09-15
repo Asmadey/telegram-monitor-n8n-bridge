@@ -533,3 +533,89 @@ def test_the_entrance_screens_fetch_nothing_from_outside():
         assert "fonts.googleapis" not in page.read_text(encoding="utf-8"), (
             f"{page.name}: экран входа потянул шрифт со стороны"
         )
+
+
+# --------------------------------------------------------------------------
+# Инлайновые стили: разметка возвращается в систему
+# --------------------------------------------------------------------------
+
+INLINE_STYLE = re.compile(r'style="')
+
+
+def test_the_markup_carries_no_inline_styles():
+    """199 атрибутов `style=` обходили дизайн-систему целиком.
+
+    Инлайн нельзя ни найти свипом токенов, ни переопределить правилом — и
+    именно он держит в политике безопасности `style-src 'unsafe-inline'`.
+
+    Модули (`static/js/*.js`) идут следующим шагом и пока не в счёт: пока
+    хоть один `style=` жив, политику сузить нельзя, и обещать обратное
+    здесь было бы неправдой.
+    """
+    index = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    found = INLINE_STYLE.findall(index)
+    assert not found, (
+        f"в index.html снова инлайновые стили: {len(found)}. Каждый обходит "
+        "шкалы и палитру, и пока они есть, `unsafe-inline` из CSP не убрать"
+    )
+
+
+def test_every_utility_is_actually_worn():
+    """Утилита без разметки — тот же мусор, что правило без разметки."""
+    utilities = (ROOT / "static" / "css" / "utilities.css").read_text(encoding="utf-8")
+    names = set(re.findall(r"^\.(u-[\w-]+)\.", utilities, re.M))
+    assert len(names) > 50, f"разобрано {len(names)} утилит — это не весь файл"
+
+    worn = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in [
+            *sorted((ROOT / "static").glob("*.html")),
+            *sorted((ROOT / "static" / "js").glob("*.js")),
+        ]
+    )
+    orphans = sorted(name for name in names if name not in worn)
+    assert not orphans, f"утилиты, которых никто не носит: {orphans}"
+
+
+def test_utilities_speak_in_tokens_not_in_numbers():
+    """Утилита с литералом снова увела бы разметку из системы.
+
+    Исключения — геометрия, которой в шкалах нет и быть не должно: ширина
+    поля в пикселях, доля флекса, нулевой отступ.
+    """
+    utilities = (ROOT / "static" / "css" / "utilities.css").read_text(encoding="utf-8")
+    geometry = (
+        "width",
+        "height",
+        "flex",
+        "max-width",
+        "min-width",
+        "min-height",
+        "max-height",
+        "top",
+        "left",
+        "right",
+        "bottom",
+        "z-index",
+        "line-height",
+        "opacity",
+        "order",
+        "transform",
+        "grid-template-columns",
+    )
+    bad = []
+    for selector, decl in re.findall(
+        r"^\.(u-[\w-]+)\.[\w-]+ \{ ([^}]+) \}", utilities, re.M
+    ):
+        prop, _, value = decl.partition(":")
+        prop, value = prop.strip(), value.strip().rstrip(";")
+        if prop in geometry or value in ("0", "auto", "none", "inherit"):
+            continue
+        if (
+            prop in ("color", "background", "background-color")
+            and "var(--" not in value
+        ):
+            bad.append((selector, decl))
+        if prop in ("font-size", "gap") and "var(--" not in value:
+            bad.append((selector, decl))
+    assert not bad, f"утилиты мимо системы: {bad}"
