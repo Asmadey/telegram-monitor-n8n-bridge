@@ -94,8 +94,19 @@ def slug(value: str) -> str:
     return re.sub(r"-{2,}", "-", v) or "none"
 
 
+EXISTING = re.compile(r"^\.(u-[\w-]+)\.[\w-]+ \{ ([^}]+) \}$", re.M)
+
+
 def main(paths: list[str]) -> None:
+    # Уже заведённые утилиты читаются обратно: файл переписывается целиком, и
+    # без этого прогон по одному модулю стёр бы всё, что вынесено раньше.
+    # Поймано на себе 2026-09-15: правка генератора не применилась, а он успел
+    # отработать по-старому и потерять 124 утилиты `index.html`.
+    out = pathlib.Path("static/css/utilities.css")
     used: collections.OrderedDict[str, str] = collections.OrderedDict()
+    if out.exists():
+        for name, decl in EXISTING.findall(out.read_text(encoding="utf-8")):
+            used[name] = decl.strip()
 
     def to_class(decl: str) -> str:
         prop, _, value = decl.partition(":")
@@ -139,7 +150,10 @@ def main(paths: list[str]) -> None:
                 tag.rstrip()[: -len(closing)].rstrip() + f' class="{classes}"' + closing
             )
 
-        src = re.sub(r"<[^<>]+>", merge, src)
+        # Тег обязан начинаться с буквы или косой черты: в модулях
+        # разметка соседствует с кодом, и `a < b && c > d` без этого
+        # сошло бы за тег.
+        src = re.sub(r"</?[a-zA-Z][^<>]*>", merge, src)
         assert MARK_OPEN not in src, f"{f.name}: маркер остался в разметке"
         f.write_text(src, encoding="utf-8")
 
@@ -169,9 +183,7 @@ def main(paths: list[str]) -> None:
     ]
     for name, decl in used.items():
         css.append(f".{name}.{name} {{ {decl} }}")
-    pathlib.Path("static/css/utilities.css").write_text(
-        "\n".join(css) + "\n", encoding="utf-8"
-    )
+    out.write_text("\n".join(css) + "\n", encoding="utf-8")
     print(f"вынесено инлайнов: {total} | утилит заведено: {len(used)}")
 
 

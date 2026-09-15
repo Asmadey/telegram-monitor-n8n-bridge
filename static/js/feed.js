@@ -80,9 +80,9 @@ function renderFeedList() {
   if (!feedListContainer) return;
   if (currentFeed.length === 0) {
     feedListContainer.innerHTML = html`
-      <div style="text-align: center; padding: var(--space-3xl) var(--space-lg); color: var(--mute); font-size: var(--text-body-sm);">
+      <div class="u-ta-center u-p-3xl-lg u-c-mute u-fs-body-sm">
         Пока нет выполненных задач анализа.<br>
-        <span style="font-size: var(--text-caption); color: var(--body-mid); display: inline-block; margin-top: var(--space-xs);">
+        <span class="u-fs-caption u-c-body-mid u-d-inline-block u-mt-xs">
           Запустите опрос канала на вкладке «Каналы».
         </span>
       </div>
@@ -115,12 +115,12 @@ function renderFeedList() {
       <div class="feed-card ${isActive ? 'active' : ''}" data-feed-id="${item.id}">
         <div class="feed-card-header">
           ${raw(avatarHtml)}
-          <div style="min-width: 0; flex: 1;">
+          <div class="u-minw-0 u-flex-1">
             <div class="feed-card-title">${item.chat_title || 'Канал'}</div>
             <div class="feed-card-meta">
               <span>${formatRelativeTime(item.created_at)}</span>
-              <span style="opacity: 0.5;">•</span>
-              <span style="color: var(--accent-green-deep); font-weight: 500;">${item.messages_count} постов</span>
+              <span class="u-op-0_5">•</span>
+              <span class="u-c-accent-green-deep u-fw-500">${item.messages_count} постов</span>
             </div>
           </div>
         </div>
@@ -181,7 +181,7 @@ async function selectFeedItem(id) {
   if (feedDetailAvatar) {
     if (detailAvatarChatId) {
       // аватарка с эндпоинта (5.4); 404 → буква-заглушка
-      feedDetailAvatar.innerHTML = html`<img src="/api/avatars/${detailAvatarChatId}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="">`;
+      feedDetailAvatar.innerHTML = html`<img src="/api/avatars/${detailAvatarChatId}" alt="" class="u-w-full u-h-full u-rad-50pct u-of-cover">`;
       const img = feedDetailAvatar.querySelector('img');
       if (img) {
         img.addEventListener('error', () => {
@@ -219,27 +219,27 @@ async function selectFeedItem(id) {
   if (feedRawCount) feedRawCount.textContent = msgs.length;
   if (feedRawMessagesList) {
     if (msgs.length === 0) {
-      feedRawMessagesList.innerHTML = '<div style="color: var(--mute); font-size: var(--text-caption);">Нет исходных постов в этой выборке.</div>';
+      feedRawMessagesList.innerHTML = '<div class="u-c-mute u-fs-caption">Нет исходных постов в этой выборке.</div>';
     } else {
       feedRawMessagesList.innerHTML = msgs.map((m, idx) => html`
         <div class="feed-raw-post">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-xs);">
-            <div style="font-size: var(--text-eyebrow-sm); font-weight: 600; color: var(--ink);">
+          <div class="u-d-flex u-justify-space-between u-items-center u-mb-xs">
+            <div class="u-fs-eyebrow-sm u-fw-600 u-c-ink">
               Пост #${m.id || idx + 1}
             </div>
-            <div style="font-size: var(--text-eyebrow-sm); color: var(--body-mid); font-variant-numeric: tabular-nums;">
+            <div class="u-fs-eyebrow-sm u-c-body-mid u-fvn-tabular-nums">
               ${m.date ? new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
             </div>
           </div>
-          <div style="font-size: var(--text-body-sm); line-height: 1.5; color: var(--body); margin-bottom: var(--space-sm);">
+          <div class="u-fs-body-sm u-lh-1_5 u-c-body u-mb-sm">
             ${raw(formatTelegramText(m.text || ''))}
           </div>
-          <div style="display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap;">
+          <div class="u-d-flex u-gap-sm u-items-center u-wrap-wrap">
             ${m.views !== null && m.views !== undefined ? raw(`<span class="badge-metric">👁️ ${Number(m.views).toLocaleString('ru-RU')}</span>`) : ''}
-            ${m.reactions_count ? raw(`<span class="badge-metric" style="color: var(--accent-pink);">❤️ ${m.reactions_count}</span>`) : ''}
+            ${m.reactions_count ? raw(`<span class="badge-metric u-c-accent-pink" >❤️ ${m.reactions_count}</span>`) : ''}
             ${m.forwards ? raw(`<span class="badge-metric">↗️ ${m.forwards}</span>`) : ''}
             ${m.has_media ? raw(`<span class="badge-media">📎 Медиа</span>`) : ''}
-            ${m.post_url ? raw(html`<a href="${m.post_url}" target="_blank" class="post-link-btn" style="margin-left: auto;">🔗 Открыть в TG</a>`) : ''}
+            ${m.post_url ? raw(html`<a href="${m.post_url}" target="_blank" class="post-link-btn u-ml-auto" >🔗 Открыть в TG</a>`) : ''}
           </div>
         </div>
       `).join('');
