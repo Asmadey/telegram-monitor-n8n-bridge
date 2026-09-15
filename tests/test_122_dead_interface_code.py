@@ -138,7 +138,10 @@ def test_no_export_in_the_spa_goes_unused():
 # Ключи, которые `_card`/`feed_detail` добавляют к `_LIST_FIELDS` руками.
 # Список держится здесь, а не выводится: он мал, и его рост должен быть
 # заметен в ревью.
-_EXTRA_FEED_KEYS = {"avatar_chat_id", "messages"}
+# `findings` — разобранный список, который `_card` кладёт вместо строки
+# `findings_json` (13.9): в ленту оно уходит данными, а не текстом, и
+# разбирать JSON заново в кабинете было бы вторым разбором того же самого.
+_EXTRA_FEED_KEYS = {"avatar_chat_id", "messages", "findings"}
 
 
 def _fields_the_feed_api_sends() -> set[str]:

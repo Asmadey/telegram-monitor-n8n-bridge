@@ -13,7 +13,7 @@
 """
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -38,10 +38,17 @@ KIND_POLL = "poll_monitor"
 KIND_CHECK = "check_source"
 
 
+# Режим сборки итога (13.9). Значения перечислены здесь, а не строкой в коде:
+# опечатка в режиме тихо оставила бы источник на старом пути, и человек искал
+# бы причину в промпте.
+ASSEMBLY_MODES = ("prompt", "template")
+
+
 class SourceCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     interval_minutes: int = Field(default=60, ge=5, le=10080)
     answer_prompt: str = ""
+    assembly_mode: Literal["prompt", "template"] = "prompt"
     stop_words: str = ""
     is_active: bool = True
 
@@ -50,6 +57,7 @@ class SourceUpdate(BaseModel):
     title: str | None = None
     interval_minutes: int | None = Field(default=None, ge=5, le=10080)
     answer_prompt: str | None = None
+    assembly_mode: Literal["prompt", "template"] | None = None
     stop_words: str | None = None
     is_active: bool | None = None
 
@@ -127,6 +135,7 @@ def _source_card(
         "title": source.title,
         "interval_minutes": source.interval_minutes,
         "answer_prompt": source.answer_prompt,
+        "assembly_mode": source.assembly_mode,
         "stop_words": source.stop_words,
         "is_active": source.is_active,
         "running": source.running,
@@ -200,6 +209,7 @@ async def create_source(
         title=req.title.strip(),
         interval_minutes=req.interval_minutes,
         answer_prompt=_check_prompt(req.answer_prompt, "Промпт оформления"),
+        assembly_mode=req.assembly_mode,
         stop_words=_check_stop_words(req.stop_words),
         is_active=req.is_active,
     )
@@ -228,6 +238,8 @@ async def update_source(
         source.interval_minutes = req.interval_minutes
     if req.answer_prompt is not None:
         source.answer_prompt = _check_prompt(req.answer_prompt, "Промпт оформления")
+    if req.assembly_mode is not None:
+        source.assembly_mode = req.assembly_mode
     if req.stop_words is not None:
         source.stop_words = _check_stop_words(req.stop_words)
     if req.is_active is not None:

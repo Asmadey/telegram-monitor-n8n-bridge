@@ -201,8 +201,16 @@ async function selectFeedItem(id) {
   if (feedDetailCount) feedDetailCount.textContent = `${item.messages_count} постов`;
 
   if (feedDetailSummary) {
-    const text = item.ai_analysis || 'AI-анализ не был сгенерирован для этой выборки (OpenRouter был выключен).';
-    feedDetailSummary.innerHTML = formatTelegramText(text);
+    // Находки пришли данными (13.9) — рисуем карточки. Записи ленты старше
+    // этой задачи данных не несут и остаются на отрисованном тексте: иначе
+    // вся прежняя лента опустела бы.
+    const findings = Array.isArray(item.findings) ? item.findings : [];
+    if (findings.length) {
+      feedDetailSummary.innerHTML = findings.map(findingCard).join('');
+    } else {
+      const text = item.ai_analysis || 'AI-анализ не был сгенерирован для этой выборки (OpenRouter был выключен).';
+      feedDetailSummary.innerHTML = formatTelegramText(text);
+    }
   }
 
   if (feedDetailTgLink) {
@@ -321,4 +329,20 @@ if (deleteFeedItemBtn) {
       showToast('Ошибка удаления', true);
     }
   });
+}
+
+function findingCard(finding) {
+  // Каждое поле чужое: и название вакансии, и компания приходят из поста.
+  // `html` экранирует каждую подстановку сам — своего escaper тут заводить
+  // незачем, а забыть его было бы ровно тем XSS, что ловит test_02.
+  const facts = ['company', 'salary', 'format', 'location']
+    .map((name) => (finding[name] || '').trim())
+    .filter(Boolean)
+    .join(' • ');
+  const description = (finding.description || '').trim();
+  return html`<div class="finding-card">
+    <a class="finding-title" href="${finding.post_url || ''}" target="_blank" rel="noopener">${finding.title || 'Без названия'}</a>
+    ${facts ? raw(html`<div class="finding-facts">${facts}</div>`) : ''}
+    ${description ? raw(html`<div class="finding-description">${description}</div>`) : ''}
+  </div>`;
 }

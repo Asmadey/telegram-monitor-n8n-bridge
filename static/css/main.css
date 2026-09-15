@@ -1272,6 +1272,44 @@
       margin-bottom: var(--space-xs);
     }
 
+    /* Карточка находки (13.9): лента рисует её из ДАННЫХ, а не из
+       отрисованного моделью текста. Поэтому вид задаётся здесь один раз и
+       одинаков всегда — раньше он зависел от того, что модель сочинила в
+       этот раз. */
+    .finding-card {
+      padding: var(--space-md) 0;
+      border-bottom: 1px solid var(--hairline-subtle);
+    }
+
+    .finding-card:last-child {
+      border-bottom: none;
+    }
+
+    .finding-title {
+      display: inline-block;
+      font-size: var(--text-body-sm);
+      font-weight: 600;
+      color: var(--ink);
+      text-decoration: none;
+    }
+
+    .finding-title:hover {
+      text-decoration: underline;
+    }
+
+    .finding-facts {
+      margin-top: var(--space-xs);
+      font-size: var(--text-caption);
+      color: var(--body-mid);
+    }
+
+    .finding-description {
+      margin-top: var(--space-xs);
+      font-size: var(--text-caption);
+      color: var(--body);
+      line-height: 1.5;
+    }
+
     .risk-consent {
       display: flex;
       align-items: flex-start;
