@@ -303,7 +303,6 @@ def test_no_chromatic_colour_hides_in_an_rgba_literal():
 # глифы значило бы сломать вёрстку ради красивого отчёта.
 ALLOWED_FONT_SIZES = {
     "9px": ".check-dot — знак в кружке 13×13",
-    "10px": ".prompt-dot — знак в квадрате 18×18",
 }
 
 _FONT_SIZE = re.compile(r"font-size:\s*([\d.]+px)")
@@ -339,6 +338,16 @@ def test_every_text_size_comes_from_the_scale():
         "включая 12.5, 11.5, 13.5 и 10.5, взятые ниоткуда: каждый экран "
         "дрейфовал сам по себе, и сравнить его было не с чем"
     )
+
+
+def test_the_font_size_registry_does_not_outlive_its_entries():
+    """Исключение, которого больше нет в коде, — тот же мусор, что правило
+    без разметки. `.prompt-dot` (10px) исчез, когда значок промпта стал
+    подписью; запись о нём пережила бы его и ввела в заблуждение следующего.
+    """
+    live = set(font_size_literals())
+    stale = sorted(set(ALLOWED_FONT_SIZES) - live)
+    assert not stale, f"в реестре размеры, которых в коде уже нет: {stale}"
 
 
 def test_the_scale_matches_the_document():

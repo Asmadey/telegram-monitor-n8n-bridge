@@ -151,6 +151,26 @@ def test_the_row_offers_editing_and_deleting():
 # --------------------------------------------------------------------------
 
 
+def test_the_prompt_indicator_is_not_a_second_pencil():
+    """Найдено владельцем: значок промпта рисовался глифом «карандаш» — тем
+    же, что и кнопка правки рядом. В строке оказывалось два карандаша подряд,
+    зелёный и серый, и первый читался как вторая кнопка.
+
+    Показатель состояния не должен выглядеть как действие. Значок подписан
+    словом — ровно так, как владелец и просил изначально: «Промпт» зелёный,
+    если задан, красный, если пуст.
+    """
+    import json as _json
+
+    badge = _json.loads(
+        _node('process.stdout.write(JSON.stringify(promptBadge("искать")));')
+    )
+    assert badge.get("label"), "у значка нет подписи — он снова читается как кнопка"
+    assert "✎" not in _json.dumps(badge, ensure_ascii=False), (
+        "значок промпта по-прежнему рисуется карандашом и дублирует кнопку правки"
+    )
+
+
 def test_an_empty_prompt_is_marked_red_and_a_filled_one_green():
     filled = json.loads(
         _node('process.stdout.write(JSON.stringify(promptBadge("искать")));')
@@ -177,7 +197,7 @@ def test_the_badge_class_names_are_written_out_in_full():
     (`check-dot-${tone}`), не находится ничем — ни поиском по проекту, ни
     свипом осиротевших стилей."""
     render = (JS_DIR / "render.js").read_text(encoding="utf-8")
-    for name in ("prompt-dot-ok", "prompt-dot-bad"):
+    for name in ("prompt-flag-ok", "prompt-flag-bad"):
         assert name in render, f"имя класса {name} нигде не написано целиком"
         assert name in CSS, f"класс {name} используется, но не описан в стилях"
 

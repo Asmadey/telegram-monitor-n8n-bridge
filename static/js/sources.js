@@ -418,11 +418,11 @@ editChannelsList.addEventListener('input', (event) => {
     if (label) label.textContent = event.target.value || '0';
   }
   if (event.target.classList.contains('channel-prompt')) {
-    const dot = row.querySelector('.prompt-dot');
-    if (!dot) return;
+    const flag = row.querySelector('.prompt-flag');
+    if (!flag) return;
     const badge = promptBadge(event.target.value);
-    dot.className = `prompt-dot ${badge.cls}`;
-    dot.title = badge.title;
+    flag.className = `prompt-flag ${badge.cls}`;
+    flag.title = badge.title;
   }
 });
 

@@ -728,21 +728,43 @@
 
     /* Промпт извлечения задан или пуст. Пустой — законное состояние базы,
        но не рабочее: каналу нечем объяснить, что искать. */
-    .prompt-dot {
+    /* Подпись, а не глиф: карандаш дублировал кнопку правки, стоящую в той
+       же строке, и читался как вторая кнопка (найдено владельцем). */
+    .prompt-flag {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      width: 18px;
-      height: 18px;
+      gap: var(--space-xs);
+      padding: var(--space-xxs) var(--space-sm);
       border-radius: var(--rounded-xs);
-      font-size: 10px;
-      line-height: 1;
-      color: var(--on-primary);
+      font-size: var(--text-eyebrow-sm);
+      font-weight: 500;
+      line-height: 1.4;
+      white-space: nowrap;
       cursor: help;
     }
 
-    .prompt-dot-ok { background: var(--accent-green-deep); }
-    .prompt-dot-bad { background: var(--accent-red); }
+    /* Точка + цветной текст на бледной подложке, а НЕ сплошная заливка.
+       Сплошная заливка рядом с кнопками читается как третья кнопка — вторая
+       редакция той же ошибки, из-за которой значок сначала был карандашом.
+       Показатель состояния обязан быть легче действия. */
+    .prompt-flag::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      flex: none;
+    }
+
+    .prompt-flag-ok {
+      color: var(--accent-green-deep);
+      background: color-mix(in srgb, var(--accent-green-deep) 10%, transparent);
+    }
+
+    .prompt-flag-bad {
+      color: var(--accent-red);
+      background: color-mix(in srgb, var(--accent-red) 10%, transparent);
+    }
 
     .check-dot {
       display: inline-flex;
