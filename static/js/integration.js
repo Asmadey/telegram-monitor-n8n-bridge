@@ -111,7 +111,7 @@ function highlightText(text, query) {
   if (!query) return escapeHtml(text);
   const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escapedQuery})`, 'gi');
-  return escapeHtml(text).replace(regex, '<span style="background: #fff3a8; color: #78350f; font-weight: 700; border-radius: 2px; padding: 0 2px;">$1</span>');
+  return escapeHtml(text).replace(regex, '<span style="background: var(--highlight-bg); color: var(--highlight-ink); font-weight: 700; border-radius: 2px; padding: 0 2px;">$1</span>');
 }
 
 function renderModelsDropdown(query = '') {
@@ -160,7 +160,7 @@ function renderModelsDropdown(query = '') {
     else groups['Другие модели'].push(m);
   });
 
-  let dropdownHtml = html`<div style="padding: 6px 12px; font-size: 11px; color: #5533ff; background: #f5f3ff; border-bottom: 1px solid var(--hairline); font-weight: 600;">Найдено моделей: ${filtered.length} ${q ? raw(`по запросу "${escapeHtml(q)}"`) : ''}</div>`;
+  let dropdownHtml = html`<div style="padding: 6px 12px; font-size: 11px; color: var(--accent-purple); background: var(--surface-accent-soft); border-bottom: 1px solid var(--hairline); font-weight: 600;">Найдено моделей: ${filtered.length} ${q ? raw(`по запросу "${escapeHtml(q)}"`) : ''}</div>`;
   for (const [groupName, groupModels] of Object.entries(groups)) {
     if (groupModels.length > 0) {
       dropdownHtml += html`<div class="autocomplete-group-header">🌟 ${groupName} (${groupModels.length})</div>`;
@@ -176,7 +176,7 @@ function renderModelsDropdown(query = '') {
               <div class="autocomplete-item-name">${raw(nameHtml)}</div>
               <div class="autocomplete-item-id">${raw(idHtml)}</div>
             </div>
-            ${isCurrent ? raw(`<span style="font-size: 12px; color: #5533ff; font-weight: 700;">✓</span>`) : ''}
+            ${isCurrent ? raw(`<span style="font-size: 12px; color: var(--accent-purple); font-weight: 700;">✓</span>`) : ''}
           </div>
         `;
       }).join('');
@@ -553,7 +553,7 @@ export async function loadCleanupConfig() {
     if (cleanupStatusLabel) {
       if (data.enabled) {
         cleanupStatusLabel.textContent = `Вкл (${data.days} дн.)`;
-        cleanupStatusLabel.style.color = '#008715';
+        cleanupStatusLabel.style.color = 'var(--accent-green-deep)';
       } else {
         cleanupStatusLabel.textContent = 'Выкл';
         cleanupStatusLabel.style.color = 'var(--body-mid)';

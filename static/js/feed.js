@@ -120,7 +120,7 @@ function renderFeedList() {
             <div class="feed-card-meta">
               <span>${formatRelativeTime(item.created_at)}</span>
               <span style="opacity: 0.5;">•</span>
-              <span style="color: #008715; font-weight: 500;">${item.messages_count} постов</span>
+              <span style="color: var(--accent-green-deep); font-weight: 500;">${item.messages_count} постов</span>
             </div>
           </div>
         </div>
@@ -236,7 +236,7 @@ async function selectFeedItem(id) {
           </div>
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             ${m.views !== null && m.views !== undefined ? raw(`<span class="badge-metric">👁️ ${Number(m.views).toLocaleString('ru-RU')}</span>`) : ''}
-            ${m.reactions_count ? raw(`<span class="badge-metric" style="color: #ed52cb;">❤️ ${m.reactions_count}</span>`) : ''}
+            ${m.reactions_count ? raw(`<span class="badge-metric" style="color: var(--accent-pink);">❤️ ${m.reactions_count}</span>`) : ''}
             ${m.forwards ? raw(`<span class="badge-metric">↗️ ${m.forwards}</span>`) : ''}
             ${m.has_media ? raw(`<span class="badge-media">📎 Медиа</span>`) : ''}
             ${m.post_url ? raw(html`<a href="${m.post_url}" target="_blank" class="post-link-btn" style="margin-left: auto;">🔗 Открыть в TG</a>`) : ''}
