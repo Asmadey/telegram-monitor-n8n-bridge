@@ -25,6 +25,12 @@
       --accent-red: #ee1d36;
 
       /* Shapes & Spacing */
+      /* Шкала радиусов — из DESIGN-webflow.md, целиком. `--rounded-xs`
+         отсутствовал, а использовался двенадцать раз: невалидное значение
+         не ошибка, а выброшенное правило, и скругление полей молча
+         пропадало. Рядом однажды зашили `2px` литералом — лечили симптом. */
+      --rounded-none: 0px;
+      --rounded-xs: 2px;
       --rounded-sm: 4px;
       --rounded-md: 8px;
       --rounded-full: 9999px;
@@ -574,7 +580,7 @@
     }
 
     .timeline-divider {
-      color: var(--hairline-strong);
+      color: var(--mute-soft);
       opacity: 0.6;
       font-size: 10px;
       user-select: none;
