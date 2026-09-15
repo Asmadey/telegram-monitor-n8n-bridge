@@ -195,3 +195,58 @@ def test_no_variable_is_used_without_being_declared():
         f"переменные используются, но нигде не объявлены: {orphans}. Каждое "
         "такое место — молча выброшенное правило CSS"
     )
+
+
+# --------------------------------------------------------------------------
+# Свип: цвет живёт в токене, а не в литерале
+# --------------------------------------------------------------------------
+
+# Экраны входа пока несут собственный `:root` и разбираются отдельным шагом.
+COLOUR_FILES = [
+    ROOT / "static" / "index.html",
+    ROOT / "static" / "css" / "main.css",
+    *sorted((ROOT / "static" / "js").glob("*.js")),
+]
+
+# Литералы, которым позволено остаться. Пусто — и это правильное состояние:
+# каждая запись здесь означает цвет, живущий мимо системы.
+ALLOWED_LITERALS: dict[str, str] = {}
+
+_DECLARATION = re.compile(r"^\s*--[\w-]+\s*:")
+_HEX = re.compile(r"#[0-9a-fA-F]{3,8}\b")
+
+
+def colour_literals() -> dict[str, list[str]]:
+    """Hex-цвета вне объявлений токенов, с адресами."""
+    found: dict[str, list[str]] = {}
+    for path in COLOUR_FILES:
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if _DECLARATION.match(line):
+                continue  # это и есть объявление токена — ему литерал положен
+            for hexcode in _HEX.findall(line):
+                found.setdefault(hexcode.lower(), []).append(f"{path.name}:{number}")
+    return found
+
+
+def test_the_colour_scanner_sees_through_both_cases():
+    """Self-test: сканер обязан отличать объявление токена от использования."""
+    declaration = "      --accent-red: #ee1d36;"
+    usage = "      .x { color: #ee1d36; }"
+    assert _DECLARATION.match(declaration), "объявление не опознано — сканер онемеет"
+    assert not _DECLARATION.match(usage), "использование принято за объявление"
+    assert _HEX.findall(usage) == ["#ee1d36"]
+    assert _HEX.findall("var(--accent-red)") == [], "сканер видит цвет там, где токен"
+
+
+def test_no_colour_lives_outside_the_token_system():
+    literals = colour_literals()
+    stray = {
+        hexcode: places
+        for hexcode, places in literals.items()
+        if hexcode not in ALLOWED_LITERALS
+    }
+    assert not stray, (
+        f"цвета мимо системы: {len(stray)} значений, "
+        f"{sum(len(p) for p in stray.values())} вхождений — {stray}. Каждый "
+        "литерал живёт своей жизнью: правка палитры в документе его не догонит"
+    )

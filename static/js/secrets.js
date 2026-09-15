@@ -53,7 +53,7 @@ export function fillSecretField(input, statusEl, { present, masked, value = null
       value !== null && value !== undefined
         ? `${noun} сохранён.`
         : `${noun} сохранён. Нажмите «глазик», чтобы показать значение целиком.`;
-    statusEl.style.color = '#008715';
+    statusEl.style.color = 'var(--accent-green-deep)';
   } else {
     statusEl.textContent = `${noun} не задан.`;
     statusEl.style.color = 'var(--body-mid)';

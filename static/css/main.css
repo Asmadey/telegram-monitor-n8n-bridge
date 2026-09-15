@@ -29,6 +29,30 @@
          отсутствовал, а использовался двенадцать раз: невалидное значение
          не ошибка, а выброшенное правило, и скругление полей молча
          пропадало. Рядом однажды зашили `2px` литералом — лечили симптом. */
+      /* Роли, которых в документе нет, и это не упущение: DESIGN-webflow.md
+         описывает БРЕНД, а не состояния интерфейса. Панели «успех / внимание /
+         отказ», подсветка поиска и блок кода — наш слой поверх документа.
+         Значения взяты ТЕ ЖЕ, что были в литералах: этот шаг переводит цвета
+         на токены, а не перекрашивает кабинет. */
+      --surface-alt: #fafbfc;
+      --surface-ok: #f6fdf8;
+      --surface-warn: #fff8f2;
+      --surface-bad: #fff5f5;
+      --surface-bad-line: #fed7d7;
+      --surface-info: #f0f4ff;
+      --surface-accent-soft: #eef2ff;
+      --text-info: #1d4ed8;
+      --highlight-bg: #fff3a8;
+      --highlight-ink: #78350f;
+      --code-bg: #0f141c;
+      --code-ink: #79c0ff;
+      /* Зелёный документа `--accent-green` — цвет ПОВЕРХНОСТИ: сам
+         документ кладёт на него тёмный текст (`category-card-green`). Как
+         текст на белом он нечитаем, поэтому у зелёного текста свой токен.
+         То же и с янтарным. */
+      --accent-green-deep: #008715;
+      --accent-amber-deep: #b26b00;
+
       --rounded-none: 0px;
       --rounded-xs: 2px;
       --rounded-sm: 4px;
@@ -58,8 +82,8 @@
 
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: var(--canvas-alt); }
-    ::-webkit-scrollbar-thumb { background: #c5c5c5; border-radius: var(--rounded-sm); }
-    ::-webkit-scrollbar-thumb:hover { background: #999; }
+    ::-webkit-scrollbar-thumb { background: var(--mute-soft); border-radius: var(--rounded-sm); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--mute); }
 
     .container {
       max-width: 1400px;
@@ -128,7 +152,7 @@
       padding: 4px 10px;
       background: rgba(0, 215, 34, 0.08);
       border: 1px solid rgba(0, 215, 34, 0.3);
-      color: #008715;
+      color: var(--accent-green-deep);
       border-radius: var(--rounded-full);
       font-size: 12px;
       font-weight: 500;
@@ -202,7 +226,7 @@
 
     .tab-btn.active .tab-badge {
       background: rgba(255, 255, 255, 0.2);
-      color: #ffffff;
+      color: var(--on-primary);
     }
 
     .btn-icon-sm {
@@ -238,7 +262,7 @@
 
     .card:hover {
       box-shadow: var(--shadow-layered-md);
-      border-color: #c5c5c5;
+      border-color: var(--mute-soft);
     }
 
     .card-header {
@@ -336,8 +360,8 @@
     }
 
     .btn-primary:hover {
-      background: #222;
-      border-color: #222;
+      background: var(--ink-strong);
+      border-color: var(--ink-strong);
     }
 
     .btn-secondary {
@@ -348,18 +372,18 @@
 
     .btn-secondary:hover {
       background: var(--canvas-soft);
-      border-color: #bbb;
+      border-color: var(--mute-soft);
     }
 
     .btn-danger {
-      background: #fff5f5;
+      background: var(--surface-bad);
       color: var(--accent-red);
-      border-color: #fed7d7;
+      border-color: var(--surface-bad-line);
     }
 
     .btn-danger:hover {
       background: var(--accent-red);
-      color: #fff;
+      color: var(--on-primary);
       border-color: var(--accent-red);
     }
 
@@ -413,7 +437,7 @@
       position: absolute;
       cursor: pointer;
       top: 0; left: 0; right: 0; bottom: 0;
-      background-color: #d1d5db;
+      background-color: var(--hairline);
       transition: .25s cubic-bezier(0.4, 0, 0.2, 1);
       border-radius: var(--rounded-full);
     }
@@ -481,7 +505,7 @@
     }
 
     .monitor-row-card:hover {
-      border-color: #bbb;
+      border-color: var(--mute-soft);
       border-left-color: var(--primary);
       box-shadow: var(--shadow-layered-md);
     }
@@ -547,13 +571,13 @@
 
     .clean-pill-accent {
       background: rgba(59, 130, 246, 0.08);
-      color: #1d4ed8;
+      color: var(--text-info);
       border-color: rgba(59, 130, 246, 0.22);
     }
 
     .clean-pill-purple {
       background: rgba(147, 51, 234, 0.08);
-      color: #7e22ce;
+      color: var(--accent-purple);
       border-color: rgba(147, 51, 234, 0.22);
     }
 
@@ -684,12 +708,12 @@
       border-radius: var(--rounded-xs);
       font-size: 10px;
       line-height: 1;
-      color: #fff;
+      color: var(--on-primary);
       cursor: help;
     }
 
-    .prompt-dot-ok { background: #008715; }
-    .prompt-dot-bad { background: var(--accent-red, #c62828); }
+    .prompt-dot-ok { background: var(--accent-green-deep); }
+    .prompt-dot-bad { background: var(--accent-red); }
 
     .check-dot {
       display: inline-flex;
@@ -702,14 +726,14 @@
       font-size: 9px;
       font-weight: 700;
       line-height: 1;
-      color: #fff;
+      color: var(--on-primary);
       background: var(--mute);
       cursor: help;
     }
 
-    .check-dot-ok { background: #008715; }
-    .check-dot-warn { background: #b26b00; }
-    .check-dot-bad { background: var(--accent-red, #c62828); }
+    .check-dot-ok { background: var(--accent-green-deep); }
+    .check-dot-warn { background: var(--accent-amber-deep); }
+    .check-dot-bad { background: var(--accent-red); }
     .check-dot-unknown { background: var(--mute); }
 
     .timeline-next-status {
@@ -722,14 +746,14 @@
     }
 
     .timeline-next-status.active {
-      color: #008715;
+      color: var(--accent-green-deep);
     }
 
     .pulse-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #00d722;
+      background: var(--accent-green);
       display: inline-block;
       box-shadow: 0 0 0 2px rgba(0, 215, 34, 0.2);
     }
@@ -863,7 +887,7 @@
     }
 
     tbody tr:hover {
-      background: #fafbfc;
+      background: var(--surface-alt);
     }
 
     td {
@@ -969,7 +993,7 @@
 
     .status-tag.SUCCESS {
       background: rgba(0, 215, 34, 0.1);
-      color: #008715;
+      color: var(--accent-green-deep);
       border: 1px solid rgba(0, 215, 34, 0.3);
     }
 
@@ -1074,12 +1098,12 @@
     }
 
     .json-code {
-      background: #0f141c;
+      background: var(--code-bg);
       padding: 14px;
       border-radius: var(--rounded-sm);
       font-family: 'Inconsolata', monospace;
       font-size: 12.5px;
-      color: #79c0ff;
+      color: var(--code-ink);
       overflow-x: auto;
       max-height: 400px;
       line-height: 1.4;
@@ -1093,7 +1117,7 @@
       border: 1px solid var(--accent-orange);
       border-left-width: 3px;
       border-radius: var(--rounded-sm);
-      background: #fff8f2;
+      background: var(--surface-warn);
       padding: 12px 14px;
       margin-bottom: 12px;
       font-size: 12.5px;
@@ -1188,7 +1212,7 @@
     }
 
     .dialog-item:hover {
-      border-color: #bbb;
+      border-color: var(--mute-soft);
       background: var(--canvas-soft);
     }
 
@@ -1211,7 +1235,7 @@
       right: 0;
       top: 100%;
       z-index: 1000;
-      background: #ffffff;
+      background: var(--canvas);
       border: 1px solid var(--hairline);
       border-radius: var(--rounded-xs);
       box-shadow: 0 10px 30px rgba(0,0,0,0.12);
@@ -1232,8 +1256,8 @@
 
     .autocomplete-item:hover,
     .autocomplete-item.selected {
-      background: #f0f4ff;
-      color: #3b28cc;
+      background: var(--surface-info);
+      color: var(--accent-purple);
     }
 
     .autocomplete-item-name {
@@ -1275,9 +1299,9 @@
     }
 
     .quick-model-tag:hover {
-      background: #eef2ff;
-      color: #5533ff;
-      border-color: #5533ff;
+      background: var(--surface-accent-soft);
+      color: var(--accent-purple);
+      border-color: var(--accent-purple);
     }
 
     /* ==================== FEED (MASTER-DETAIL) STYLES ==================== */
@@ -1335,8 +1359,8 @@
     }
 
     .feed-card:hover {
-      border-color: #bbb;
-      background: #fafbfc;
+      border-color: var(--mute-soft);
+      background: var(--surface-alt);
     }
 
     .feed-card.active {
@@ -1428,7 +1452,7 @@
     }
 
     .feed-summary-box strong {
-      color: #000;
+      color: var(--primary);
       font-weight: 600;
     }
 
@@ -1442,5 +1466,5 @@
     }
 
     .feed-raw-post:hover {
-      border-color: #bbb;
+      border-color: var(--mute-soft);
     }

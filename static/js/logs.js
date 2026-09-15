@@ -35,7 +35,7 @@ export async function loadOpsStatus() {
     const s = await res.json();
 
     opsDb.textContent = s.database.ok ? 'доступна' : 'НЕДОСТУПНА';
-    opsDb.style.color = s.database.ok ? '' : '#d33';
+    opsDb.style.color = s.database.ok ? '' : 'var(--accent-red)';
 
     if (!s.worker.seen) {
       opsWorker.textContent = 'не запускался';
@@ -44,13 +44,13 @@ export async function loadOpsStatus() {
     }
     // Молчащий воркер — самый вероятный отказ: лента пуста, задача висит,
     // ошибок нет нигде. Поэтому он выделен, а не спрятан в общий текст.
-    opsWorker.style.color = s.worker.alive ? '' : '#d33';
+    opsWorker.style.color = s.worker.alive ? '' : 'var(--accent-red)';
 
     const oldest = s.jobs.oldest_pending_seconds;
     opsQueue.textContent = s.jobs.pending === 0
       ? 'пусто'
       : `${s.jobs.pending} в ожидании, старшей ${age(oldest)}`;
-    opsQueue.style.color = s.jobs.pending > 0 && oldest > 600 ? '#d33' : '';
+    opsQueue.style.color = s.jobs.pending > 0 && oldest > 600 ? 'var(--accent-red)' : '';
 
     // Отпечатки, а не ключи: по восьми знакам хеша ключ не восстановить,
     // но видно, одним ли ключом работают web и воркер. Разные ключи —
@@ -61,7 +61,7 @@ export async function loadOpsStatus() {
       opsKey.style.color = '';
     } else if (enc.match === false) {
       opsKey.textContent = `РАЗНЫЙ: web ${enc.web}, воркер ${enc.worker}`;
-      opsKey.style.color = '#d33';
+      opsKey.style.color = 'var(--accent-red)';
     } else {
       opsKey.textContent = `web ${enc.web || '—'}, воркер не отмечался`;
       opsKey.style.color = '';
