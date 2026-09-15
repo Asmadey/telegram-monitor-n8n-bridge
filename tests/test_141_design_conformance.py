@@ -492,6 +492,11 @@ def test_the_tracking_comes_from_the_document():
 # Экраны входа — одна система, а не вторая
 # --------------------------------------------------------------------------
 
+# Четыре цвета знака Google — ЕГО фирменные, а не наша палитра, и менять их
+# нельзя: это товарный знак. В токены они не попадают именно поэтому — токен
+# приглашает «подправить под себя».
+GOOGLE_MARK = {"#4285F4", "#34A853", "#FBBC05", "#EA4335"}
+
 AUTH_PAGES = [
     ROOT / "static" / name
     for name in ("login.html", "signup.html", "password-reset.html")
@@ -516,7 +521,7 @@ def test_the_entrance_screens_have_no_palette_of_their_own():
             "`style-src 'unsafe-inline'` из политики не убрать"
         )
         assert "/static/css/main.css" in src, f"{page.name}: не подключает общие токены"
-        stray = _HEX.findall(src)
+        stray = [h for h in _HEX.findall(src) if h.upper() not in GOOGLE_MARK]
         assert not stray, f"{page.name}: цвета мимо системы — {stray}"
 
 
@@ -660,3 +665,95 @@ def test_nothing_in_static_wears_an_inline_style_any_more():
         f"инлайновые стили вернулись: {guilty}. Пока они есть, "
         "`style-src 'unsafe-inline'` из политики не убрать"
     )
+
+
+# --------------------------------------------------------------------------
+# Кнопка входа через Google
+# --------------------------------------------------------------------------
+
+
+def specificity(selector: str) -> tuple[int, int, int]:
+    """(id, класс/псевдокласс, тип) — как считает браузер."""
+    ids = len(re.findall(r"#[\w-]+", selector))
+    classes = len(re.findall(r"\.[\w-]+", selector)) + len(
+        re.findall(r":(?!:)[a-z-]+", selector)
+    )
+    types = len(re.findall(r"(?:^|[\s>+~])([a-z][\w-]*)", selector))
+    return (ids, classes, types)
+
+
+def rules_setting(css: str, prop: str) -> list[tuple[str, str]]:
+    """Пары (селектор, значение) для правил, задающих это свойство.
+
+    Комментарии срезаются, а список селекторов через запятую разбирается
+    ПОШТУЧНО. Первая версия этого не делала: комментарий перед правилом и
+    соседние селекторы склеивались в одну строку, и вес выходил
+    фантастический — `(3, 2, 2)` там, где браузер видит `(0, 1, 1)`.
+    Разборщик, считающий не то, отвечает не на тот вопрос.
+    """
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    out = []
+    for selectors, body in re.findall(r"([^{}]+)\{([^}]*)\}", css):
+        for decl in body.split(";"):
+            name, _, value = decl.partition(":")
+            if name.strip() != prop:
+                continue
+            for selector in selectors.split(","):
+                if selector.strip():
+                    out.append((selector.strip(), value.strip()))
+    return out
+
+
+def test_the_rule_parser_is_not_fooled_by_comments_or_lists():
+    sample = "/* .fake .fake .fake { color: red } */\n.a, .b button { color: blue; }"
+    assert rules_setting(sample, "color") == [(".a", "blue"), (".b button", "blue")], (
+        rules_setting(sample, "color")
+    )
+
+
+def test_the_specificity_calculator_agrees_with_the_browser():
+    assert specificity(".auth-card button") == (0, 1, 1)
+    assert specificity(".google-btn") == (0, 1, 0)
+    assert specificity(".auth-card .google-btn:hover") == (0, 3, 0)
+    assert specificity("#connectionBanner.open") == (1, 1, 0)
+
+
+def test_the_google_button_outweighs_the_primary_button():
+    """Регрессия, найденная владельцем 2026-09-15.
+
+    Кнопка «Войти через Google» на наведении становилась светлой, а текст
+    оставался белым — читать было нечего. Причина в специфичности, которую
+    внёс шаг 6: правило базовой кнопки стало `.auth-card button` (0,1,1) и
+    переиграло `.google-btn` (0,1,0). До этого базовым был голый `button`
+    (0,0,1), и класс выигрывал.
+
+    Проверяется НЕ цвет, а вес: цвет — следствие, вес — причина.
+    """
+    css = (ROOT / "static" / "css" / "auth.css").read_text(encoding="utf-8")
+    for prop in ("color", "background"):
+        base = max(
+            (specificity(s) for s, _ in rules_setting(css, prop) if "google" not in s),
+            default=(0, 0, 0),
+        )
+        google = [
+            specificity(s) for s, _ in rules_setting(css, prop) if "google-btn" in s
+        ]
+        assert google, f"у кнопки Google не задано свойство {prop}"
+        assert min(google) > base, (
+            f"правило кнопки Google по свойству {prop} легче базового "
+            f"({min(google)} против {base}) — базовое переиграет, и кнопка "
+            "снова станет нечитаемой"
+        )
+
+
+def test_the_google_button_carries_the_official_mark():
+    """Своя кнопка вместо голого текста — так делают все, и не из красоты:
+    человек ищет глазами знакомый знак, а не строку."""
+    for name in ("login.html", "signup.html"):
+        src = (ROOT / "static" / name).read_text(encoding="utf-8")
+        button = src.split('id="googleSignIn"', 1)[1].split("</button>", 1)[0]
+        assert "<svg" in button, f"{name}: у кнопки Google нет знака"
+        assert "aria-hidden" in button, (
+            f"{name}: знак не спрятан от чтения с экрана — он декоративный, "
+            "смысл несёт подпись"
+        )

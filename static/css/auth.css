@@ -122,15 +122,34 @@ body {
   margin-top: var(--space-md);
 }
 
-.google-btn {
+/* Селектор ДВУСОСТАВНЫЙ намеренно. Базовое правило кнопки — `.auth-card
+   button` (вес 0,1,1), и одиночный `.google-btn` (0,1,0) ему проигрывает:
+   кнопка получала чёрную заливку и белый текст, а на наведении фон светлел
+   (у `:hover` вес выше), и текст пропадал. Найдено владельцем 2026-09-15;
+   инверсию внёс шаг 6, когда базовое правило из голого `button` (0,0,1)
+   стало `.auth-card button`. */
+.auth-card .google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
   background: var(--canvas);
   color: var(--ink);
   border: 1px solid var(--hairline);
+  font-weight: 500;
 }
 
-.google-btn:hover {
+.auth-card .google-btn:hover {
   background: var(--canvas-soft);
+  color: var(--ink);
   opacity: 1;
+}
+
+/* Знак 18px — размер из фирменного руководства Google; остальное наше. */
+.google-btn-mark {
+  width: 18px;
+  height: 18px;
+  flex: none;
 }
 
 .google-error {
