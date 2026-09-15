@@ -144,3 +144,32 @@
 .u-maxh-480.u-maxh-480 { max-height: 480px; }
 .u-ovy-auto.u-ovy-auto { overflow-y: auto; }
 .u-maxw-520.u-maxw-520 { max-width: 520px; }
+.u-d-inline-block.u-d-inline-block { display: inline-block; }
+.u-minw-0.u-minw-0 { min-width: 0; }
+.u-op-0_5.u-op-0_5 { opacity: 0.5; }
+.u-h-full.u-h-full { height: 100%; }
+.u-rad-50pct.u-rad-50pct { border-radius: 50%; }
+.u-of-cover.u-of-cover { object-fit: cover; }
+.u-c-body.u-c-body { color: var(--body); }
+.u-c-accent-pink.u-c-accent-pink { color: var(--accent-pink); }
+.u-ml-auto.u-ml-auto { margin-left: auto; }
+.u-bg-highlight-bg.u-bg-highlight-bg { background: var(--highlight-bg); }
+.u-c-highlight-ink.u-c-highlight-ink { color: var(--highlight-ink); }
+.u-rad-2.u-rad-2 { border-radius: 2px; }
+.u-p-0-xxs.u-p-0-xxs { padding: 0 var(--space-xxs); }
+.u-p-xs-md.u-p-xs-md { padding: var(--space-xs) var(--space-md); }
+.u-c-accent-purple.u-c-accent-purple { color: var(--accent-purple); }
+.u-bg-surface-accent-soft.u-bg-surface-accent-soft { background: var(--surface-accent-soft); }
+.u-bdb-1-solid-hairline.u-bdb-1-solid-hairline { border-bottom: 1px solid var(--hairline); }
+.u-wb-break-word.u-wb-break-word { word-break: break-word; }
+.u-items-flex-start.u-items-flex-start { align-items: flex-start; }
+.u-bg-color-mix-in-srgb-accent-pink-8pct-transparent.u-bg-color-mix-in-srgb-accent-pink-8pct-transparent { background: color-mix(in srgb, var(--accent-pink) 8%, transparent); }
+.u-border-color-color-mix-in-srgb-accent-pink-25pct-transparent.u-border-color-color-mix-in-srgb-accent-pink-25pct-transparent { border-color: color-mix(in srgb, var(--accent-pink) 25%, transparent); }
+.u-p-xxs-xs.u-p-xxs-xs { padding: var(--space-xxs) var(--space-xs); }
+.u-ff-monospace.u-ff-monospace { font-family: monospace; }
+.u-p-sm-0.u-p-sm-0 { padding: var(--space-sm) 0; }
+.u-c-accent-red.u-c-accent-red { color: var(--accent-red); }
+.u-p-xl.u-p-xl { padding: var(--space-xl); }
+.u-p-xxs-0.u-p-xxs-0 { padding: var(--space-xxs) 0; }
+.u-bdt-1-solid-hairline-subtle.u-bdt-1-solid-hairline-subtle { border-top: 1px solid var(--hairline-subtle); }
+.u-items-baseline.u-items-baseline { align-items: baseline; }

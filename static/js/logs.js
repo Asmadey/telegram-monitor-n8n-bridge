@@ -95,7 +95,7 @@ function renderLogs() {
   if (currentLogs.length === 0) {
     logsTableBody.innerHTML = html`
       <tr>
-        <td colspan="5" style="text-align: center; padding: var(--space-3xl); color: var(--mute);">
+        <td colspan="5" class="u-ta-center u-p-3xl u-c-mute">
           Записи в журнале логов отсутствуют.
         </td>
       </tr>
@@ -105,19 +105,19 @@ function renderLogs() {
 
   logsTableBody.innerHTML = currentLogs.map(log => html`
     <tr>
-      <td style="color: var(--body-mid); font-size: var(--text-caption); font-variant-numeric: tabular-nums; white-space: nowrap;">
+      <td class="u-c-body-mid u-fs-caption u-fvn-tabular-nums u-ws-nowrap">
         ${new Date(log.timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'})}
       </td>
       <td>
-        <span class="meta-tag" style="font-size: var(--text-eyebrow-sm);">${log.event_type}</span>
+        <span class="meta-tag u-fs-eyebrow-sm" >${log.event_type}</span>
       </td>
       <td>
-        <div style="font-weight: 500; color: var(--ink);">${log.chat_title || '—'}</div>
+        <div class="u-fw-500 u-c-ink">${log.chat_title || '—'}</div>
       </td>
       <td>
         <span class="status-tag ${log.status}">${log.status}</span>
       </td>
-      <td style="font-size: var(--text-caption); color: var(--body); word-break: break-word;">
+      <td class="u-fs-caption u-c-body u-wb-break-word">
         ${log.details || ''}
       </td>
     </tr>

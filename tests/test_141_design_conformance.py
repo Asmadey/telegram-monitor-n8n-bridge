@@ -619,3 +619,44 @@ def test_utilities_speak_in_tokens_not_in_numbers():
         if prop in ("font-size", "gap") and "var(--" not in value:
             bad.append((selector, decl))
     assert not bad, f"утилиты мимо системы: {bad}"
+
+
+def test_the_policy_no_longer_allows_inline_styles():
+    """Финишная черта всей уборки, и её видно машине.
+
+    `style-src 'unsafe-inline'` стоял в политике не по недосмотру: комментарий
+    рядом с ним честно говорил, ради чего — страницы входа держали инлайн-СТИЛИ.
+    Шаг 6 убрал их блоки `<style>`, шаги 7 и 8 — все 199 атрибутов `style=`.
+    Причины больше нет, значит и разрешения быть не должно.
+
+    Присваивания `element.style.x` из скриптов под запрет НЕ попадают: CSSOM
+    политика не трогает, и переключения видимости продолжают работать.
+    """
+    from app.security.headers import CSP
+
+    style_src = next(
+        part.strip() for part in CSP.split(";") if part.strip().startswith("style-src")
+    )
+    assert "'unsafe-inline'" not in style_src, (
+        f"политика всё ещё разрешает инлайновые стили: {style_src!r}"
+    )
+    assert "https://fonts.googleapis.com" in style_src, (
+        "таблица шрифтов подключается ссылкой и обязана остаться разрешённой"
+    )
+
+
+def test_nothing_in_static_wears_an_inline_style_any_more():
+    """Свип по ВСЕМУ static: разметка, модули и страницы входа."""
+    pages = [
+        *sorted((ROOT / "static").glob("*.html")),
+        *sorted((ROOT / "static" / "js").glob("*.js")),
+    ]
+    guilty = {
+        path.name: len(INLINE_STYLE.findall(path.read_text(encoding="utf-8")))
+        for path in pages
+        if INLINE_STYLE.findall(path.read_text(encoding="utf-8"))
+    }
+    assert not guilty, (
+        f"инлайновые стили вернулись: {guilty}. Пока они есть, "
+        "`style-src 'unsafe-inline'` из политики не убрать"
+    )
