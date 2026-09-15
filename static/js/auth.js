@@ -90,12 +90,12 @@ export async function loadSettings() {
     apiKeysHint.textContent = data.has_api_hash ? '' : 'Ключи ещё не заданы';
 
     if (data.is_authorized && data.user) {
-      authStatusBox.style.display = 'block';
+      authStatusBox.hidden = false;
       authWizardBox.style.display = 'none';
       const username = data.user.username ? `@${data.user.username}` : 'нет юзернейма';
       authUserDetails.textContent = `${data.user.phone} (${username}) • ID: ${data.user.id}`;
     } else {
-      authStatusBox.style.display = 'none';
+      authStatusBox.hidden = true;
       authWizardBox.style.display = 'block';
       setAuthStep(1);
     }

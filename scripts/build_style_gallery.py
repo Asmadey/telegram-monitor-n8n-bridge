@@ -75,15 +75,28 @@ LABEL_CSS = """
 
 def build() -> str:
     html = INDEX.read_text(encoding="utf-8")
-    css = CSS.read_text(encoding="utf-8")
+    # Ровно те таблицы, что подключает сама страница, — и ни одной лишней.
+    # Первая версия вшивала всё содержимое `static/css`, и в кабинет затекал
+    # `auth.css` со своим правилом `body`: менялись размер текста и
+    # выравнивание всей страницы. Поймано сравнением отпечатков отрисовки —
+    # глазами это выглядело бы как «вроде так и было».
+    css = "\n".join(
+        (ROOT / href.lstrip("/")).read_text(encoding="utf-8")
+        for href in re.findall(r'<link rel="stylesheet" href="([^"]+\.css)"', html)
+    )
     render_js = RENDER_JS.read_text(encoding="utf-8")
 
     # 1. Стили внутрь: галерея открывается с диска, где /static/ не отдаётся.
+    # Ссылок на таблицы теперь несколько: первая заменяется вшитыми стилями,
+    # остальные убираются — с диска `/static/...` всё равно не отдаётся.
     html = re.sub(
-        r'<link rel="stylesheet" href="/static/css/main\.css">',
+        r'<link rel="stylesheet" href="/static/css/[\w.-]+\.css">',
         f"<style>{css}{LABEL_CSS}</style>",
         html,
         count=1,
+    )
+    html = re.sub(
+        r'\s*<link rel="stylesheet" href="/static/css/[\w.-]+\.css">', "", html
     )
     # 2. Боевой модуль убираем целиком: он сразу пойдёт в API, которого нет.
     html = html.replace('<script type="module" src="/static/js/main.js"></script>', "")

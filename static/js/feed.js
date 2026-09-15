@@ -65,7 +65,7 @@ export async function loadFeed(silent = false, append = false) {
     } else {
       selectedFeedId = null;
       if (feedDetailPlaceholder) feedDetailPlaceholder.style.display = 'flex';
-      if (feedDetailContent) feedDetailContent.style.display = 'none';
+      if (feedDetailContent) feedDetailContent.hidden = true;
     }
 
     if (silent && previousTotal > 0 && totalFeed > previousTotal) {
@@ -170,7 +170,7 @@ async function selectFeedItem(id) {
 
   if (feedDetailPlaceholder) feedDetailPlaceholder.style.display = 'none';
   if (feedDetailContent) {
-    feedDetailContent.style.display = 'block';
+    feedDetailContent.hidden = false;
     if (window.gsap) {
       gsap.fromTo(feedDetailContent, { autoAlpha: 0, y: 6 }, { autoAlpha: 1, y: 0, duration: 0.2, ease: "power2.out" });
     }
@@ -208,9 +208,9 @@ async function selectFeedItem(id) {
   if (feedDetailTgLink) {
     if (item.chat_username) {
       feedDetailTgLink.href = `https://t.me/${item.chat_username}`;
-      feedDetailTgLink.style.display = 'inline-flex';
+      feedDetailTgLink.hidden = false;
     } else {
-      feedDetailTgLink.style.display = 'none';
+      feedDetailTgLink.hidden = true;
     }
   }
 

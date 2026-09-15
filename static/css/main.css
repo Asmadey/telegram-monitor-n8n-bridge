@@ -649,6 +649,13 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* Показывается снятием `hidden`, а не присваиванием display из скрипта:
+       раньше значение жило в коде и терялось при любом другом способе
+       показать элемент. */
+    #feedDetailTgLink {
+      display: inline-flex;
+    }
+
     .timeline-divider {
       color: var(--mute-soft);
       opacity: 0.6;
