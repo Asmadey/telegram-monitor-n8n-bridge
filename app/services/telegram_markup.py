@@ -91,6 +91,49 @@ _LINK = re.compile(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
 _PLACEHOLDER = "\x00{}\x00"
 
 
+# Обёртка, в которую модель кладёт ВЕСЬ ответ: «```html … ```». Промпт её не
+# просит — так отвечают модели, когда их просят «оформи в HTML». Ограждения
+# проходили разбор насквозь и приезжали в Telegram буквами: текст режется по
+# настоящим тегам, и пара ``` оказывается в разных кусках, то есть не
+# находится никогда (найдено владельцем на источнике «VASILE LUNGO»).
+# Язык обёртки: пустой или «разметочный». Именно им модель помечает ответ,
+# который решила «показать» целиком. Имя настоящего языка (python, bash, sql)
+# — заявка на ПРИМЕР КОДА, и такой ответ остаётся кодом: этого требует
+# `test_105`, и требует справедливо.
+_ANSWER_TAGS = frozenset({"", "html", "json", "markdown", "md", "text", "txt"})
+_WRAPPED = re.compile(
+    r"\A\s*```(?P<tag>[\w+-]*)[ \t]*\r?\n(?P<body>.*?)\r?\n?\s*```\s*\Z", re.S
+)
+# Незакрытая обёртка: модель начала «```html» и не закрыла. Язык здесь важен —
+# «```html» это заявка на разметку ответа, а «```python» на пример кода.
+_WRAPPED_OPEN = re.compile(r"\A\s*```html[ \t]*\r?\n(?P<body>.*)\Z", re.S | re.I)
+
+
+def unwrap_fence(text: str) -> str:
+    """Снять ОДНО ограждение, обнимающее весь ответ.
+
+    Ограждение внутри ответа — пример кода, и оно остаётся кодом: снимается
+    только то, что обнимает ответ целиком и внутри себя других ограждений не
+    содержит.
+
+    Язык решает. Пустой, `html`, `json`, `markdown` — так модель помечает
+    ответ, который решила «показать» целиком. Имя настоящего языка
+    (`python`, `bash`) — заявка на пример кода, и ответ из одного такого
+    блока остаётся кодом.
+    """
+    match = _WRAPPED.match(text or "")
+    if (
+        match
+        and match.group("tag").lower() in _ANSWER_TAGS
+        and "```" not in match.group("body")
+    ):
+        return match.group("body")
+    match = _WRAPPED_OPEN.match(text or "")
+    if match and "```" not in match.group("body"):
+        return match.group("body")
+    return text
+
+
 def _keep_tag(match: re.Match) -> str | None:
     """Разрешённый тег остаётся собой; у ссылки выживает только href."""
     name = match.group("name").lower()
@@ -208,6 +251,7 @@ def to_telegram_html(text: str) -> str:
     """Привести ответ модели к разметке, которую разберёт Bot API."""
     if not text:
         return ""
+    text = unwrap_fence(text)
     text = _BR.sub("\n", text)
 
     parts: list[str] = []

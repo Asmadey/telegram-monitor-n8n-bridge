@@ -58,7 +58,7 @@ def _utcnow() -> datetime.datetime:
 
 
 async def send_telegram_bot_message(
-    token: str, chat_id: str, text: str, *, transport=None
+    token: str, chat_id: str, text: str, *, transport=None, on_degraded=None
 ) -> bool:
     """Отправка сводки: сначала богатым методом, затем прежним (9.19).
 
@@ -103,8 +103,14 @@ async def send_telegram_bot_message(
             }
             response = await client.post(f"{base}/sendMessage", json=payload)
             if response.status_code != 200:
+                # Последний путь: сообщение уходит БУКВАМИ — теги, ограждения
+                # и всё прочее. Он существует затем, чтобы находки не
+                # пропали, но молчать о нём нельзя: «пришло без
+                # форматирования» иначе узнаётся только глазами владельца.
                 payload.pop("parse_mode", None)
                 response = await client.post(f"{base}/sendMessage", json=payload)
+                if response.status_code == 200 and on_degraded is not None:
+                    on_degraded()
             response.raise_for_status()
         return True
 
@@ -183,7 +189,13 @@ async def _run_bot(
         # Имя публичное (8.3): ту же отправку переиспользует живая проверка
         # бота в app/api/checks.py. Отказ Bot API — False, а не исключение:
         # без этой ветки сбой доставки выглядел бы SUCCESS (9.1).
-        sent = await (sender or send_telegram_bot_message)(token, chat_id, text)
+        # Двойник подменяет отправителя ЦЕЛИКОМ и про эту метку не знает,
+        # поэтому она передаётся только настоящему отправителю.
+        degraded: list[bool] = []
+        extra = {} if sender else {"on_degraded": lambda: degraded.append(True)}
+        sent = await (sender or send_telegram_bot_message)(
+            token, chat_id, text, **extra
+        )
         if sent is False:
             raise RuntimeError("Telegram bot rejected delivery")
     except Exception as exc:  # noqa: BLE001 — доставка не роняет опрос
@@ -197,6 +209,18 @@ async def _run_bot(
         )
         logger.warning("тенант %s: бот не отправил сообщение", user_id)
         return "failed"
+
+    if degraded:
+        await add_log(
+            db,
+            user_id,
+            "TG_BOT_PLAIN",
+            "Telegram не принял разметку, сообщение ушло буквами: теги видны "
+            "в тексте. Причина обычно в ответе модели — незакрытый тег или "
+            "ссылка, которую Bot API не разобрал.",
+            status="ERROR",
+            chat_title=chat_title,
+        )
 
     await add_log(
         db,
