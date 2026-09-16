@@ -47,6 +47,14 @@ RICH_ONLY_TAGS = frozenset(
     {
         "table",
         "caption",
+        # Абзац, разделитель и части таблицы — из того же списка документации
+        # (13.12). Без них промпт, написанный ПО документации Telegram,
+        # привозил в сообщение буквальные `<p>` и `</p>`: неизвестный тег у
+        # нас экранируется, а не выбрасывается.
+        "p",
+        "hr",
+        "thead",
+        "tbody",
         "tr",
         "th",
         "td",
@@ -83,7 +91,7 @@ _LIST = re.compile(r"(?m)(?:^[ \t]*[-*+][ \t]+.+$\n?)+")
 # метода `sendRichMessage` разбирается как настоящий HTML, где перевод строки
 # — обычный пробел. Документация Bot API говорит это прямым текстом, строкой
 # под списком строчных тегов: «all the text above was on the same line».
-_BLOCK = "table|caption|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|pre|blockquote|hr"
+_BLOCK = "table|caption|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|pre|blockquote|hr|p"
 _NEWLINE_AFTER_BLOCK = re.compile(rf"(</?(?:{_BLOCK})>)[ \t]*\n+")
 _NEWLINE_BEFORE_BLOCK = re.compile(rf"\n+[ \t]*(</?(?:{_BLOCK})>)")
 _PRE_BLOCK = re.compile(r"<pre>.*?</pre>", re.S)
@@ -242,6 +250,9 @@ def rich_html_to_plain(rich: str) -> str:
     text = re.sub(r"</t[dh]>\s*<t[dh][^<>]*>", " — ", text)
     text = re.sub(r"</tr>\s*<tr[^<>]*>", "\n", text)
     text = re.sub(r"</?(table|caption|tbody|thead)[^<>]*>", "\n", text)
+    # Абзац и разделитель: `sendMessage` их не знает, а пустая строка знает.
+    text = re.sub(r"</p>", "\n\n", text)
+    text = re.sub(r"<p[^<>]*>|<hr\s*/?>", "\n", text)
     text = re.sub(r"</?tr[^<>]*>|</?t[dh][^<>]*>", "", text)
     text = re.sub(r"<h[1-6][^<>]*>", "<b>", text)
     text = re.sub(r"</h[1-6]>", "</b>", text)
