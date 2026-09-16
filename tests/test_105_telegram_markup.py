@@ -26,7 +26,7 @@ Bot API неоткуда. Формат ответа — обязанность �
 
 import pytest
 
-from app.services.telegram_markup import to_telegram_html
+from app.services.telegram_markup import rich_html_to_plain, to_telegram_html
 
 
 def test_markdown_bold_becomes_a_tag():
@@ -74,11 +74,24 @@ def test_unsupported_tags_are_escaped():
     assert "&lt;div" in out
 
 
-def test_line_break_tag_becomes_a_newline():
-    """`<br>` Bot API не знает, но и мусором в тексте он быть не должен."""
+def test_line_break_tag_and_a_newline_mean_the_same_thing():
+    """Исправлено 2026-09-16 вместе с 13.10: сторона приведения сменилась.
+
+    Тест требовал, чтобы `<br>` в ответе модели стал символом `\n`, и для
+    своего момента был прав: сводка уходила через `sendMessage`, а в его
+    наборе тегов `<br>` нет вовсе. С задачи 9.19 сводка уходит через
+    `sendRichMessage`, и там всё наоборот — перевод строки разбирается как
+    обычный пробел, а перенос делает тег. Требование по сути осталось тем
+    же: разнобой в ответе модели приводится к ОДНОМУ виду и мусором в
+    тексте не остаётся. Изменилась только сторона, к которой приводим.
+    Обратный разворот для запасного пути держит `test_148`.
+    """
     out = to_telegram_html("первая<br>вторая<br/>третья")
-    assert "<br" not in out and "&lt;br" not in out, f"остался br: {out!r}"
-    assert out.count("\n") == 2
+    assert out == "первая<br>вторая<br>третья", f"разнобой переносов: {out!r}"
+    assert "&lt;br" not in out, f"тег уехал в сообщение текстом: {out!r}"
+    assert rich_html_to_plain(out).count("\n") == 2, (
+        "запасной путь не вернул переносы символом"
+    )
 
 
 def test_markdown_inside_code_stays_text():

@@ -149,9 +149,14 @@ def _chunks(text: str, limit: int = BOT_CHUNK) -> list[str]:
         window = rest[:cut]
         if window.rfind("<") > window.rfind(">"):
             cut = window.rfind("<")
-        newline = rest.rfind("\n", 0, cut)
-        if newline > cut - 500:
-            cut = newline + 1
+        # Конец строки — и символ, и тег: в богатом сообщении перенос делает
+        # `<br>` (13.10), и без него граница уезжала бы в середину фразы.
+        line_end = rest.rfind("\n", 0, cut)
+        tag = rest.rfind("<br>", 0, cut)
+        if tag != -1:
+            line_end = max(line_end, tag + len("<br>") - 1)
+        if line_end > cut - 500:
+            cut = line_end + 1
         cut = max(cut, 1)
         parts.append(rest[:cut])
         rest = rest[cut:]
