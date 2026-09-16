@@ -78,6 +78,15 @@ _ITALIC = re.compile(r"(?<![\w*])\*([^*\n]+)\*(?![\w*])")
 _ITALIC_ALT = re.compile(r"(?<![\w_])_([^_\n]+)_(?![\w_])")
 _HEADER = re.compile(r"(?m)^[ \t]*(#{1,6})[ \t]*(.+?)[ \t]*$")
 _LIST = re.compile(r"(?m)(?:^[ \t]*[-*+][ \t]+.+$\n?)+")
+
+# Перенос строки в богатом сообщении делает тег, а не символ: поле `html`
+# метода `sendRichMessage` разбирается как настоящий HTML, где перевод строки
+# — обычный пробел. Документация Bot API говорит это прямым текстом, строкой
+# под списком строчных тегов: «all the text above was on the same line».
+_BLOCK = "table|caption|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|pre|blockquote|hr"
+_NEWLINE_AFTER_BLOCK = re.compile(rf"(</?(?:{_BLOCK})>)[ \t]*\n+")
+_NEWLINE_BEFORE_BLOCK = re.compile(rf"\n+[ \t]*(</?(?:{_BLOCK})>)")
+_PRE_BLOCK = re.compile(r"<pre>.*?</pre>", re.S)
 _LIST_ITEM = re.compile(r"(?m)^[ \t]*[-*+][ \t]+(.+?)[ \t]*$")
 # Markdown-таблица: шапка, строка-разделитель, тело. Именно её присылает
 # модель, когда её просят «сведи по каждой вакансии».
@@ -223,8 +232,14 @@ def _render_list(block: str) -> str:
 
 
 def rich_html_to_plain(rich: str) -> str:
-    """Свести таблицы в строки, заголовки — в жирный, списки — в маркеры."""
-    text = re.sub(r"</t[dh]>\s*<t[dh][^<>]*>", " — ", rich)
+    """Свести таблицы в строки, заголовки — в жирный, списки — в маркеры.
+
+    Первым — `<br>`: в наборе тегов `sendMessage` его нет вовсе, и для него
+    перенос строки снова обычный `\n`. Неизвестный тег на этом пути — 400 и
+    потеря оформления у всей сводки, а не у одной строки.
+    """
+    text = _BR.sub("\n", rich)
+    text = re.sub(r"</t[dh]>\s*<t[dh][^<>]*>", " — ", text)
     text = re.sub(r"</tr>\s*<tr[^<>]*>", "\n", text)
     text = re.sub(r"</?(table|caption|tbody|thead)[^<>]*>", "\n", text)
     text = re.sub(r"</?tr[^<>]*>|</?t[dh][^<>]*>", "", text)
@@ -245,6 +260,33 @@ def to_plain_html(text: str) -> str:
 def escape(text: str) -> str:
     """Чужой текст (заголовок канала, чужой пост) — всегда только текст."""
     return html.escape(text or "", quote=False)
+
+
+def _rich_line_breaks(rich: str) -> str:
+    """Перевод строки → `<br>`; структурный перевод строки — в никуда.
+
+    Три случая разные. Внутри `<pre>` перенос делает сам пробел, и тег там
+    лишний. Между блочными тегами (`</li>` и `<li>`, конец таблицы и
+    следующий абзац) перевод строки — отступ исходника: превратить его в
+    `<br>` значит вставить пустую строку после каждого пункта списка.
+    Всё остальное — настоящий перенос, который человек и ждёт увидеть.
+    """
+    if not rich:
+        return rich
+    kept: list[str] = []
+
+    def stash(match: "re.Match[str]") -> str:
+        kept.append(match.group(0))
+        return _PLACEHOLDER.format(len(kept) - 1)
+
+    rich = _PRE_BLOCK.sub(stash, rich).strip("\n")
+    rich = re.sub(r"\n{3,}", "\n\n", rich)
+    rich = _NEWLINE_AFTER_BLOCK.sub(r"\1", rich)
+    rich = _NEWLINE_BEFORE_BLOCK.sub(r"\1", rich)
+    rich = rich.replace("\n", "<br>")
+    for index, block in enumerate(kept):
+        rich = rich.replace(_PLACEHOLDER.format(index), block)
+    return rich
 
 
 def to_telegram_html(text: str) -> str:
@@ -275,4 +317,4 @@ def to_telegram_html(text: str) -> str:
 
     tail = text[position:]
     parts.append(escape(tail) if depth_literal else _markdown(escape(tail)))
-    return "".join(parts)
+    return _rich_line_breaks("".join(parts))
