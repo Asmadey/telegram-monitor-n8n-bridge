@@ -166,6 +166,26 @@ class StepTimeout(TimeoutError):
     """
 
 
+def _recoverable(exc: BaseException) -> bool:
+    """Переживёт ли отказ повтор (13.11).
+
+    Молчание модели и сбой провайдера — да: батч возвращается в очередь,
+    уже разобранные каналы при повторе не переспрашиваются. Тайм-аут
+    попал сюда не сразу: он подкласс `TimeoutError`, мимо ветки
+    `RuntimeError`, и канал хоронился с первой же попытки — вместе с
+    постами, которые дедупликация уже зарезервировала.
+
+    Исчерпанный бюджет и отсутствие ключа — нет: это про весь источник, и
+    следующая попытка упрётся в тот же потолок. Испорченный ответ — тоже
+    нет: повтор его не вылечит, а попытки потратит.
+    """
+    if isinstance(exc, MonthlyTokenBudgetExhausted):
+        return False
+    if isinstance(exc, RuntimeError) and "LLM enabled without API key" in str(exc):
+        return False
+    return isinstance(exc, (RuntimeError, TimeoutError))
+
+
 async def _within(awaitable, seconds: float, what: str):
     """Выполнить внешний вызов с потолком по времени.
 
@@ -624,6 +644,11 @@ class Worker:
                 )
                 continue
             except Exception as exc:  # noqa: BLE001 — канал не роняет источник
+                if _recoverable(exc) and attempts + 1 < MAX_BATCH_ATTEMPTS:
+                    # Молчание модели восстановимо не меньше, чем сбой
+                    # провайдера выше: посты канала уже зарезервированы, и
+                    # пометить его неразобранным — значит потерять их.
+                    raise
                 await db.rollback()
                 unparsed.append(group.get("chat_title") or "канал")
                 await add_log(
