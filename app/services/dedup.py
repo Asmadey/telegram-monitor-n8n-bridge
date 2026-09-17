@@ -70,11 +70,17 @@ def _to_row(user_id: int, monitor_id: int, chat_id: int, msg: dict) -> dict:
         "date": _parse_date(msg.get("date")),
         "sender": msg.get("sender"),
         "text": (msg.get("text") or "")[:1000],
+        # `views` остаётся пустым честно: колонка это допускает, и «не
+        # знаем» лучше выдуманного нуля. Ниже — колонки NOT NULL, и для них
+        # `get(ключ, умолчание)` не защита: умолчание срабатывает только на
+        # ОТСУТСТВИЕ ключа, а у поста из диалога с ботом ключ есть, а
+        # значения нет — счётчиков пересылок и реакций там не существует
+        # вовсе. Один такой пост отменял вставку всего канала (13.13).
         "views": msg.get("views"),
-        "forwards": msg.get("forwards", 0),
+        "forwards": msg.get("forwards") or 0,
         "has_media": bool(msg.get("has_media")),
-        "reactions_count": msg.get("reactions_count", 0),
-        "reactions_json": json.dumps(msg.get("reactions", []), ensure_ascii=False),
+        "reactions_count": msg.get("reactions_count") or 0,
+        "reactions_json": json.dumps(msg.get("reactions") or [], ensure_ascii=False),
         "post_url": msg.get("post_url"),
         "sent_at": datetime.datetime.now(datetime.timezone.utc),
     }
