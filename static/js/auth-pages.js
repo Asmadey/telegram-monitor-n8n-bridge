@@ -228,9 +228,23 @@
       }
       setError(detailText(r.data, 'Не удалось войти через Google'));
     } catch (e) {
-      // закрытое пользователем окно — не ошибка, о которой стоит кричать
       const code = (e && e.code) || '';
-      if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+      // закрытое пользователем окно — не ошибка, о которой стоит кричать
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return;
+      }
+      // Код причины пишется всегда (13.14): без него «не удалось войти» не
+      // отличить от сети, блокировщика окон и неразрешённого домена — и
+      // причину приходится искать чтением исходников Firebase.
+      console.error('Вход через Google не удался:', code || e);
+      if (code === 'auth/unauthorized-domain') {
+        // Адрес не внесён в Authorized domains проекта Firebase — чинит
+        // оператор, и ему нужен именно этот адрес.
+        setError('Вход через Google для адреса ' + window.location.hostname +
+          ' ещё не включён. Войдите по почте и паролю или сообщите администратору.');
+      } else if (code === 'auth/popup-blocked') {
+        setError('Браузер заблокировал окно входа Google — разрешите всплывающие окна для этого сайта.');
+      } else {
         setError('Не удалось войти через Google');
       }
     } finally {
