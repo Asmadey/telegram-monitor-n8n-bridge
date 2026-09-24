@@ -8,6 +8,7 @@
 Порт registrations_controller.rb / sessions_controller.rb (Rails-шаблон).
 """
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -37,6 +38,8 @@ from app.security.sessions import (
 )
 from app.services.google_auth import get_google_verifier
 from app.services.mailer import send_password_reset_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_user)])
 public_router = APIRouter()
@@ -288,7 +291,15 @@ async def request_password_reset(
     # эндпоинт перечисляет пользователей (passwords_controller.rb:create).
     user = await db.scalar(select(User).where(User.email == req.email))
     if user is not None:
-        await send_password_reset_email(user.email, make_reset_token(user))
+        try:
+            await send_password_reset_email(user.email, make_reset_token(user))
+        except Exception as exc:  # noqa: BLE001 — ответ обязан остаться тем же
+            # Отказ почты случается только для СУЩЕСТВУЮЩЕГО адреса: для
+            # несуществующего письмо не отправляется вовсе. Поднять его
+            # наверх — значит отвечать 500 на зарегистрированные адреса и
+            # 200 на остальные, то есть тот самый перечислитель (13.15).
+            # Громкость остаётся — оператору в журнал, а не запросившему.
+            logger.error("письмо сброса не отправлено: %s", exc)
     return {
         "ok": True,
         "detail": "Если адрес зарегистрирован, письмо со ссылкой отправлено",
