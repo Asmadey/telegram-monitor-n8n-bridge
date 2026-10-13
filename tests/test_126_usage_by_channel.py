@@ -281,7 +281,28 @@ async def test_a_source_run_attributes_spend_channel_by_channel(db, user):
 # --------------------------------------------------------------------------
 
 
-async def _spend(db, user_id: int, rows: list[tuple[str, int, str, int]]) -> None:
+@pytest.fixture
+def frozen_clock(monkeypatch):
+    """Эндпоинт смотрит в тот же месяц, в который сеет тест.
+
+    Посев идёт с `now=NOW`, а `/api/usage` берёт период из часов. Без
+    заморозки эти тесты были зелёными только в сентябре 2026: с 1 октября
+    эндпоинт спрашивал `2026-10` и находил пустоту, а проверка внутренних
+    ключей на пустом ответе зеленела вхолостую.
+
+    Подменяется имя в `app.api.usage`, а не в `app.services.llm`: эндпоинт
+    импортирует `_utcnow` к себе, и подмена по месту определения его не
+    коснулась бы.
+    """
+    monkeypatch.setattr("app.api.usage._utcnow", lambda: NOW)
+
+
+async def _spend(
+    db,
+    user_id: int,
+    rows: list[tuple[str, int, str, int]],
+    now: datetime.datetime = NOW,
+) -> None:
     """Посев расхода напрямую: здесь проверяется показ, а не учёт."""
     from app.services.llm import _add_tokens
 
@@ -290,7 +311,7 @@ async def _spend(db, user_id: int, rows: list[tuple[str, int, str, int]]) -> Non
             db,
             user_id,
             tokens,
-            now=NOW,
+            now=now,
             source_public_id=source_public_id,
             chat_id=chat_id,
             chat_title=chat_title,
@@ -298,7 +319,9 @@ async def _spend(db, user_id: int, rows: list[tuple[str, int, str, int]]) -> Non
 
 
 @pytest.mark.asyncio
-async def test_usage_endpoint_groups_spend_by_source_and_channel(anon_client, db, user):
+async def test_usage_endpoint_groups_spend_by_source_and_channel(
+    anon_client, db, user, frozen_clock
+):
     await act_as(anon_client, db, user)
     from app.models import Monitor
 
@@ -318,6 +341,9 @@ async def test_usage_endpoint_groups_spend_by_source_and_channel(anon_client, db
     response = await anon_client.get("/api/usage")
     assert response.status_code == 200, response.text
     body = response.json()
+    assert body["period"] == PERIOD, (
+        f"эндпоинт смотрит не в месяц посева: {body['period']} — часы не заморожены"
+    )
     assert body["total"] == 495
     assert body["outside_sources"] == 25
     source = body["sources"][0]
@@ -332,7 +358,9 @@ async def test_usage_endpoint_groups_spend_by_source_and_channel(anon_client, db
 
 
 @pytest.mark.asyncio
-async def test_usage_endpoint_survives_a_deleted_source(anon_client, db, user):
+async def test_usage_endpoint_survives_a_deleted_source(
+    anon_client, db, user, frozen_clock
+):
     """История трат переживает источник — иначе её незачем было вести."""
     await act_as(anon_client, db, user)
     await _spend(db, user.id, [("src-ушёл", -1, "alpha", 10)])
@@ -342,7 +370,9 @@ async def test_usage_endpoint_survives_a_deleted_source(anon_client, db, user):
 
 
 @pytest.mark.asyncio
-async def test_usage_endpoint_never_returns_internal_keys(anon_client, db, user):
+async def test_usage_endpoint_never_returns_internal_keys(
+    anon_client, db, user, frozen_clock
+):
     """Контракт 9.10: наружу идёт public_id, внутренние BIGINT — нет."""
     await act_as(anon_client, db, user)
     from app.models import Monitor
@@ -353,6 +383,9 @@ async def test_usage_endpoint_never_returns_internal_keys(anon_client, db, user)
     response = await anon_client.get("/api/usage")
     # без этой строки проверка зеленеет на 404: в теле «Not Found» ключей тоже нет
     assert response.status_code == 200, response.text
+    # и без этой — на пустом отчёте: так она и зеленела с 1 октября 2026,
+    # когда часы эндпоинта ушли из месяца посева
+    assert response.json()["sources"], f"отчёт пуст, ключам негде быть: {response.text}"
     raw = response.text
     assert '"monitor_id"' not in raw and '"user_id"' not in raw, raw
     assert '"id"' not in raw, f"в ответе есть внутренний ключ: {raw}"
@@ -364,10 +397,34 @@ async def test_usage_endpoint_is_closed_to_anonymous(anon_client):
 
 
 @pytest.mark.asyncio
-async def test_usage_endpoint_shows_only_your_own_spend(anon_client, db, user, user_b):
+async def test_usage_endpoint_shows_only_your_own_spend(
+    anon_client, db, user, user_b, frozen_clock
+):
     await act_as(anon_client, db, user)
     await _spend(db, user.id, [("src-1", -1, "мой", 10)])
     await _spend(db, user_b.id, [("src-9", -2, "чужой", 900)])
     body = (await anon_client.get("/api/usage")).json()
     assert body["total"] == 10, f"в отчёт попал чужой расход: {body}"
     assert "чужой" not in (await anon_client.get("/api/usage")).text
+
+
+@pytest.mark.asyncio
+async def test_usage_endpoint_counts_only_the_current_month(
+    anon_client, db, user, frozen_clock
+):
+    """Отчёт — за текущий месяц: прошлый в него не попадает.
+
+    Период эндпоинт берёт из часов, поэтому проверить это можно только под
+    замороженными — иначе «текущий месяц» у теста и у эндпоинта разные.
+    """
+    await act_as(anon_client, db, user)
+    await _spend(db, user.id, [("src-1", -1, "alpha", 10)])
+    await _spend(
+        db,
+        user.id,
+        [("src-1", -1, "alpha", 900)],
+        now=NOW - datetime.timedelta(days=31),
+    )
+    body = (await anon_client.get("/api/usage")).json()
+    assert body["total"] == 10, f"в отчёт месяца попал прошлый месяц: {body}"
+    assert body["sources"][0]["channels"][0]["tokens"] == 10, body

@@ -118,7 +118,9 @@ async def filter_new(
 
     for row in rows:
         row["processed"] = processed
-    insert = _insert_for(db.bind.dialect.name)
+    # get_bind(), а не .bind: с SQLAlchemy 2.1 `.bind` типизирован как
+    # Optional, и mypy краснит; get_bind() всегда возвращает движок
+    insert = _insert_for(db.get_bind().dialect.name)
     stmt = (
         insert(SentMessage)
         .values(rows)
