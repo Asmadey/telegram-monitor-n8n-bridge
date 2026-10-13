@@ -1,16 +1,21 @@
 """LLM-анализ с лимитами расходов (задача 4.5 PLAN.md).
 
 Оригинал (server.py:795) шлёт ПОЛНЫЕ тексты постов без потолка: канал с
-длинными постами и интервалом 15 минут — неограниченный счёт. Три защиты:
+длинными постами и интервалом 15 минут — неограниченный счёт. Здесь:
 
 1. Потолок символов на один запрос (`truncate_posts`). Надёжный путь
    воркера режет полный текст на несколько запросов и сохраняет прогресс
    после каждого, поэтому этот технический предел не теряет сообщения.
-2. Месячный счётчик токенов на тенанта (`llm_usage`, период YYYY-MM),
-   списание — атомарный upsert (воркер + ручной запуск одновременно).
-3. Гейт и автоотключение: лимит уже превышен → к API НЕ обращаемся,
-   None + запись в журнал; превышен этим запросом → токены списаны,
-   openrouter_enabled = False, журнал.
+2. Месячный счётчик токенов на тенанта (`llm_usage`, период YYYY-MM) и его
+   разрез по источнику и каналу (12.7), списание — атомарный upsert
+   (воркер + ручной запуск одновременно).
+
+Общего месячного потолка на тенанта больше нет (13.19, решение владельца):
+ключ OpenRouter у каждого свой (9.5), счёт приходит пользователю, лимит
+расхода он ставит в OpenRouter, а ограничивать расход внутри сервиса
+позволяет потолок КАНАЛА (13.5) — его выбирает сам пользователь. Зашитые
+2 млн токенов были единственным ограничением, которого он не выбирал: на
+пределе AI молча выключался.
 
 Вызывающий API инъекцируется (`caller`): тесты офлайн; дефолтный
 `openrouter_caller` — httpx c Bearer-ключом (расшифрованным из
@@ -32,20 +37,11 @@ from app.services.integrations import integration_secrets
 from app.services.journal import add_log, redact
 
 MAX_REQUEST_CHARS = 48_000
-MONTHLY_TOKEN_LIMIT = 2_000_000
 DEFAULT_SYSTEM_PROMPT = (
     "Выдели ключевую суть сообщений, ключевые технологии, условия и теги. Будь краток."
 )
 
 logger = logging.getLogger(__name__)
-
-
-class MonthlyTokenBudgetExhausted(RuntimeError):
-    """Месячный бюджет исчерпан: батч не теряется, а ждёт следующего периода."""
-
-    def __init__(self, retry_after: datetime.datetime):
-        super().__init__("monthly token budget exhausted")
-        self.retry_after = retry_after
 
 
 def _utcnow() -> datetime.datetime:
@@ -54,27 +50,6 @@ def _utcnow() -> datetime.datetime:
 
 def _period(now: datetime.datetime) -> str:
     return now.strftime("%Y-%m")
-
-
-def _next_period(now: datetime.datetime) -> datetime.datetime:
-    if now.month == 12:
-        return now.replace(
-            year=now.year + 1,
-            month=1,
-            day=1,
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
-        )
-    return now.replace(
-        month=now.month + 1,
-        day=1,
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
 
 
 def truncate_posts(
@@ -156,8 +131,8 @@ async def _add_tokens(
     """Атомарное списание: upsert с инкрементом — конкурентные списания
     (воркер + ручной запуск) не теряют токены.
 
-    Пишет ДВА счётчика в одной транзакции: общий по тенанту (на нём держится
-    месячный гейт) и разрез по источнику и каналу (задача 12.7). Вместе, а не
+    Пишет ДВА счётчика в одной транзакции: общий по тенанту и разрез по
+    источнику и каналу (задача 12.7; на разрезе держится потолок канала 13.5). Вместе, а не
     по отдельности, — иначе сумма по разрезу однажды разойдётся с расходом, и
     отчёт, по которому решают, какой канал отключить, начнёт врать.
     """
@@ -198,16 +173,6 @@ async def _add_tokens(
         await db.commit()
 
 
-async def _log_limit(db, user_id: int, *, disabled: bool) -> None:
-    """Запись в журнал о лимите: без неё тенант не поймёт, почему AI молчит.
-    Через add_log (4.6): единственная точка записи, redact внутри."""
-    details = f"месячный лимит {MONTHLY_TOKEN_LIMIT} токенов превышен — " + (
-        "AI отключён" if disabled else "запрос пропущен без обращения к API"
-    )
-    await add_log(db, user_id, "LLM_LIMIT", details, status="ERROR")
-    logger.warning("тенант %s: %s", user_id, details)
-
-
 async def process_messages_batch_with_llm(
     db,
     user_id: int,
@@ -228,8 +193,7 @@ async def process_messages_batch_with_llm(
 
     Старые прямые вызовы сохраняют прежний контракт с одним ограниченным
     запросом. `require_success=True` используется durable job: весь текст
-    уходит чанками, успешные чанки не повторяются, а месячный бюджет
-    переносит непрочитанный остаток на следующий период.
+    уходит чанками, успешные чанки не повторяются.
 
     `source_public_id` / `chat_id` / `chat_title` — адрес расхода (12.7).
     Пустая строка и ноль означают «вне источника» и «не канал»: прямой
@@ -279,13 +243,6 @@ async def process_messages_batch_with_llm(
             batches.append(current)
         items = batches[0] if batches else []
     if not items:
-        return None
-
-    if (
-        not require_success
-        and await monthly_tokens_used(db, user_id, now=now) >= MONTHLY_TOKEN_LIMIT
-    ):
-        await _log_limit(db, user_id, disabled=False)
         return None
 
     if caller is None:
@@ -350,13 +307,6 @@ async def process_messages_batch_with_llm(
         analyses = list(completed or [])
         tokens = 0
         for batch in batches[len(analyses) :]:
-            if (
-                require_success
-                and await monthly_tokens_used(db, user_id, now=now)
-                >= MONTHLY_TOKEN_LIMIT
-            ):
-                await _log_limit(db, user_id, disabled=False)
-                raise MonthlyTokenBudgetExhausted(_next_period(now))
             payload["messages"][1]["content"] = json.dumps(
                 {"post": batch}, ensure_ascii=False, indent=2
             )
@@ -381,8 +331,6 @@ async def process_messages_batch_with_llm(
             else:
                 tokens += used or 0
         analysis = "\n\n".join(analyses)
-    except MonthlyTokenBudgetExhausted:
-        raise
     except Exception as e:  # noqa: BLE001 — падение API не роняет воркера
         # через add_log (4.6): текст исключения несёт заголовки с Bearer —
         # redact затирает ДО записи
@@ -412,14 +360,6 @@ async def process_messages_batch_with_llm(
             chat_id=chat_id,
             chat_title=chat_title,
         )
-
-    # пересечение лимита ЭТИМ запросом: токены уже списаны — отключаем
-    if (
-        not require_success
-        and await monthly_tokens_used(db, user_id, now=now) >= MONTHLY_TOKEN_LIMIT
-    ):
-        integration.openrouter_enabled = False
-        await _log_limit(db, user_id, disabled=True)
     return analysis
 
 
