@@ -31,7 +31,6 @@ export function usageMarkup(data) {
     </p>`;
   }
 
-  const limit = Number(data?.limit || 0);
   const rows = sources.map(source => {
     const channels = Array.isArray(source.channels) ? source.channels : [];
     const lines = channels.map(channel => html`
@@ -68,7 +67,7 @@ export function usageMarkup(data) {
   return html`
     <div class="u-d-flex u-justify-space-between u-items-baseline u-gap-md">
       <span class="u-fs-body-sm u-c-body-mid">Период ${period}</span>
-      <span class="u-fs-body-md u-fw-600">${plural(total)}${limit ? ` из ${plural(limit)}` : ''}</span>
+      <span class="u-fs-body-md u-fw-600">${plural(total)}</span>
     </div>
     ${raw(rows)}
     ${raw(outsideRow)}`;

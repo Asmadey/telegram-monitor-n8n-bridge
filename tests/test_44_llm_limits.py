@@ -2,13 +2,16 @@
 
 Оригинал (server.py:795) шлёт ПОЛНЫЕ тексты постов в OpenRouter без
 потолка: канал с длинными постами и интервалом 15 минут —
-неограниченный счёт. Три защиты:
+неограниченный счёт. Две защиты:
 
 1. Потолок символов на запрос — батч обрезается, а не уходит целиком.
 2. Месячный счётчик токенов на тенанта (llm_usage, период YYYY-MM).
-3. Автоотключение AI (openrouter_enabled → False) при превышении
-   лимита с записью в журнал; при превышении анализ НЕ обращается к
-   API — возвращает None.
+
+Третьей была автоотключение AI при общем месячном потолке 2 млн токенов.
+Её сняла задача 13.19 по решению владельца: ключ OpenRouter у каждого свой,
+расход ограничивает потолок канала (13.5). Два теста этого контракта
+(«при превышении к API не обращаемся», «AI отключается сам») удалены не
+ради зелёного: требование отменено, и обратное ему теперь держит test_155.
 
 API-вызовы инъекцируются (caller): тесты офлайн, OpenRouter не трогаем.
 Шифрование секрета требует APP_ENCRYPTION_KEY — фикстура _env.
@@ -20,11 +23,10 @@ import json
 import pytest
 from sqlalchemy import select
 
-from app.models import Integration, LLMUsage, LogEntry
+from app.models import Integration, LLMUsage
 from app.services.integrations import save_integration_secrets
 from app.services.llm import (
     MAX_REQUEST_CHARS,
-    MONTHLY_TOKEN_LIMIT,
     monthly_tokens_used,
     openrouter_caller,
     process_messages_batch_with_llm,
@@ -112,57 +114,6 @@ async def test_monthly_usage_scoped_by_user_and_period(db, user_a, user_b):
     assert await monthly_tokens_used(db, user_a.id, now=NOW) == 1000, (
         "счётчик зацепил чужой месяц или чужого тенанта"
     )
-
-
-@pytest.mark.asyncio
-async def test_process_over_limit_returns_none_without_api(db, _env, user_a):
-    """ГЛАВНЫЙ контракт: месячный лимит превышен → анализ None, к API НЕ
-    обращаемся, в журнале — запись о лимите."""
-    await _enable_ai(db, user_a.id)
-    await _seed_usage(db, user_a.id, MONTHLY_TOKEN_LIMIT)
-
-    calls: list = []
-    result = await process_messages_batch_with_llm(
-        db, user_a.id, _msgs(), caller=_caller_log(calls), now=NOW
-    )
-    assert result is None, "при превышении лимита анализ обратился к API"
-    assert calls == [], "запрос к OpenRouter ушёл при превышенном лимите"
-
-    logged = (
-        await db.execute(select(LogEntry).where(LogEntry.user_id == user_a.id))
-    ).scalars()
-    assert any("лимит" in (e.details or "").lower() for e in logged), (
-        "превышение лимита не записано в журнал"
-    )
-
-
-@pytest.mark.asyncio
-async def test_process_disables_ai_when_limit_crossed(db, _env, user_a):
-    """Лимит превышен ПОСЛЕ этого запроса → AI тенанта отключается и
-    пишется журнал (автоотключение, план 4.5)."""
-    await _enable_ai(db, user_a.id)
-    await _seed_usage(db, user_a.id, MONTHLY_TOKEN_LIMIT - 100)
-
-    calls: list = []
-    result = await process_messages_batch_with_llm(
-        db, user_a.id, _msgs(), caller=_caller_log(calls), now=NOW
-    )
-    assert result == "суть постов", "запрос до лимита не выполнен"
-    assert calls, "к API не обратились при неисчерпанном лимите"
-
-    assert await monthly_tokens_used(db, user_a.id, now=NOW) >= MONTHLY_TOKEN_LIMIT, (
-        "израсходованные токены не записаны в счётчик"
-    )
-    integration = (
-        await db.execute(select(Integration).where(Integration.user_id == user_a.id))
-    ).scalar_one()
-    assert integration.openrouter_enabled is False, (
-        "AI не отключился при превышении месячного лимита"
-    )
-    logged = (
-        await db.execute(select(LogEntry).where(LogEntry.user_id == user_a.id))
-    ).scalars()
-    assert any("лимит" in (e.details or "").lower() for e in logged)
 
 
 @pytest.mark.asyncio

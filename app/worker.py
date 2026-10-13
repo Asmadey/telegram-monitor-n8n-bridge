@@ -89,7 +89,6 @@ from app.services.jobs import (
 )
 from app.services.journal import add_log, redact
 from app.services.llm import (
-    MonthlyTokenBudgetExhausted,
     channel_tokens_used,
     process_messages_batch_with_llm,
 )
@@ -175,12 +174,11 @@ def _recoverable(exc: BaseException) -> bool:
     `RuntimeError`, и канал хоронился с первой же попытки — вместе с
     постами, которые дедупликация уже зарезервировала.
 
-    Исчерпанный бюджет и отсутствие ключа — нет: это про весь источник, и
-    следующая попытка упрётся в тот же потолок. Испорченный ответ — тоже
-    нет: повтор его не вылечит, а попытки потратит.
+    Отсутствие ключа — нет: это про весь источник, и следующая попытка
+    упрётся в то же самое. Испорченный ответ — тоже нет: повтор его не
+    вылечит, а попытки потратит. (Исчерпанного месячного бюджета больше
+    нет: общий потолок снят задачей 13.19.)
     """
-    if isinstance(exc, MonthlyTokenBudgetExhausted):
-        return False
     if isinstance(exc, RuntimeError) and "LLM enabled without API key" in str(exc):
         return False
     return isinstance(exc, (RuntimeError, TimeoutError))
@@ -614,15 +612,10 @@ class Worker:
                     LLM_TIMEOUT,
                     f"разбор канала {group.get('chat_title')}",
                 )
-            except MonthlyTokenBudgetExhausted:
-                # Исчерпан месячный бюджет — это про весь источник, а не про
-                # канал: следующий упрётся в тот же потолок. Задача
-                # откладывается целиком и вернётся в новом периоде,
-                # сохранив уже разобранные каналы (контракт 4.5).
-                raise
             except RuntimeError as exc:
                 if "LLM enabled without API key" in str(exc):
-                    # То же самое: ключа нет у источника, а не у канала
+                    # Ключа нет у источника, а не у канала: следующий канал
+                    # упрётся в то же самое
                     raise
                 if attempts + 1 < MAX_BATCH_ATTEMPTS:
                     # Отказ модели восстановим, а посты канала уже
@@ -740,20 +733,6 @@ class Worker:
                     REDUCE_TIMEOUT,
                     "сведение по каналам",
                 )
-            except MonthlyTokenBudgetExhausted:
-                # Бюджет месяца кончился — повтор упрётся в тот же потолок, а
-                # находки ждать нового периода не должны: они уже добыты и
-                # зарезервированы дедупликацией.
-                await db.rollback()
-                await add_log(
-                    db,
-                    user_id,
-                    "AI_ERROR",
-                    "Сведение не удалось: месячный бюджет токенов исчерпан",
-                    status="ERROR",
-                    chat_title=batch.get("chat_title"),
-                )
-                analysis = _raw_verdicts(verdicts)
             except Exception as exc:  # noqa: BLE001 — находки дороже оформления
                 await db.rollback()
                 if attempts + 1 < MAX_BATCH_ATTEMPTS:
