@@ -83,7 +83,7 @@ function renderFeedList() {
       <div class="u-ta-center u-p-3xl-lg u-c-mute u-fs-body-sm">
         Пока нет выполненных задач анализа.<br>
         <span class="u-fs-caption u-c-body-mid u-d-inline-block u-mt-xs">
-          Запустите опрос канала на вкладке «Каналы».
+          Запустите прогон источника на вкладке «Источники».
         </span>
       </div>
     `;
