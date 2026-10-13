@@ -16,8 +16,9 @@ from app.services.journal import add_log
 
 router = APIRouter(dependencies=[Depends(require_user)])
 
-# те же варианты, что предлагает интерфейс монолита
-ALLOWED_DAYS = (7, 14, 30, 60, 90)
+# Те же варианты, что предлагает окно автоочистки. 180 долго не было, и
+# выбранный из списка срок получал 400 (13.18); стык держит test_154.
+ALLOWED_DAYS = (7, 14, 30, 60, 90, 180)
 
 
 class CleanupConfig(BaseModel):
