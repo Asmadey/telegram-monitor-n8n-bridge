@@ -43,7 +43,7 @@ app/
 ├── db.py                   async engine, sessionmaker, TenantRepo
 ├── deps.py                 require_user / require_admin / get_tenant_repo
 ├── worker.py               цикл воркера: очередь → расписание → автоочистка
-├── models/                 13 таблиц; user_id NOT NULL + индекс в тенантных
+├── models/                 18 таблиц; user_id NOT NULL + индекс в тенантных
 ├── security/
 │   ├── passwords.py        bcrypt
 │   ├── sessions.py         сессии в БД + подписанная httpOnly-cookie
@@ -53,23 +53,35 @@ app/
 │   ├── cookies.py          SameSite по «один ли это сайт» (Public Suffix List)
 │   ├── cors.py             список origin из настроек; `*` + credentials невозможен
 │   ├── headers.py          CSP, HSTS, nosniff, frame-options, referrer-policy
+│   ├── log_redaction.py    затирание секретов во всех логах процесса
 │   └── ratelimit.py        slowapi: логин, регистрация, сброс, код Telegram
-├── api/                    роутеры: auth, admin, public, telegram, monitors,
-│                           feed, journal, integrations, checks, cleanup
+├── api/                    роутеры: auth, admin, public, telegram, sources,
+│                           feed, journal, integrations, checks, cleanup,
+│                           usage, ops, account
 └── services/
     ├── tg_pool.py          пул клиентов: LRU, лимит, простой, FloodWait
     ├── tg_gateway.py       граница с Telegram для воркера (в тестах — двойник)
     ├── tg_auth.py          вход по коду, состояние попытки в БД
     ├── tg_account.py       сохранение StringSession зашифрованной
+    ├── tg_attempts.py      сессия незавершённой попытки входа
+    ├── tg_credentials.py   ключи приложения MTProto пользователя (api_hash шифруется)
+    ├── tg_session.py       завершение MTProto-сессии в Telegram при удалении
+    ├── channels.py         адрес канала источника к одному виду
+    ├── stopwords.py        отсев постов до обращения к модели
+    ├── findings.py         схема находок, разбор ответа канала, сборка кодом
     ├── messages.py         выборка постов канала с метриками
     ├── dedup.py            INSERT ... ON CONFLICT DO NOTHING RETURNING
     ├── jobs.py             очередь: захват SKIP LOCKED, зависшие задачи
     ├── dispatch.py         AI → бот → n8n → лента
+    ├── telegram_markup.py  ответ модели → HTML Bot API; он же для ленты кабинета
     ├── llm.py              OpenRouter: обрезка, счётчик расхода и его разрез по каналам
     ├── webhook.py          отправка с проверкой SSRF по резолвнутому IP
     ├── integrations.py     секреты (шифрование) и настройки (белый список)
     ├── journal.py          add_log с затиранием секретов (redact)
     ├── cleanup.py          удаление данных старше N дней
+    ├── ops.py              состояние сервиса: база, воркер, очередь
+    ├── alerts.py           тревога владельцу в его же бота
+    ├── account.py          выгрузка данных и удаление аккаунта
     ├── mailer.py           письма сброса (dev — в файл)
     └── google_auth.py      верификация Firebase ID-токена
 
@@ -77,8 +89,9 @@ static/                     ванильный SPA на ES-модулях, бе�
 ├── index.html              разметка без логики
 ├── login.html / signup.html / password-reset.html
 ├── css/main.css
-└── js/  api.js render.js auth.js main.js
-      feed.js channels.js messages.js integration.js logs.js auth-pages.js
+└── js/  api.js render.js auth.js main.js secrets.js
+      feed.js sources.js messages.js integration.js usage.js logs.js
+      account.js auth-pages.js
 
 alembic/versions/           миграции — единственный способ менять схему
 scripts/migrate_sqlite_to_pg.py   разовый перенос из старой SQLite
@@ -89,7 +102,7 @@ tests/                      статические (разбор исходни�
 
 ## 4. Схема данных (PostgreSQL)
 
-Тринадцать таблиц. В каждой тенантной — `user_id NOT NULL` с индексом и
+Восемнадцать таблиц. В каждой тенантной — `user_id NOT NULL` с индексом и
 внешним ключом; правило держит `tests/test_12_models.py`, а запросы идут
 через `TenantRepo`, где забыть фильтр невозможно.
 
@@ -99,15 +112,20 @@ tests/                      статические (разбор исходни�
 | `identities` | связка с внешним провайдером | `(provider, provider_uid)`; вход через Google привязывается к существующему email, а не создаёт дубль |
 | `sessions` | сессии пользователей | отзыв = удаление строки (JWT так не умеет) |
 | `telegram_accounts` | подключённый Telegram | `session_string_encrypted` — Fernet; файлов `.session` нет |
+| `telegram_credentials` | ключи приложения MTProto пользователя | `api_hash_encrypted`; общих ключей у сервиса нет |
 | `tg_auth_attempts` | незавершённый вход по коду | заменяет глобальный `auth_state`: TTL, привязка к пользователю |
-| `monitors` | каналы мониторинга | `public_id` наружу; уникален **в паре** с `user_id` |
-| `sent_messages` | история отправленного | `UNIQUE(user_id, chat_id, message_id)` — на нём стоит дедупликация |
+| `monitors` | **источники** (задача поиска) | имя таблицы историческое; `public_id` наружу, уникален **в паре** с `user_id`; промпт оформления, стоп-слова, режим сборки |
+| `monitor_channels` | каналы источника (до 10) | свой лимит постов, промпт извлечения, потолок токенов, вердикт проверки |
+| `sent_messages` | история отправленного | частичный `UNIQUE(monitor_id, chat_id, message_id)` — дедупликация в разрезе источника (11.2) |
 | `feed_items` | лента выполненных заданий | без `photo_base64`: аватарки вынесены |
 | `chat_avatars` | аватарка канала | без `user_id` — фото публичного канала одно на всех; изоляция на чтении |
 | `logs` | журнал событий | `details` проходит `redact` перед записью |
 | `integrations` | n8n / OpenRouter / бот / автоочистка | секреты только в `*_encrypted` |
-| `jobs` | очередь ручных запусков | `status`, `started_at`, `error` |
+| `jobs` | очередь задач воркера | `status`, `attempts`, `retry_after`, `error`; `payload_json` — открытым текстом |
 | `llm_usage` | израсходованные токены за период | общий счётчик; потолок канала считается по разрезу `llm_usage_slices` (общий месячный потолок снят задачей 13.19) |
+| `llm_usage_slices` | расход в разрезе источника и канала | основание отчёта «какой канал жжёт бюджет» и потолка канала |
+| `worker_heartbeats` | отметка жизни воркера | без `user_id`: принадлежит процессу; отпечаток ключа шифрования |
+| `legacy_import_rows` | квитанции переноса старой базы | исходные настройки — зашифрованными |
 
 Схема меняется **только** миграцией Alembic. `ALTER TABLE` в коде приложения
 запрещён и проверяется тестом: прежний монолит мигрировал схему шестью
@@ -192,23 +210,32 @@ flowchart TD
 
 ### Telegram
 
+* `GET /api/telegram/status` — подключён ли аккаунт; `POST /api/telegram/credentials` —
+  свои `api_id`/`api_hash` (хэш шифруется и обратно не отдаётся).
 * `POST /api/telegram/send-code` — код на телефон (**3 / час на пользователя**:
   это защита аккаунта клиента, Telegram ограничивает тех, кому часто шлют коды).
 * `POST /api/telegram/sign-in` — код и пароль 2FA.
 * `POST /api/telegram/logout` — отключение аккаунта.
 * `GET /api/telegram/dialogs` — список собственных чатов.
 
-### Мониторы
+### Источники
 
-* `GET /api/monitors`, `POST /api/monitors`
-* `PATCH /api/monitors/{public_id}`, `DELETE /api/monitors/{public_id}`
-* `POST /api/monitors/{public_id}/run` — **202**: задача ставится в очередь,
-  опрос делает воркер (монолит держал HTTP-запрос всё время опроса).
-* `POST /api/monitors/{public_id}/reset-dedup` — сброс истории канала.
+`/api/monitors` снят задачей 11.8: два API над одной таблицей уже расходились.
+
+* `GET /api/sources`, `POST /api/sources`
+* `PATCH /api/sources/{public_id}`, `DELETE /api/sources/{public_id}`
+* `POST|PATCH|DELETE /api/sources/{public_id}/channels[/{channel_id}]` — каналы
+  источника (до 10; дубль — 409).
+* `POST /api/sources/{public_id}/run` — **202**: задача ставится в очередь,
+  опрос делает воркер; повторный запуск при живой задаче возвращает её `job_id`.
+* `POST /api/sources/{public_id}/check` — **202**: проверка, читается ли каждый канал.
+* `GET /api/sources/{public_id}/status` — состояние прогона.
+* `POST /api/sources/{public_id}/reset-dedup` — сброс истории источника.
 
 ### Лента и сообщения
 
 * `GET /api/feed`, `GET /api/feed/{id}`, `DELETE /api/feed/{id}`, `DELETE /api/feed`
+  — карточка несёт `findings` (режим шаблона) и сводку для кабинета.
 * `POST /api/feed/{id}/reanalyze` — **202**, повторный анализ задачей.
 * `GET /api/avatars/{chat_id}` — картинка с `Cache-Control`.
 * `GET /api/messages` — сохранённые посты с метриками.
@@ -218,21 +245,30 @@ flowchart TD
 * `GET|POST /api/webhook`, `POST /api/webhook/test`
 * `GET|POST /api/openrouter`, `GET /api/openrouter/models`, `POST /api/openrouter/test`
 * `GET|POST /api/telegram-forward`, `POST /api/telegram-forward/test`
+* `POST /api/openrouter/reveal`, `POST /api/telegram-forward/reveal` — показ ключа
+  владельцу по отдельному запросу, каждый показ пишется в журнал (9.14).
+* `GET /api/usage` — расход токенов за месяц по источникам и каналам.
 
 GET-ответы отдают **только** маску и признак `has_*` — сырых ключей в
 ответах нет (`tests/test_01_no_secret_leak.py` проверяет это разбором AST).
+Исключение одно и намеренное: адрес вебхука — конфигурация, а не
+удостоверение, и `GET /api/webhook` отдаёт его владельцу целиком (9.14).
 Отсутствующее поле в POST не затирает сохранённый секрет, явная пустая
 строка — очищает.
 
 ### Журнал и автоочистка
 
 * `GET /api/logs`, `DELETE /api/logs` — очистка **только своего** журнала.
-* `GET|POST /api/cleanup`, `POST /api/cleanup/run-now` — 7/14/30/60/90 дней.
+* `GET|POST /api/cleanup`, `POST /api/cleanup/run-now` — 7/14/30/60/90/180 дней.
 
-### Админка
+### Состояние, аккаунт, админка
 
+* `GET /api/ops/health` — база, heartbeat воркера, возраст очереди, отпечатки ключа.
+* `GET /api/account/export` — выгрузка источников, ленты и журнала без ключей;
+  `DELETE /api/account` — удаление с подтверждением адресом, сессия в Telegram
+  завершается (`log_out`), стираются все строки пользователя (13.2).
 * `GET /api/admin/users`, `GET /api/admin/users/{user_id}` — обычному
-  пользователю 403, анониму 401.
+  пользователю 403, анониму 401. Интерфейса у админки нет.
 
 ### Не перенесено из монолита намеренно
 
