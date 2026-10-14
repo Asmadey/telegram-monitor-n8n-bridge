@@ -184,12 +184,6 @@ def _markdown(text: str) -> str:
     text = _TABLE.sub(lambda m: keep(_render_table(m)), text)
     text = _LIST.sub(lambda m: keep(_render_list(m.group(0))), text)
 
-    # Вход экранирован с `quote=False`: кавычка из адреса дошла бы до `href`
-    # сырой и открыла бы новый атрибут — `[x](https://a"onmouseover="…)`.
-    # В Telegram это ломало только разметку, в браузере кабинета — XSS (13.20).
-    text = _LINK.sub(
-        lambda m: f'<a href="{_quote_attr(m.group(2))}">{m.group(1)}</a>', text
-    )
     # Заголовок — настоящим тегом: `sendRichMessage` их знает, и уровень
     # видно глазом, а не только жирностью.
     text = _HEADER.sub(
@@ -198,20 +192,36 @@ def _markdown(text: str) -> str:
         ),
         text,
     )
-    text = _BOLD.sub(r"<b>\1</b>", text)
-    text = _BOLD_ALT.sub(r"<b>\1</b>", text)
-    text = _STRIKE.sub(r"<s>\1</s>", text)
-    text = _ITALIC.sub(r"<i>\1</i>", text)
-    text = _ITALIC_ALT.sub(r"<i>\1</i>", text)
+    text = _inline(text)
 
     for index, rendered in enumerate(stash):
         text = text.replace(_PLACEHOLDER.format(index), rendered)
     return text
 
 
+def _inline(text: str) -> str:
+    """Строчная разметка: ссылки, жирный, курсив, зачёркнутый.
+
+    Вынесена из `_markdown`, потому что список и таблица убираются в заглушку
+    раньше строчных правил — и без этого `- [Вакансия](https://…)` приезжал
+    буквами, хотя та же ссылка вне списка становилась ссылкой (13.23).
+    """
+    # Вход экранирован с `quote=False`: кавычка из адреса дошла бы до `href`
+    # сырой и открыла бы новый атрибут — `[x](https://a"onmouseover="…)`.
+    # В Telegram это ломало только разметку, в браузере кабинета — XSS (13.20).
+    text = _LINK.sub(
+        lambda m: f'<a href="{_quote_attr(m.group(2))}">{m.group(1)}</a>', text
+    )
+    text = _BOLD.sub(r"<b>\1</b>", text)
+    text = _BOLD_ALT.sub(r"<b>\1</b>", text)
+    text = _STRIKE.sub(r"<s>\1</s>", text)
+    text = _ITALIC.sub(r"<i>\1</i>", text)
+    return _ITALIC_ALT.sub(r"<i>\1</i>", text)
+
+
 def _cells(line: str) -> list[str]:
     """Ячейки одной строки Markdown-таблицы."""
-    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+    return [_inline(cell.strip()) for cell in line.strip().strip("|").split("|")]
 
 
 def _render_table(match: "re.Match[str]") -> str:
@@ -237,7 +247,7 @@ def _render_table(match: "re.Match[str]") -> str:
 
 def _render_list(block: str) -> str:
     items = _LIST_ITEM.findall(block)
-    return "<ul>" + "".join(f"<li>{item}</li>" for item in items) + "</ul>"
+    return "<ul>" + "".join(f"<li>{_inline(item)}</li>" for item in items) + "</ul>"
 
 
 # Разворот богатой разметки в ту, что понимает sendMessage. Нужен запасному
@@ -352,6 +362,18 @@ def _rich_line_breaks(rich: str) -> str:
     return rich
 
 
+def _text(chunk: str) -> str:
+    """Текст между тегами — к буквам, прежде чем экранировать.
+
+    Модель отвечает настоящим HTML, и амперсанд в нём уже записан сущностью
+    `&amp;`. Экранировать такой текст сразу значило получить `&amp;amp;` —
+    пользователь видел «P&amp;L» и в боте, и в кабинете (13.23). Раскрытая
+    сущность тут же экранируется заново, поэтому `&lt;script&gt;` остаётся
+    текстом, а не становится тегом.
+    """
+    return html.unescape(chunk)
+
+
 def to_telegram_html(text: str) -> str:
     """Привести ответ модели к разметке, которую разберёт Bot API."""
     if not text:
@@ -369,7 +391,7 @@ def to_telegram_html(text: str) -> str:
         kept = _keep_tag(match)
         if kept is None:
             continue
-        chunk = text[position : match.start()]
+        chunk = _text(text[position : match.start()])
         parts.append(escape(chunk) if depth_literal else _markdown(escape(chunk)))
         parts.append(kept)
         position = match.end()
@@ -378,6 +400,6 @@ def to_telegram_html(text: str) -> str:
             depth_literal += -1 if match.group(0).startswith("</") else 1
             depth_literal = max(depth_literal, 0)
 
-    tail = text[position:]
+    tail = _text(text[position:])
     parts.append(escape(tail) if depth_literal else _markdown(escape(tail)))
     return _rich_line_breaks("".join(parts))
