@@ -184,7 +184,12 @@ def _markdown(text: str) -> str:
     text = _TABLE.sub(lambda m: keep(_render_table(m)), text)
     text = _LIST.sub(lambda m: keep(_render_list(m.group(0))), text)
 
-    text = _LINK.sub(lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>', text)
+    # Вход экранирован с `quote=False`: кавычка из адреса дошла бы до `href`
+    # сырой и открыла бы новый атрибут — `[x](https://a"onmouseover="…)`.
+    # В Telegram это ломало только разметку, в браузере кабинета — XSS (13.20).
+    text = _LINK.sub(
+        lambda m: f'<a href="{_quote_attr(m.group(2))}">{m.group(1)}</a>', text
+    )
     # Заголовок — настоящим тегом: `sendRichMessage` их знает, и уровень
     # видно глазом, а не только жирностью.
     text = _HEADER.sub(
@@ -271,6 +276,53 @@ def to_plain_html(text: str) -> str:
 def escape(text: str) -> str:
     """Чужой текст (заголовок канала, чужой пост) — всегда только текст."""
     return html.escape(text or "", quote=False)
+
+
+def _quote_attr(value: str) -> str:
+    """Дописать экранирование кавычек к тексту, уже прошедшему `escape`.
+
+    Повторный `html.escape` удвоил бы `&amp;`; здесь не хватает только кавычек.
+    """
+    return value.replace('"', "&quot;").replace("'", "&#x27;")
+
+
+# Ссылки, которые выпускает сам санитайзер: `_keep_tag` и `_markdown` пишут
+# `<a href="…">` ровно в таком виде, чужих атрибутов у них не бывает.
+_OWN_LINK = re.compile(r'<a href="([^"<>]*)">')
+_ANY_TAG = re.compile(r"<[^<>]*>")
+_TAG_SPLIT = re.compile(r"(<[^<>]*>)")
+
+
+def to_cabinet_html(text: str) -> str:
+    """Сводка для кабинета: ТОТ ЖЕ разбор, что для бота (13.20).
+
+    Отдельного санитайзера у кабинета нет намеренно: два разбора одного текста
+    однажды разойдутся, и в бот уйдёт одно, а в кабинете покажется другое.
+    Сверху добавляется только то, чего требует браузер: ссылка открывается в
+    новой вкладке и не получает доступа к окну кабинета.
+    """
+    rich = _OWN_LINK.sub(
+        r'<a href="\1" rel="noopener noreferrer" target="_blank">',
+        to_telegram_html(text),
+    )
+    # Кавычки в ТЕКСТЕ безвредны, но экранируются и там: отклонённый тег
+    # чужой ссылки остаётся видимым текстом, и в нём не должно оставаться
+    # ничего, что читается как готовый атрибут, — если такой текст однажды
+    # окажется не на своём месте, он всё равно останется текстом.
+    return "".join(
+        part if part.startswith("<") else _quote_attr(part)
+        for part in _TAG_SPLIT.split(rich)
+    )
+
+
+def to_cabinet_text(text: str) -> str:
+    """Сводка простым текстом — для сниппета карточки и кнопки «Скопировать».
+
+    Теги сняты, сущности раскрыты: экранирует такой текст уже тот, кто
+    вставляет его в страницу (билдер `html` в кабинете).
+    """
+    plain = _ANY_TAG.sub("", rich_html_to_plain(to_telegram_html(text)))
+    return html.unescape(plain).strip()
 
 
 def _rich_line_breaks(rich: str) -> str:
