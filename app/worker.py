@@ -708,14 +708,12 @@ class Worker:
             analysis = verdicts[0]["verdict"]
         elif verdicts:
             # Сведение видит вердикты в порядке каналов источника — он же
-            # задаёт порядок в сообщении.
+            # задаёт порядок в сообщении. Номера у вердикта нет: из него
+            # собиралась ссылка `t.me/c/1` на пост, которого не существует
+            # (13.24).
             summary_input = [
-                {
-                    "id": index + 1,
-                    "chat_title": item.get("chat_title"),
-                    "text": item["verdict"],
-                }
-                for index, item in enumerate(verdicts)
+                {"chat_title": item.get("chat_title"), "text": item["verdict"]}
+                for item in verdicts
             ]
             try:
                 analysis = await _within(
@@ -726,6 +724,8 @@ class Worker:
                         custom_prompt=answer_prompt,
                         caller=caller,
                         require_success=True,
+                        # на входе разборы каналов, а не посты (13.24)
+                        verdicts=True,
                         # сведение тратит токены на источник целиком:
                         # канала у него нет, поэтому chat_id остаётся нулём
                         source_public_id=source_public_id,
