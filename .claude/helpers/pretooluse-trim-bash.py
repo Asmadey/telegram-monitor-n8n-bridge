@@ -31,6 +31,7 @@ NOISY = re.compile(
     r"|docker|docker-compose"
     r"|tsc|webpack|vite|rollup|esbuild|jest|vitest|eslint"
     r"|mypy|alembic|terraform|ansible"
+    r"|graft|trail"
     r")\b",
     re.IGNORECASE,
 )
