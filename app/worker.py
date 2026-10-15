@@ -456,10 +456,22 @@ class Worker:
             ).first()
             if monitor is None:
                 raise LookupError("источник не найден у владельца задачи")
+            # id — до опроса: внутри него бывает откат, и после него поле
+            # ORM-объекта — это ленивая загрузка (MissingGreenlet)
+            job_id = job.id
             # Имя другое: у ветки батча `result` — словарь диспетчера, а
             # здесь исход опроса строкой. Одно имя на два типа mypy ловит
             # справедливо: читающему это тоже мешало бы.
             outcome = await self.poll_source(db, monitor, **senders)
+            # Исход остаётся в задаче (13.26): «Запустить» без новых постов
+            # молчало в боте, и человек решал, что сломался запуск, хотя в
+            # журнале было честное «новых постов нет».
+            stored = await db.get(Job, job_id)
+            if stored is not None:
+                stored.payload_json = json.dumps(
+                    {**payload, "outcome": outcome}, ensure_ascii=False
+                )
+                await db.commit()
             if outcome == "flood_wait":
                 account = (
                     await db.scalars(TenantRepo(db, job.user_id).query(TelegramAccount))

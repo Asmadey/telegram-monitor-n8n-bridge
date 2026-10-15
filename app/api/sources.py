@@ -12,6 +12,7 @@
 и того же.
 """
 
+import json
 import uuid
 from typing import Any, Literal
 
@@ -416,6 +417,33 @@ async def _live_job(
     return None
 
 
+async def _last_run(repo: TenantRepo, public_id: str) -> dict | None:
+    """Чем кончился последний ручной прогон источника (13.26).
+
+    Исход пишет воркер в задачу; упавшая задача — исход `error`. Прогон по
+    расписанию задачи не заводит, и его исход по-прежнему в журнале.
+    """
+    jobs = await repo.db.scalars(
+        repo.query(Job)
+        .where(
+            Job.kind == KIND_POLL,
+            Job.status.in_([STATUS_DONE, STATUS_FAILED]),
+            Job.payload_json.contains(f'"{public_id}"', autoescape=True),
+        )
+        .order_by(Job.id.desc())
+        .limit(1)
+    )
+    job = jobs.first()
+    if job is None:
+        return None
+    try:
+        payload = json.loads(job.payload_json or "{}")
+    except ValueError:
+        payload = {}
+    outcome = "error" if job.status == STATUS_FAILED else payload.get("outcome")
+    return {"job_id": job.id, "outcome": outcome, "finished_at": job.finished_at}
+
+
 @router.post("/api/sources/{public_id}/run", status_code=202)
 async def run_source(
     public_id: str, repo: TenantRepo = Depends(get_tenant_repo)
@@ -524,6 +552,7 @@ async def source_status(
         "checking": checking is not None,
         "job_id": live.id if live is not None else None,
         "last_run_at": source.last_run_at,
+        "last_run": await _last_run(repo, source.public_id),
         "channels": [
             {
                 "channel_id": c.id,
