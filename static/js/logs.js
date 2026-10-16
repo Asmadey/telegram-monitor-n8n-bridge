@@ -95,7 +95,7 @@ function renderLogs() {
   if (currentLogs.length === 0) {
     logsTableBody.innerHTML = html`
       <tr>
-        <td colspan="5" class="u-ta-center u-p-3xl u-c-mute">
+        <td colspan="6" class="u-ta-center u-p-3xl u-c-mute">
           Записи в журнале логов отсутствуют.
         </td>
       </tr>
@@ -120,9 +120,35 @@ function renderLogs() {
       <td class="u-fs-caption u-c-body u-wb-break-word">
         ${log.details || ''}
       </td>
+      <td class="u-ta-center">
+        <button class="btn btn-secondary btn-icon-sm" type="button" data-action="delete-log" data-log-id="${log.id}" title="Удалить запись">✕</button>
+      </td>
     </tr>
   `).join('');
 }
+
+// Крестик в строке (13.28): одна запись, без подтверждения — журнал не
+// данные клиента, а след работы, и строку убирают, чтобы её не было. Отметки
+// «прочитано» сервер при этом не трогает. Обработчик один на таблицу: строки
+// перерисовываются, а встроенные обработчики запрещает CSP (9.8).
+logsTableBody.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-action="delete-log"]');
+  if (!button) return;
+  const id = Number(button.dataset.logId);
+  button.disabled = true;
+  try {
+    const res = await apiFetch(`/api/logs/${id}`, { method: 'DELETE' });
+    // 404 — записи уже нет (удалили из другой вкладки): убрать её и здесь
+    if (!res.ok && res.status !== 404) throw new Error('HTTP ' + res.status);
+    currentLogs = currentLogs.filter(log => log.id !== id);
+    totalLogs = Math.max(0, totalLogs - 1);
+    if (tabLogsCount) tabLogsCount.textContent = totalLogs;
+    renderLogs();
+  } catch (e) {
+    button.disabled = false;
+    showToast('Не удалось удалить запись', true);
+  }
+});
 
 filterLogStatus.addEventListener('change', () => loadLogs());
 refreshLogsBtn.addEventListener('click', () => loadLogs());

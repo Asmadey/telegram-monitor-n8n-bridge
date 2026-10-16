@@ -13,9 +13,10 @@
 """
 
 import json
+import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 
 from app.db import TenantRepo
@@ -24,6 +25,7 @@ from app.models import LogEntry, SentMessage
 from app.services.journal import add_log
 
 router = APIRouter(dependencies=[Depends(require_user)])
+logger = logging.getLogger(__name__)
 
 # «все статусы» — то же слово, что понимает текущий фронтенд
 ANY_STATUS = "ALL"
@@ -135,3 +137,31 @@ async def clear_logs(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
         "INFO",
     )
     return {"status": "cleared"}
+
+
+@router.delete("/api/logs/{entry_id}")
+async def delete_log_entry(
+    entry_id: int, repo: TenantRepo = Depends(get_tenant_repo)
+) -> dict:
+    """Удалить одну запись журнала — крестик в конце строки (13.28).
+
+    Чужая запись — 404, а не 403 (правило проекта). След, в отличие от
+    очистки целиком, пишется не в журнал, а в журнал процесса: человек
+    убирает строку, чтобы её не было, и строка «удалена запись» на её месте
+    свела бы крестик на нет.
+
+    Отметки «прочитано» (`sent_messages`) — другая таблица и не трогаются:
+    удалённая запись журнала не делает пост снова новым.
+    """
+    entry = await repo.get(LogEntry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Запись не найдена")
+    logger.info(
+        "тенант %s удалил запись журнала %s (%s)",
+        repo.user_id,
+        entry_id,
+        entry.event_type,
+    )
+    await repo.db.delete(entry)
+    await repo.db.commit()
+    return {"status": "deleted", "id": entry_id}

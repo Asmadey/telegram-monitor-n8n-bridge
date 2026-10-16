@@ -265,7 +265,8 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
             reactions_json="[]",
         )
     )
-    db.add(LogEntry(user_id=user_a.id, event_type="X", status="INFO", details=marker))
+    log_a = LogEntry(user_id=user_a.id, event_type="X", status="INFO", details=marker)
+    db.add(log_a)
     # собственные данные B: списки/эндпоинты обязаны работать и отдавать своё
     # заголовок несёт тот же маркер «сводка B»: позитивный контроль свипа
     # ищет его в ответе КАЖДОГО списка, а у каналов видимое поле — название
@@ -356,6 +357,8 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
         "public_id": "a-monitor",
         # канал чужого источника: он не должен находиться даже по номеру
         "channel_id": 1,
+        # запись журнала A: крестик B по её номеру обязан получить 404 (13.28)
+        "entry_id": log_a.id,
     }
     exercised = set()
     for route in routes:
