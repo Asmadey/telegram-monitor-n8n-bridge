@@ -52,6 +52,8 @@ class SourceCreate(BaseModel):
     interval_minutes: int = Field(default=60, ge=5, le=10080)
     answer_prompt: str = ""
     assembly_mode: Literal["prompt", "template"] = "prompt"
+    # правила оформления для Telegram к итоговому шагу (13.27)
+    html_markup: bool = False
     stop_words: str = ""
     is_active: bool = True
 
@@ -61,6 +63,7 @@ class SourceUpdate(BaseModel):
     interval_minutes: int | None = Field(default=None, ge=5, le=10080)
     answer_prompt: str | None = None
     assembly_mode: Literal["prompt", "template"] | None = None
+    html_markup: bool | None = None
     stop_words: str | None = None
     is_active: bool | None = None
 
@@ -138,6 +141,7 @@ def _source_card(
         "interval_minutes": source.interval_minutes,
         "answer_prompt": source.answer_prompt,
         "assembly_mode": source.assembly_mode,
+        "html_markup": source.html_markup,
         "stop_words": source.stop_words,
         "is_active": source.is_active,
         "running": source.running,
@@ -212,6 +216,7 @@ async def create_source(
         interval_minutes=req.interval_minutes,
         answer_prompt=_check_prompt(req.answer_prompt, "Промпт оформления"),
         assembly_mode=req.assembly_mode,
+        html_markup=req.html_markup,
         stop_words=_check_stop_words(req.stop_words),
         is_active=req.is_active,
     )
@@ -242,6 +247,8 @@ async def update_source(
         source.answer_prompt = _check_prompt(req.answer_prompt, "Промпт оформления")
     if req.assembly_mode is not None:
         source.assembly_mode = req.assembly_mode
+    if req.html_markup is not None:
+        source.html_markup = req.html_markup
     if req.stop_words is not None:
         source.stop_words = _check_stop_words(req.stop_words)
     if req.is_active is not None:

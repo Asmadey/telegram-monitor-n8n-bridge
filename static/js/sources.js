@@ -182,6 +182,7 @@ addSourceForm.addEventListener('submit', async (event) => {
         stop_words: document.getElementById('sourceStopWords').value,
         answer_prompt: document.getElementById('sourceAnswerPrompt').value,
         assembly_mode: document.getElementById('sourceAssemblyMode').value,
+        html_markup: document.getElementById('sourceHtmlMarkup').checked,
       },
     });
     if (!res.ok) {
@@ -325,6 +326,7 @@ export function openSourceModal(publicId) {
   editSourceStopWords.value = source.stop_words || '';
   editSourceAnswerPrompt.value = source.answer_prompt || '';
   document.getElementById('editSourceAssemblyMode').value = source.assembly_mode || 'prompt';
+  document.getElementById('editSourceHtmlMarkup').checked = Boolean(source.html_markup);
   newChannelTarget.value = '';
   renderChannelRows();
   openModalAnimated(sourceModal);
@@ -446,6 +448,7 @@ saveSourceBtn.addEventListener('click', async () => {
         stop_words: editSourceStopWords.value,
         answer_prompt: editSourceAnswerPrompt.value,
         assembly_mode: document.getElementById('editSourceAssemblyMode').value,
+        html_markup: document.getElementById('editSourceHtmlMarkup').checked,
       },
     });
     if (!patched.ok) {

@@ -112,3 +112,27 @@ def test_the_retired_monolith_is_not_described_as_present():
         "монолит описан как существующий — он удалён задачей 7.4:\n  "
         + "\n  ".join(offenders)
     )
+
+
+def test_the_revision_count_in_the_entry_point_is_the_real_one():
+    """Число ревизий и head в `CLAUDE.md` — из дерева, а не из памяти (13.27).
+
+    Свип выше сверяет пути, а числа сверять было нечем: «19 ревизий, head 0019»
+    пережили бы ревизию 0020 молча — так же, как «14 ревизий» пережили пять
+    ревизий до 13.22.
+    """
+    revisions = sorted(
+        p.name[:4]
+        for p in (ROOT / "alembic" / "versions").glob("[0-9][0-9][0-9][0-9]_*.py")
+    )
+    claimed = re.search(
+        r"(\d+) ревизи\w*, head `(\d{4})`", CLAUDE.read_text(encoding="utf-8")
+    )
+    assert claimed, "CLAUDE.md не называет число ревизий и head"
+    assert (int(claimed.group(1)), claimed.group(2)) == (
+        len(revisions),
+        revisions[-1],
+    ), (
+        f"CLAUDE.md: {claimed.group(0)!r}, а в дереве {len(revisions)} ревизий, "
+        f"head {revisions[-1]}"
+    )

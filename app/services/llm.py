@@ -35,6 +35,7 @@ from sqlalchemy.dialects import postgresql, sqlite
 from app.models import Integration, LLMUsage, LLMUsageSlice
 from app.services.integrations import integration_secrets
 from app.services.journal import add_log, redact
+from app.services.telegram_markup import MARKUP_RULES
 
 MAX_REQUEST_CHARS = 48_000
 DEFAULT_SYSTEM_PROMPT = (
@@ -48,9 +49,8 @@ DEFAULT_SYSTEM_PROMPT = (
 # разбор, говорит сервис: промпт оформления пишет человек, и про устройство
 # конвейера он знать не обязан.
 REDUCE_PREAMBLE = (
-    "Ниже — результаты разбора каналов, а не посты. Сведи их в одно сообщение "
-    "по инструкции ниже. Сам разбор не оценивай и не комментируй: это материал "
-    "для ответа, а не вопрос к тебе."
+    "Ниже — результаты разбора каналов, а не посты. Это материал для итогового "
+    "сообщения: выполни над ним инструкцию, которая идёт следом."
 )
 DEFAULT_REDUCE_PROMPT = "Сведи результаты разбора каналов в одно краткое сообщение."
 
@@ -207,6 +207,7 @@ async def process_messages_batch_with_llm(
     chat_title: str = "",
     schema: dict | None = None,
     verdicts: bool = False,
+    html_markup: bool = False,
 ) -> str | None:
     """Анализ батча с гейтами и устойчивыми checkpoints.
 
@@ -222,6 +223,10 @@ async def process_messages_batch_with_llm(
     `verdicts=True` — сведение (13.24): на входе разборы каналов
     (`chat_title` + `text`), и модель получает их под именами каналов, а не
     постами со ссылками.
+
+    `html_markup=True` — флажок источника «Применить HTML-разметку» (13.27):
+    правила оформления для Telegram идут ПОСЛЕ промпта владельца. Включает
+    его вызывающий, и только на шаге, чей ответ уходит в бот.
     """
     now = now or _utcnow()
     integration = (
@@ -270,6 +275,8 @@ async def process_messages_batch_with_llm(
     )
     if verdicts:
         effective_prompt = f"{REDUCE_PREAMBLE}\n\n{effective_prompt}"
+    if html_markup:
+        effective_prompt = f"{effective_prompt}\n\n{MARKUP_RULES}"
     key = "каналы" if verdicts else "post"
     payload: dict = {
         "model": integration.openrouter_model,

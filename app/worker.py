@@ -545,6 +545,12 @@ class Worker:
             await db.commit()
 
         single = len(groups) == 1
+        # Флажок «Применить HTML-разметку» (13.27) — шагу, чей ответ уходит в
+        # бот: сведению, а без него (один канал без промпта оформления) —
+        # разбору канала. В шаблоне итог рисует код, и правила HTML только
+        # спорили бы со схемой. Старые задачи без ключа — флажок выключен.
+        markup = bool(payload.get("html_markup")) and not template
+        final_is_channel = single and not answer_prompt
         for group in groups:
             if group.get("verdict"):
                 # уже разобран прошлой попыткой
@@ -613,6 +619,7 @@ class Worker:
                         # может ни обернуть ответ в ограждение, ни дописать
                         # пояснение, ни оборвать структуру.
                         schema=response_schema() if template else None,
+                        html_markup=markup and final_is_channel,
                         completed=list(group.get("completed") or []),
                         checkpoint=_chunk_done,
                         # адрес расхода (12.7): по общему счётчику не видно,
@@ -738,6 +745,7 @@ class Worker:
                         require_success=True,
                         # на входе разборы каналов, а не посты (13.24)
                         verdicts=True,
+                        html_markup=markup,
                         # сведение тратит токены на источник целиком:
                         # канала у него нет, поэтому chat_id остаётся нулём
                         source_public_id=source_public_id,
@@ -902,6 +910,7 @@ class Worker:
             },
             "answer_prompt": source.answer_prompt if source is not None else "",
             "assembly_mode": (source.assembly_mode if source is not None else "prompt"),
+            "html_markup": bool(source.html_markup) if source is not None else False,
         }
 
     # ------------------------------------------------------------------
@@ -1397,6 +1406,7 @@ class Worker:
         source_stop_words = source.stop_words or ""
         source_answer_prompt = source.answer_prompt or ""
         source_assembly_mode = source.assembly_mode or "prompt"
+        source_html_markup = bool(source.html_markup)
         source_public_id = source.public_id
 
         # Поля снимаются ДО обхода, все сразу. Rollback в ветке ошибки
@@ -1718,6 +1728,7 @@ class Worker:
                     },
                     "answer_prompt": source_answer_prompt,
                     "assembly_mode": source_assembly_mode,
+                    "html_markup": source_html_markup,
                 },
                 ensure_ascii=False,
             ),
