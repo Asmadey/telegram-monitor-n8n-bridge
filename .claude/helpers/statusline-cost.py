@@ -5,6 +5,7 @@ Prefers the figures Claude Code passes on stdin and falls back to computing them
 from the session transcript, so it still reports something useful if the shape
 of the status-line payload changes.
 """
+
 import json
 import os
 import sys
@@ -54,15 +55,21 @@ def scan(transcript):
                 msg = rec.get("message") or {}
                 usage = msg.get("usage")
                 if usage:
-                    per_msg[msg.get("id")] = usage   # last record per id wins
+                    per_msg[msg.get("id")] = usage  # last record per id wins
                     latest = usage
     except OSError:
         return None, None, None
 
     model = None
-    ctx = (latest.get("cache_read_input_tokens", 0)
-           + latest.get("cache_creation_input_tokens", 0)
-           + latest.get("input_tokens", 0)) if latest else 0
+    ctx = (
+        (
+            latest.get("cache_read_input_tokens", 0)
+            + latest.get("cache_creation_input_tokens", 0)
+            + latest.get("input_tokens", 0)
+        )
+        if latest
+        else 0
+    )
 
     cc = cr = inp = out = 0
     ttl_1h = False
@@ -99,15 +106,19 @@ def main() -> int:
         cc, cr, inp, out, ttl_1h = totals
         base_in, base_out = PRICES.get(model_id, PRICES["claude-opus-5"])
         write_mult = 2.0 if ttl_1h else 1.25
-        cost = (cc / 1e6 * base_in * write_mult + cr / 1e6 * base_in * 0.1
-                + inp / 1e6 * base_in + out / 1e6 * base_out)
+        cost = (
+            cc / 1e6 * base_in * write_mult
+            + cr / 1e6 * base_in * 0.1
+            + inp / 1e6 * base_in
+            + out / 1e6 * base_out
+        )
 
     window = WINDOWS.get(model_id, DEFAULT_WINDOW)
     try:
         window = int(os.environ.get("CLAUDE_STATUSLINE_WINDOW", window))
     except ValueError:
         pass
-    if ctx and ctx > window:          # long-context variant in play
+    if ctx and ctx > window:  # long-context variant in play
         window = 1_000_000
 
     parts = [label]

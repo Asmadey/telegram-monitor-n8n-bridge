@@ -8,6 +8,7 @@ view instead. The full log stays on disk; only the token cost is cut.
 
 Emits nothing for commands that are not noisy, so the tool input is untouched.
 """
+
 import json
 import os
 import re
@@ -60,8 +61,8 @@ def main() -> int:
 
     wrapped = (
         f"mkdir -p {LOGDIR}; {MARKER}=$(mktemp {LOGDIR}/run-XXXXXX.log); "
-        f"{{ {cmd}\n}} >\"${MARKER}\" 2>&1; {MARKER}_rc=$?; "
-        f"python3 {TRIMMER} \"${MARKER}\"; (exit ${MARKER}_rc)"
+        f'{{ {cmd}\n}} >"${MARKER}" 2>&1; {MARKER}_rc=$?; '
+        f'python3 {TRIMMER} "${MARKER}"; (exit ${MARKER}_rc)'
     )
     updated = dict(tool_input)
     updated["command"] = wrapped

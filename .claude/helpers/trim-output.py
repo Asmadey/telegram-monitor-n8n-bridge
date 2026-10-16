@@ -5,6 +5,7 @@ Reads a captured log file, prints at most KEEP_TAIL trailing lines plus any
 error-looking lines from the part that was cut. The full log stays on disk and
 its path is printed, so nothing is actually lost — only the tokens are.
 """
+
 import os
 import re
 import sys
