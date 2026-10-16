@@ -35,13 +35,38 @@ from sqlalchemy.dialects import postgresql, sqlite
 from app.models import Integration, LLMUsage, LLMUsageSlice
 from app.services.integrations import integration_secrets
 from app.services.journal import add_log, redact
+from app.services.telegram_markup import MARKUP_RULES
 
 MAX_REQUEST_CHARS = 48_000
 DEFAULT_SYSTEM_PROMPT = (
     "Выдели ключевую суть сообщений, ключевые технологии, условия и теги. Будь краток."
 )
 
+# Сведение читает не посты, а разборы каналов (13.24). Подавать их тем же
+# кодом, что посты, значило выдать модели «пост» с выдуманной ссылкой
+# `t.me/c/1` и без названия канала — и модель честно описывала один пост-
+# дайджест, а получив HTML-документ, рецензировала «ваш пост». Что перед ней
+# разбор, говорит сервис: промпт оформления пишет человек, и про устройство
+# конвейера он знать не обязан.
+REDUCE_PREAMBLE = (
+    "Ниже — результаты разбора каналов, а не посты. Это материал для итогового "
+    "сообщения: выполни над ним инструкцию, которая идёт следом."
+)
+DEFAULT_REDUCE_PROMPT = "Сведи результаты разбора каналов в одно краткое сообщение."
+
 logger = logging.getLogger(__name__)
+
+
+def _item(message: dict, text: str, *, verdicts: bool) -> dict:
+    """Один элемент запроса: пост со ссылкой или разбор под именем канала."""
+    if verdicts:
+        return {"канал": message.get("chat_title") or "", "разбор": text}
+    return {
+        "ID": str(message.get("id", "")),
+        "пост": text,
+        "ссылка": message.get("post_url", "")
+        or f"https://t.me/{message.get('chat_username', 'c')}/{message.get('id', '')}",
+    }
 
 
 def _utcnow() -> datetime.datetime:
@@ -53,7 +78,7 @@ def _period(now: datetime.datetime) -> str:
 
 
 def truncate_posts(
-    messages: list[dict], *, limit: int = MAX_REQUEST_CHARS
+    messages: list[dict], *, limit: int = MAX_REQUEST_CHARS, verdicts: bool = False
 ) -> list[dict]:
     """Порт post_items оригинала + потолок: суммарный текст постов не
     больше limit; режем ХВОСТ (следующие посты уже не влезают)."""
@@ -67,14 +92,7 @@ def truncate_posts(
             break
         if len(text) > remaining:
             text = text[:remaining]
-        items.append(
-            {
-                "ID": str(item.get("id", "")),
-                "пост": text,
-                "ссылка": item.get("post_url", "")
-                or f"https://t.me/{item.get('chat_username', 'c')}/{item.get('id', '')}",
-            }
-        )
+        items.append(_item(item, text, verdicts=verdicts))
         remaining -= len(text)
     return items
 
@@ -188,6 +206,8 @@ async def process_messages_batch_with_llm(
     chat_id: int = 0,
     chat_title: str = "",
     schema: dict | None = None,
+    verdicts: bool = False,
+    html_markup: bool = False,
 ) -> str | None:
     """Анализ батча с гейтами и устойчивыми checkpoints.
 
@@ -199,6 +219,14 @@ async def process_messages_batch_with_llm(
     Пустая строка и ноль означают «вне источника» и «не канал»: прямой
     разбор из ленты и сведение по каналам тоже тратят токены, но канала
     у них нет.
+
+    `verdicts=True` — сведение (13.24): на входе разборы каналов
+    (`chat_title` + `text`), и модель получает их под именами каналов, а не
+    постами со ссылками.
+
+    `html_markup=True` — флажок источника «Применить HTML-разметку» (13.27):
+    правила оформления для Telegram идут ПОСЛЕ промпта владельца. Включает
+    его вызывающий, и только на шаге, чей ответ уходит в бот.
     """
     now = now or _utcnow()
     integration = (
@@ -213,7 +241,7 @@ async def process_messages_batch_with_llm(
             raise RuntimeError("LLM enabled without API key")
         return None
 
-    items = truncate_posts(messages)
+    items = truncate_posts(messages, verdicts=verdicts)
     batches = [items]
     if require_success:
         # Technical request size, not a quota: every character is processed.
@@ -227,17 +255,7 @@ async def process_messages_batch_with_llm(
                 if current and size + len(part) > MAX_REQUEST_CHARS:
                     batches.append(current)
                     current, size = [], 0
-                current.append(
-                    {
-                        "ID": str(message.get("id", "")),
-                        "пост": part,
-                        "ссылка": message.get("post_url", "")
-                        or (
-                            f"https://t.me/{message.get('chat_username', 'c')}"
-                            f"/{message.get('id', '')}"
-                        ),
-                    }
-                )
+                current.append(_item(message, part, verdicts=verdicts))
                 size += len(part)
         if current:
             batches.append(current)
@@ -252,14 +270,21 @@ async def process_messages_batch_with_llm(
             model=integration.openrouter_model,
         )
 
-    effective_prompt = (custom_prompt or "").strip() or DEFAULT_SYSTEM_PROMPT
+    effective_prompt = (custom_prompt or "").strip() or (
+        DEFAULT_REDUCE_PROMPT if verdicts else DEFAULT_SYSTEM_PROMPT
+    )
+    if verdicts:
+        effective_prompt = f"{REDUCE_PREAMBLE}\n\n{effective_prompt}"
+    if html_markup:
+        effective_prompt = f"{effective_prompt}\n\n{MARKUP_RULES}"
+    key = "каналы" if verdicts else "post"
     payload: dict = {
         "model": integration.openrouter_model,
         "messages": [
             {"role": "system", "content": effective_prompt},
             {
                 "role": "user",
-                "content": json.dumps({"post": items}, ensure_ascii=False, indent=2),
+                "content": json.dumps({key: items}, ensure_ascii=False, indent=2),
             },
         ],
     }
@@ -308,7 +333,7 @@ async def process_messages_batch_with_llm(
         tokens = 0
         for batch in batches[len(analyses) :]:
             payload["messages"][1]["content"] = json.dumps(
-                {"post": batch}, ensure_ascii=False, indent=2
+                {key: batch}, ensure_ascii=False, indent=2
             )
             result, used = await ask(payload)
             if require_success and not result:
