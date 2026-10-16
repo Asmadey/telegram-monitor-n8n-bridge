@@ -192,9 +192,12 @@ async def test_partial_analysis_retry_does_not_reread_successful_chunk(db, user)
 
 
 @pytest.mark.asyncio
-async def test_monthly_budget_defers_unread_batch(db, user):
+async def test_monthly_spend_no_longer_defers_the_batch(db, user):
+    """Прежде (4.5) расход выше 2 млн токенов откладывал батч до следующего
+    месяца. Общий потолок снят задачей 13.19 по решению владельца: расход
+    ограничивает потолок канала, а не зашитое число. Сценарий переписан на
+    обратный контракт, а не удалён: тот же путь воркера, тот же расход."""
     from app.models import LLMUsage, SentMessage
-    from app.services.llm import MONTHLY_TOKEN_LIMIT
 
     await _enable_all(db, user.id)
     await _monitor(db, user)
@@ -202,7 +205,7 @@ async def test_monthly_budget_defers_unread_batch(db, user):
         LLMUsage(
             user_id=user.id,
             period=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m"),
-            tokens=MONTHLY_TOKEN_LIMIT,
+            tokens=5_000_000,
         )
     )
     await db.commit()
@@ -210,24 +213,25 @@ async def test_monthly_budget_defers_unread_batch(db, user):
 
     async def llm(payload):
         called.append(payload)
-        return ("should not call", 1)
+        return ("суть постов", 1)
 
-    async def deliver(db, uid, payload, **kwargs):
-        return await dispatch(db, uid, payload, llm_caller=llm, **kwargs)
+    async def sender(*args):
+        return True
 
-    await _worker(db, dispatcher=deliver).run_schedule(db)
-    assert not called
-    assert all(
-        not message.processed for message in await db.scalars(select(SentMessage))
+    # Вызов модели — через run_schedule, как в соседних сценариях: прежняя
+    # версия передавала его только доставке, до шага разбора он не доходил,
+    # и «модель не вызвана» было правдой по двум причинам сразу.
+    await _worker(db, dispatcher=dispatch).run_schedule(
+        db, llm_caller=llm, bot_sender=sender, webhook_sender=sender
     )
-    assert any(job.status == "pending" for job in await db.scalars(select(Job)))
-    pending = (await db.scalars(select(Job).where(Job.status == "pending"))).first()
-    assert pending is not None and pending.retry_after is not None
-    retry_after = pending.retry_after.replace(tzinfo=datetime.timezone.utc)
-    now = datetime.datetime.now(datetime.timezone.utc)
-    assert (retry_after.year, retry_after.month) != (now.year, now.month), (
-        "a monthly budget must defer until the next accounting period"
-    )
+    assert called, "батч не дошёл до модели из-за месячного расхода"
+    assert all(message.processed for message in await db.scalars(select(SentMessage)))
+    deferred = [
+        job
+        for job in await db.scalars(select(Job).where(Job.status == "pending"))
+        if job.retry_after is not None
+    ]
+    assert not deferred, "батч отложен, хотя общего потолка больше нет"
 
 
 @pytest.mark.asyncio

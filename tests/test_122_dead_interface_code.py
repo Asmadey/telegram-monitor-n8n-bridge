@@ -141,7 +141,16 @@ def test_no_export_in_the_spa_goes_unused():
 # `findings` — разобранный список, который `_card` кладёт вместо строки
 # `findings_json` (13.9): в ленту оно уходит данными, а не текстом, и
 # разбирать JSON заново в кабинете было бы вторым разбором того же самого.
-_EXTRA_FEED_KEYS = {"avatar_chat_id", "messages", "findings"}
+# `ai_analysis_html` / `ai_analysis_text` — сводка, которую сервер готовит
+# тем же санитайзером, что и для бота (13.20): разметку проверяет одно место,
+# а не два, и кабинет с ботом не могут показать одну сводку по-разному.
+_EXTRA_FEED_KEYS = {
+    "avatar_chat_id",
+    "messages",
+    "findings",
+    "ai_analysis_html",
+    "ai_analysis_text",
+}
 
 
 def _fields_the_feed_api_sends() -> set[str]:

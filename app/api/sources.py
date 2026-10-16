@@ -25,7 +25,6 @@ from app.models import Job, Monitor, MonitorChannel, SentMessage
 from app.services.channels import normalize_channel_target
 from app.services.jobs import STATUS_DONE, STATUS_FAILED
 from app.services.journal import add_log
-from app.services.llm import MONTHLY_TOKEN_LIMIT
 from app.services.stopwords import MAX_STOP_WORDS, parse_stop_words
 
 router = APIRouter(dependencies=[Depends(require_user)])
@@ -34,6 +33,9 @@ router = APIRouter(dependencies=[Depends(require_user)])
 # и по счёту. Потолок назван в тексте отказа, чтобы не гадать.
 MAX_CHANNELS = 10
 MAX_PROMPT_CHARS = 8000
+# Потолок токенов канала (13.5) хранится в Integer: больше не сохранить.
+# Прежняя граница — общий месячный потолок тенанта — снята вместе с ним (13.19).
+MAX_CHANNEL_TOKEN_LIMIT = 2_147_483_647
 KIND_POLL = "poll_monitor"
 KIND_CHECK = "check_source"
 
@@ -67,9 +69,8 @@ class ChannelCreate(BaseModel):
     limit: int = Field(default=20, ge=1, le=200)
     offset_hours: int = Field(default=24, ge=1, le=720)
     extract_prompt: str = ""
-    # Ноль — без потолка (13.5). Верхняя граница — месячный потолок тенанта:
-    # канальный, который больше общего, ничего не ограничивает.
-    token_limit: int = Field(default=0, ge=0, le=MONTHLY_TOKEN_LIMIT)
+    # Ноль — без потолка (13.5).
+    token_limit: int = Field(default=0, ge=0, le=MAX_CHANNEL_TOKEN_LIMIT)
 
 
 class ChannelUpdate(BaseModel):
@@ -78,7 +79,7 @@ class ChannelUpdate(BaseModel):
     extract_prompt: str | None = None
     is_active: bool | None = None
     position: int | None = Field(default=None, ge=0, le=MAX_CHANNELS)
-    token_limit: int | None = Field(default=None, ge=0, le=MONTHLY_TOKEN_LIMIT)
+    token_limit: int | None = Field(default=None, ge=0, le=MAX_CHANNEL_TOKEN_LIMIT)
 
 
 def _check_prompt(text: str | None, what: str) -> str:

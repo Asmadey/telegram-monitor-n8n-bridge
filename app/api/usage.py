@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends
 from app.db import TenantRepo
 from app.deps import get_tenant_repo, require_user
 from app.models import LLMUsageSlice, Monitor
-from app.services.llm import MONTHLY_TOKEN_LIMIT, _period, _utcnow
+from app.services.llm import _period, _utcnow
 
 router = APIRouter(dependencies=[Depends(require_user)])
 
@@ -74,7 +74,6 @@ async def usage(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
 
     return {
         "period": period,
-        "limit": MONTHLY_TOKEN_LIMIT,
         "total": sum(row.tokens for row in rows),
         "outside_sources": outside,
         "sources": ordered,

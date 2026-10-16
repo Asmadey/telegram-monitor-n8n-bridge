@@ -35,7 +35,6 @@ import pytest
 from test_58_worker_body import RecordingDispatcher, _worker
 from test_112_map_reduce import THREE, ChannelTelegram, RecordingLLM, _source
 
-from app.services.llm import MonthlyTokenBudgetExhausted
 from app.worker import MAX_BATCH_ATTEMPTS, StepTimeout, _recoverable
 
 EXTRACT_A, EXTRACT_B = "искать первое", "искать второе"
@@ -60,13 +59,6 @@ def test_a_provider_failure_stays_recoverable():
     """Антивакуум: правило добавляется к прежнему, а не заменяет его."""
     assert _recoverable(RuntimeError("502 Bad Gateway")), (
         "сбой провайдера перестал быть поводом для повтора"
-    )
-
-
-def test_an_exhausted_budget_is_not_a_channel_problem():
-    """Бюджет — про весь источник: повтор упрётся в тот же потолок."""
-    assert not _recoverable(MonthlyTokenBudgetExhausted("лимит")), (
-        "исчерпанный бюджет уйдёт на три круга впустую"
     )
 
 

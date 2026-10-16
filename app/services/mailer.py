@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 _SUBJECT = "Teleton: сброс пароля"
 
+# Точка подмены для тестов: None — обычный сетевой транспорт httpx.
+RESEND_TRANSPORT: httpx.AsyncBaseTransport | None = None
+
 
 def _reset_link(token: str) -> str:
     base = get_settings().app_base_url.rstrip("/")
@@ -58,13 +61,32 @@ def _write_dev_letter(to_email: str, subject: str, html_body: str) -> Path:
     return path
 
 
+def _masked(address: str) -> str:
+    """`sagestaf@gmail.com` → `s***@gmail.com`: найти письмо хватит, прочитать — нет."""
+    name, _, domain = address.partition("@")
+    return f"{name[:1]}***@{domain}" if domain else "***"
+
+
+def _resend_reason(response: httpx.Response) -> str:
+    """Причина отказа словами Resend. Токена в ней нет: он живёт в теле письма."""
+    try:
+        return str(response.json().get("message") or "")
+    except ValueError:
+        return ""
+
+
 async def _send_via_resend(to_email: str, subject: str, html_body: str) -> None:
+    """Отправка через Resend — и строка в журнале при любом исходе (13.15).
+
+    Раньше ни принятое письмо, ни отказ не оставляли следа: по логам нельзя
+    было отличить «ушло», «отклонено» и «адреса нет в базе».
+    """
     settings = get_settings()
     if not settings.resend_api_key:
         raise RuntimeError(
             "RESEND_API_KEY не задан: в production письмо сброса отправить нечем"
         )
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=10.0, transport=RESEND_TRANSPORT) as client:
         response = await client.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {settings.resend_api_key}"},
@@ -75,7 +97,33 @@ async def _send_via_resend(to_email: str, subject: str, html_body: str) -> None:
                 "html": html_body,
             },
         )
+    if response.status_code >= 400:
+        hint = ""
+        if response.status_code == 403 and "@resend.dev" in settings.mail_from:
+            # Самый вероятный отказ: MAIL_FROM не задан, и работает умолчание —
+            # тестовый отправитель, который Resend доставляет только владельцу
+            # аккаунта. Оператору нужно действие, а не код.
+            hint = (
+                ". Отправитель на тестовом домене resend.dev: такие письма Resend"
+                " доставляет только на адрес владельца аккаунта. Нужен свой"
+                " проверенный домен в Resend и адрес на нём в MAIL_FROM"
+            )
+        logger.error(
+            "Resend отклонил письмо «%s» для %s: HTTP %s %s%s",
+            subject,
+            _masked(to_email),
+            response.status_code,
+            _resend_reason(response),
+            hint,
+        )
         response.raise_for_status()
+    try:
+        letter_id = response.json().get("id", "")
+    except ValueError:
+        letter_id = ""
+    logger.info(
+        "Resend принял письмо «%s» для %s: id=%s", subject, _masked(to_email), letter_id
+    )
 
 
 async def send_password_reset_email(to_email: str, token: str) -> None:

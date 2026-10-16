@@ -26,6 +26,7 @@ from app.db import TenantRepo, deleted_count
 from app.deps import get_tenant_repo, require_user
 from app.models import ChatAvatar, FeedItem, MonitorChannel
 from app.services.jobs import enqueue_job
+from app.services.telegram_markup import to_cabinet_html, to_cabinet_text
 
 router = APIRouter(dependencies=[Depends(require_user)])
 
@@ -69,6 +70,13 @@ def _card(item: FeedItem, avatars: dict[int, int] | None = None) -> dict:
     except ValueError:
         card["findings"] = []
     card["avatar_chat_id"] = item.chat_id or (avatars or {}).get(item.monitor_id or 0)
+    # Сводка — ответ модели, собранный из чужих постов, то есть враждебный
+    # текст (13.20). Кабинету она уходит дважды и обе формы готовит сервер:
+    # оформленной — тем же санитайзером, что и в бот, и простым текстом — для
+    # сниппета и копирования. Сырой `ai_analysis` остаётся для n8n и выгрузки.
+    analysis = item.ai_analysis or ""
+    card["ai_analysis_html"] = to_cabinet_html(analysis)
+    card["ai_analysis_text"] = to_cabinet_text(analysis)
     return card
 
 

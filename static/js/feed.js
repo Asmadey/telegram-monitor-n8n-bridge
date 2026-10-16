@@ -83,7 +83,7 @@ function renderFeedList() {
       <div class="u-ta-center u-p-3xl-lg u-c-mute u-fs-body-sm">
         Пока нет выполненных задач анализа.<br>
         <span class="u-fs-caption u-c-body-mid u-d-inline-block u-mt-xs">
-          Запустите опрос канала на вкладке «Каналы».
+          Запустите прогон источника на вкладке «Источники».
         </span>
       </div>
     `;
@@ -107,9 +107,10 @@ function renderFeedList() {
       : html`<div class="feed-avatar">${initial}</div>`;
 
     const rawMsgs = Array.isArray(item.messages) ? item.messages : [];
-    const snippet = item.ai_analysis
-      ? item.ai_analysis.replace(/[*#`_]/g, '')
-      : (rawMsgs[0]?.text || 'Выборка сообщений Telegram');
+    // Сниппет — простой текст, который готовит сервер (13.20): теги сняты
+    // там же, где их проверяют для бота. Билдер `html` его ещё и экранирует.
+    const snippet = item.ai_analysis_text
+      || (rawMsgs[0]?.text || 'Выборка сообщений Telegram');
 
     return html`
       <div class="feed-card ${isActive ? 'active' : ''}" data-feed-id="${item.id}">
@@ -207,6 +208,12 @@ async function selectFeedItem(id) {
     const findings = Array.isArray(item.findings) ? item.findings : [];
     if (findings.length) {
       feedDetailSummary.innerHTML = findings.map(findingCard).join('');
+    } else if (item.ai_analysis_html) {
+      // Сводка — ответ модели по чужим постам. Разметку пропустил сервер тем
+      // же санитайзером, что и для бота (`to_cabinet_html`): только теги из
+      // списка Bot API, у ссылки — только http(s)/tg и rel/target. Своего
+      // разбора здесь нет намеренно: два разбора одного текста расходятся.
+      feedDetailSummary.innerHTML = item.ai_analysis_html;
     } else {
       const text = item.ai_analysis || 'AI-анализ не был сгенерирован для этой выборки (OpenRouter был выключен).';
       feedDetailSummary.innerHTML = formatTelegramText(text);
@@ -305,11 +312,13 @@ if (reanalyzeFeedItemBtn) {
 if (copyFeedSummaryBtn) {
   copyFeedSummaryBtn.addEventListener('click', () => {
     const item = currentFeed.find(f => f.id === selectedFeedId);
-    if (!item || !item.ai_analysis) {
+    const text = item && (item.ai_analysis_text || item.ai_analysis);
+    if (!text) {
       showToast('Нет текста Summary для копирования', true);
       return;
     }
-    navigator.clipboard.writeText(item.ai_analysis);
+    // Копируется текст, а не HTML для бота: его вставляют в письмо или чат.
+    navigator.clipboard.writeText(text);
     showToast('✨ AI Summary скопировано в буфер обмена!');
   });
 }
