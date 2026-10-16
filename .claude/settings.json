@@ -1,11 +1,11 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-statusline.cjs\""
+    "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/statusline-cost.py\""
   },
   "subagentStatusLine": {
     "type": "command",
-    "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-statusline.cjs\""
+    "command": "command -v graft >/dev/null 2>&1 && node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-statusline.cjs\" || true"
   },
   "hooks": {
     "PostToolUse": [
@@ -14,17 +14,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" post-edit",
+            "command": "command -v graft >/dev/null 2>&1 && node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" post-edit || true",
             "timeout": 10000
           }
         ]
       },
       {
-        "matcher": "Bash|mcp__graft__|Read|Grep|Glob",
+        "matcher": "Bash|mcp__graft__|mcp__trail__|Read|Grep|Glob",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" tool-savings",
+            "command": "command -v graft >/dev/null 2>&1 && node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" tool-savings || true",
             "timeout": 8000
           }
         ]
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" prompt",
+            "command": "command -v graft >/dev/null 2>&1 && node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" prompt || true",
             "timeout": 15000
           }
         ]
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" session-start",
+            "command": "command -v graft >/dev/null 2>&1 && node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" session-start || true",
             "timeout": 8000
           }
         ]
@@ -57,8 +57,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" stop",
+            "command": "command -v graft >/dev/null 2>&1 && node \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/graft-hooks.cjs\" stop || true",
             "timeout": 8000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/helpers/pretooluse-trim-bash.py\"",
+            "timeout": 10
           }
         ]
       }
@@ -69,10 +81,63 @@
   ],
   "permissions": {
     "allow": [
+      "Bash(trail:*)",
       "Bash(graft:*)",
       "Bash(npx graft:*)",
       "Bash(graft-dev:*)",
       "Bash(node dist/cli.js:*)"
     ]
+  },
+  "bashOutputMaxChars": 15000,
+  "skillOverrides": {
+    "dataviz": "off",
+    "slide-plex-multicolor": "off",
+    "anthropic-skills:slide-plex-multicolor": "off",
+    "high-converting-landing-page": "off",
+    "anthropic-skills:high-converting-landing-page": "off",
+    "pdf-guide-test": "off",
+    "anthropic-skills:pdf-guide-test": "off",
+    "dashboard-style-test": "off",
+    "anthropic-skills:dashboard-style-test": "off",
+    "obsidian-daily-note-test": "off",
+    "anthropic-skills:obsidian-daily-note-test": "off",
+    "skills-audit-test": "off",
+    "anthropic-skills:skills-audit-test": "off",
+    "skill-dashboard-test": "off",
+    "anthropic-skills:skill-dashboard-test": "off",
+    "visual-explainer-test": "off",
+    "anthropic-skills:visual-explainer-test": "off",
+    "notebooklm-manager": "off",
+    "anthropic-skills:notebooklm-manager": "off",
+    "end-of-day-summary-test": "off",
+    "anthropic-skills:end-of-day-summary-test": "off",
+    "find-skills-test": "off",
+    "anthropic-skills:find-skills-test": "off",
+    "morning": "off",
+    "anthropic-skills:morning": "off",
+    "import-memory": "off",
+    "anthropic-skills:import-memory": "off",
+    "google-workspace": "off",
+    "anthropic-skills:google-workspace": "off",
+    "skill-creator": "off",
+    "anthropic-skills:skill-creator": "off",
+    "authoring-skills": "off",
+    "anthropic-skills:authoring-skills": "off",
+    "docs": "name-only",
+    "anthropic-skills:docs": "name-only",
+    "docx": "name-only",
+    "anthropic-skills:docx": "name-only",
+    "pptx": "name-only",
+    "anthropic-skills:pptx": "name-only",
+    "xlsx": "name-only",
+    "anthropic-skills:xlsx": "name-only",
+    "pdf": "name-only",
+    "anthropic-skills:pdf": "name-only",
+    "fable-mode": "name-only",
+    "anthropic-skills:fable-mode": "name-only",
+    "artifact-design": "name-only",
+    "artifact-diagramming": "name-only",
+    "artifact-capabilities": "name-only",
+    "keybindings-help": "name-only"
   }
 }

@@ -20,10 +20,30 @@ NO_MERGE="${2:-}"
 REQUIRED=(lint secret-scan security test typecheck)
 DEADLINE=$(( SECONDS + 1800 ))
 
+# Проверки читаются через `gh api`, а НЕ через `gh pr checks`. Причина не
+# в стиле: `gh pr checks` есть только в настоящем GitHub CLI, а в облачных
+# сессиях Claude Code вместо него встроенный клиент, у которого из подкоманд
+# работает один `gh api`. Скрипт на `gh pr checks` там падал с «no such
+# command», то есть обязательный путь выкладки был недоступен в половине
+# сред. `gh api` есть в обеих, поэтому путь один — расходиться нечему.
+SLUG="$(git remote get-url origin | sed -E 's#^.*github\.com[:/]##; s#\.git$##')"
+HEAD_SHA="$(gh api "repos/$SLUG/pulls/$PR" --jq .head.sha)"
+[[ -n "$SLUG" && -n "$HEAD_SHA" ]] || { echo "не определить repo/head для PR $PR" >&2; exit 3; }
+
 status_of() {  # имя джоба → pass|fail|pending|absent
-  gh pr checks "$PR" 2>/dev/null \
-    | awk -v job="$1" -F'\t' '$1 == job { print $2; found=1 } END { if (!found) print "absent" }' \
-    | head -1
+  # Берётся НАЛИЧИЕ conclusion=success. Незавершённый джоб и джоб, которого
+  # ещё нет в списке, одинаково «не успех» — ровно та ошибка, из-за которой
+  # этот скрипт и появился.
+  gh api "repos/$SLUG/commits/$HEAD_SHA/check-runs" --paginate \
+      --jq '.check_runs[] | "\(.name)\t\(.status)\t\(.conclusion // "")"' 2>/dev/null \
+    | awk -v job="$1" -F'\t' '
+        $1 == job {
+          found = 1
+          if ($3 == "success") { print "pass"; exit }
+          if ($2 == "completed") { print "fail"; exit }
+          print "pending"; exit
+        }
+        END { if (!found) print "absent" }'
 }
 
 while :; do
@@ -56,4 +76,4 @@ if [[ "$NO_MERGE" == "--no-merge" ]]; then
   echo "(--no-merge: слияние не выполняется)"
   exit 0
 fi
-gh pr merge "$PR" --merge
+gh api -X PUT "repos/$SLUG/pulls/$PR/merge" -f merge_method=merge
