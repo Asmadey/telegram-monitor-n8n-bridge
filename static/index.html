@@ -238,6 +238,18 @@
               </p>
             </div>
             <div class="form-group">
+              <div class="u-d-flex u-items-center u-gap-sm">
+                <label class="switch" title="Правила оформления для Telegram — от сервиса">
+                  <input type="checkbox" id="sourceHtmlMarkup">
+                  <span class="slider"></span>
+                </label>
+                <label for="sourceHtmlMarkup">Применить HTML-разметку</label>
+              </div>
+              <p class="u-fs-caption u-c-body-mid u-mt-xs">
+                Сервис допишет к промпту итогового шага правила оформления для Telegram: какие теги можно, что закрывать, что экранировать. Свой формат в промпте тогда описывать не нужно. Действует в режиме «Промптом оформления»: шаблон оформляет код.
+              </p>
+            </div>
+            <div class="form-group">
               <label for="sourceStopWords">Стоп-слова (по одному на строку):</label>
               <textarea id="sourceStopWords" rows="3" placeholder="разработчик&#10;стажировка" class="u-w-full u-bd-1-solid-hairline u-rad-xs u-p-sm-md u-ff-inherit u-fs-body-sm u-rs-vertical"></textarea>
             </div>
@@ -550,6 +562,18 @@
           </select>
           <p class="u-fs-caption u-c-body-mid u-mt-xs">
             Шаблон: каждый канал отвечает данными по схеме, а итог собирает код — дубли между каналами убираются, вид одинаков всегда, второй запрос к модели не нужен. Промпт: итог сочиняет модель по вашему тексту ниже.
+          </p>
+        </div>
+        <div class="form-group">
+          <div class="u-d-flex u-items-center u-gap-sm">
+            <label class="switch" title="Правила оформления для Telegram — от сервиса">
+              <input type="checkbox" id="editSourceHtmlMarkup">
+              <span class="slider"></span>
+            </label>
+            <label for="editSourceHtmlMarkup">Применить HTML-разметку</label>
+          </div>
+          <p class="u-fs-caption u-c-body-mid u-mt-xs">
+            Сервис допишет к промпту итогового шага правила оформления для Telegram: какие теги можно, что закрывать, что экранировать. Свой формат в промпте тогда описывать не нужно. Действует в режиме «Промптом оформления»: шаблон оформляет код.
           </p>
         </div>
         <div class="form-group">

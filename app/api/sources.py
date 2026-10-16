@@ -12,6 +12,7 @@
 и того же.
 """
 
+import json
 import uuid
 from typing import Any, Literal
 
@@ -51,6 +52,8 @@ class SourceCreate(BaseModel):
     interval_minutes: int = Field(default=60, ge=5, le=10080)
     answer_prompt: str = ""
     assembly_mode: Literal["prompt", "template"] = "prompt"
+    # правила оформления для Telegram к итоговому шагу (13.27)
+    html_markup: bool = False
     stop_words: str = ""
     is_active: bool = True
 
@@ -60,6 +63,7 @@ class SourceUpdate(BaseModel):
     interval_minutes: int | None = Field(default=None, ge=5, le=10080)
     answer_prompt: str | None = None
     assembly_mode: Literal["prompt", "template"] | None = None
+    html_markup: bool | None = None
     stop_words: str | None = None
     is_active: bool | None = None
 
@@ -137,6 +141,7 @@ def _source_card(
         "interval_minutes": source.interval_minutes,
         "answer_prompt": source.answer_prompt,
         "assembly_mode": source.assembly_mode,
+        "html_markup": source.html_markup,
         "stop_words": source.stop_words,
         "is_active": source.is_active,
         "running": source.running,
@@ -211,6 +216,7 @@ async def create_source(
         interval_minutes=req.interval_minutes,
         answer_prompt=_check_prompt(req.answer_prompt, "Промпт оформления"),
         assembly_mode=req.assembly_mode,
+        html_markup=req.html_markup,
         stop_words=_check_stop_words(req.stop_words),
         is_active=req.is_active,
     )
@@ -241,6 +247,8 @@ async def update_source(
         source.answer_prompt = _check_prompt(req.answer_prompt, "Промпт оформления")
     if req.assembly_mode is not None:
         source.assembly_mode = req.assembly_mode
+    if req.html_markup is not None:
+        source.html_markup = req.html_markup
     if req.stop_words is not None:
         source.stop_words = _check_stop_words(req.stop_words)
     if req.is_active is not None:
@@ -416,6 +424,33 @@ async def _live_job(
     return None
 
 
+async def _last_run(repo: TenantRepo, public_id: str) -> dict | None:
+    """Чем кончился последний ручной прогон источника (13.26).
+
+    Исход пишет воркер в задачу; упавшая задача — исход `error`. Прогон по
+    расписанию задачи не заводит, и его исход по-прежнему в журнале.
+    """
+    jobs = await repo.db.scalars(
+        repo.query(Job)
+        .where(
+            Job.kind == KIND_POLL,
+            Job.status.in_([STATUS_DONE, STATUS_FAILED]),
+            Job.payload_json.contains(f'"{public_id}"', autoescape=True),
+        )
+        .order_by(Job.id.desc())
+        .limit(1)
+    )
+    job = jobs.first()
+    if job is None:
+        return None
+    try:
+        payload = json.loads(job.payload_json or "{}")
+    except ValueError:
+        payload = {}
+    outcome = "error" if job.status == STATUS_FAILED else payload.get("outcome")
+    return {"job_id": job.id, "outcome": outcome, "finished_at": job.finished_at}
+
+
 @router.post("/api/sources/{public_id}/run", status_code=202)
 async def run_source(
     public_id: str, repo: TenantRepo = Depends(get_tenant_repo)
@@ -524,6 +559,7 @@ async def source_status(
         "checking": checking is not None,
         "job_id": live.id if live is not None else None,
         "last_run_at": source.last_run_at,
+        "last_run": await _last_run(repo, source.public_id),
         "channels": [
             {
                 "channel_id": c.id,

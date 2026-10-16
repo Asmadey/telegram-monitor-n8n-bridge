@@ -456,10 +456,22 @@ class Worker:
             ).first()
             if monitor is None:
                 raise LookupError("источник не найден у владельца задачи")
+            # id — до опроса: внутри него бывает откат, и после него поле
+            # ORM-объекта — это ленивая загрузка (MissingGreenlet)
+            job_id = job.id
             # Имя другое: у ветки батча `result` — словарь диспетчера, а
             # здесь исход опроса строкой. Одно имя на два типа mypy ловит
             # справедливо: читающему это тоже мешало бы.
             outcome = await self.poll_source(db, monitor, **senders)
+            # Исход остаётся в задаче (13.26): «Запустить» без новых постов
+            # молчало в боте, и человек решал, что сломался запуск, хотя в
+            # журнале было честное «новых постов нет».
+            stored = await db.get(Job, job_id)
+            if stored is not None:
+                stored.payload_json = json.dumps(
+                    {**payload, "outcome": outcome}, ensure_ascii=False
+                )
+                await db.commit()
             if outcome == "flood_wait":
                 account = (
                     await db.scalars(TenantRepo(db, job.user_id).query(TelegramAccount))
@@ -533,6 +545,12 @@ class Worker:
             await db.commit()
 
         single = len(groups) == 1
+        # Флажок «Применить HTML-разметку» (13.27) — шагу, чей ответ уходит в
+        # бот: сведению, а без него (один канал без промпта оформления) —
+        # разбору канала. В шаблоне итог рисует код, и правила HTML только
+        # спорили бы со схемой. Старые задачи без ключа — флажок выключен.
+        markup = bool(payload.get("html_markup")) and not template
+        final_is_channel = single and not answer_prompt
         for group in groups:
             if group.get("verdict"):
                 # уже разобран прошлой попыткой
@@ -601,6 +619,7 @@ class Worker:
                         # может ни обернуть ответ в ограждение, ни дописать
                         # пояснение, ни оборвать структуру.
                         schema=response_schema() if template else None,
+                        html_markup=markup and final_is_channel,
                         completed=list(group.get("completed") or []),
                         checkpoint=_chunk_done,
                         # адрес расхода (12.7): по общему счётчику не видно,
@@ -708,14 +727,12 @@ class Worker:
             analysis = verdicts[0]["verdict"]
         elif verdicts:
             # Сведение видит вердикты в порядке каналов источника — он же
-            # задаёт порядок в сообщении.
+            # задаёт порядок в сообщении. Номера у вердикта нет: из него
+            # собиралась ссылка `t.me/c/1` на пост, которого не существует
+            # (13.24).
             summary_input = [
-                {
-                    "id": index + 1,
-                    "chat_title": item.get("chat_title"),
-                    "text": item["verdict"],
-                }
-                for index, item in enumerate(verdicts)
+                {"chat_title": item.get("chat_title"), "text": item["verdict"]}
+                for item in verdicts
             ]
             try:
                 analysis = await _within(
@@ -726,6 +743,9 @@ class Worker:
                         custom_prompt=answer_prompt,
                         caller=caller,
                         require_success=True,
+                        # на входе разборы каналов, а не посты (13.24)
+                        verdicts=True,
+                        html_markup=markup,
                         # сведение тратит токены на источник целиком:
                         # канала у него нет, поэтому chat_id остаётся нулём
                         source_public_id=source_public_id,
@@ -890,6 +910,7 @@ class Worker:
             },
             "answer_prompt": source.answer_prompt if source is not None else "",
             "assembly_mode": (source.assembly_mode if source is not None else "prompt"),
+            "html_markup": bool(source.html_markup) if source is not None else False,
         }
 
     # ------------------------------------------------------------------
@@ -1385,6 +1406,7 @@ class Worker:
         source_stop_words = source.stop_words or ""
         source_answer_prompt = source.answer_prompt or ""
         source_assembly_mode = source.assembly_mode or "prompt"
+        source_html_markup = bool(source.html_markup)
         source_public_id = source.public_id
 
         # Поля снимаются ДО обхода, все сразу. Rollback в ветке ошибки
@@ -1706,6 +1728,7 @@ class Worker:
                     },
                     "answer_prompt": source_answer_prompt,
                     "assembly_mode": source_assembly_mode,
+                    "html_markup": source_html_markup,
                 },
                 ensure_ascii=False,
             ),

@@ -182,6 +182,7 @@ addSourceForm.addEventListener('submit', async (event) => {
         stop_words: document.getElementById('sourceStopWords').value,
         answer_prompt: document.getElementById('sourceAnswerPrompt').value,
         assembly_mode: document.getElementById('sourceAssemblyMode').value,
+        html_markup: document.getElementById('sourceHtmlMarkup').checked,
       },
     });
     if (!res.ok) {
@@ -325,6 +326,7 @@ export function openSourceModal(publicId) {
   editSourceStopWords.value = source.stop_words || '';
   editSourceAnswerPrompt.value = source.answer_prompt || '';
   document.getElementById('editSourceAssemblyMode').value = source.assembly_mode || 'prompt';
+  document.getElementById('editSourceHtmlMarkup').checked = Boolean(source.html_markup);
   newChannelTarget.value = '';
   renderChannelRows();
   openModalAnimated(sourceModal);
@@ -446,6 +448,7 @@ saveSourceBtn.addEventListener('click', async () => {
         stop_words: editSourceStopWords.value,
         answer_prompt: editSourceAnswerPrompt.value,
         assembly_mode: document.getElementById('editSourceAssemblyMode').value,
+        html_markup: document.getElementById('editSourceHtmlMarkup').checked,
       },
     });
     if (!patched.ok) {
@@ -534,9 +537,9 @@ async function runSource(id, button) {
     // Ответ 202 «queued», а не «готово»: работу делает воркер, и сообщать
     // об успехе здесь значило бы врать о том, чего ещё не случилось (8.х).
     if (data.status === 'queued') {
-      showToast('Прогон поставлен в очередь — результат появится в ленте');
+      showToast('Прогон поставлен в очередь');
     }
-    await waitForRun(id, button);
+    await waitForRun(id, button, data.job_id);
   } catch (e) {
     showToast(e.message, true);
     if (button) {
@@ -546,7 +549,26 @@ async function runSource(id, button) {
   }
 }
 
-async function waitForRun(id, button, attempt = 0) {
+// Исход прогона словами (13.26). «Поставлен в очередь» ничего не говорит о
+// том, чем прогон кончился, а молчание бота при «новых постов нет» выглядело
+// поломкой запуска: пять нажатий подряд — и ни одного сообщения.
+const RUN_OUTCOMES = {
+  no_new: ['Новых постов нет: каждый пост разбирается один раз, а с прошлого прогона новых не появилось', false],
+  filtered_out: ['Все новые посты отсеяны стоп-словами — до разбора не дошло ничего', false],
+  dispatched: ['Прогон завершён — результат в ленте', false],
+  no_channels: ['У источника нет включённых каналов', true],
+  failed: ['Ни один канал не прочитан — причина в журнале', true],
+  error: ['Прогон не удался — причина в журнале', true],
+};
+
+function tellRunOutcome(lastRun, jobId) {
+  // Исход чужого или прошлого прогона за свой не выдаётся
+  if (!lastRun || (jobId && lastRun.job_id !== jobId)) return;
+  const known = RUN_OUTCOMES[lastRun.outcome];
+  if (known) showToast(known[0], known[1]);
+}
+
+async function waitForRun(id, button, jobId, attempt = 0) {
   // Состояние спрашивается у сервера, а не угадывается: прогон мог
   // запустить другой сеанс, и оптимистичная отрисовка врала бы.
   if (attempt > 60) {
@@ -566,13 +588,14 @@ async function waitForRun(id, button, attempt = 0) {
         button.disabled = false;
         button.textContent = '⚡ Запустить';
       }
+      tellRunOutcome(status.last_run, jobId);
       await loadSources();
       return;
     }
   } catch (e) {
     /* сеть моргнула — попробуем на следующем круге */
   }
-  await waitForRun(id, button, attempt + 1);
+  await waitForRun(id, button, jobId, attempt + 1);
 }
 
 async function checkSource(id, button) {

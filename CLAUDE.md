@@ -67,7 +67,7 @@ mypy app/                               # типы
 - `app/` — бэкенд: `config` (единственная точка чтения ENV, `.env` никогда не
   пишется), `db`, `deps`, `models` (**18 таблиц**, `user_id` NOT NULL + FK +
   индекс), `security`, `api` (роутеры), `services`, `worker`. Postgres, схема —
-  только Alembic (19 ревизий, head `0019`).
+  только Alembic (20 ревизий, head `0020`).
 - `static/` — SPA без сборки: `index.html` — 835 строк разметки, логика в
   **13 модулях** `static/js/` (~3500 строк). Инлайновых обработчиков нет: их
   запрещает CSP (`script-src 'self'`), задача 9.8.

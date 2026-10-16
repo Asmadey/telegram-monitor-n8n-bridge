@@ -72,6 +72,29 @@ RICH_ONLY_TAGS = frozenset(
 )
 ALLOWED_TAGS = PLAIN_TAGS | RICH_ONLY_TAGS
 
+# Правила оформления, которые дописывает флажок «Применить HTML-разметку»
+# (13.27). Теги — только из PLAIN_TAGS: блок обещает модели то, что примет и
+# запасной `sendMessage`, а не одно богатое сообщение. Иначе обещанный тег —
+# это 400 на запасном пути и сообщение буквами, то есть ровно то, что флажок
+# лечит. Список собирается отсюда же, второй копией прозой он разошёлся бы.
+MARKUP_TAGS = ("b", "i", "u", "s", "code", "pre", "blockquote")
+MARKUP_RULES = "\n".join(
+    (
+        "Оформление ответа для Telegram (правило сервиса):",
+        "- Ответ — фрагмент текста для сообщения Telegram, а не HTML-документ.",
+        "- Разрешены только теги: "
+        + ", ".join(f"<{tag}>" for tag in MARKUP_TAGS)
+        + ', <a href="…">.',
+        "- Других тегов и атрибутов нет: без <!DOCTYPE>, <html>, <head>, <body>, "
+        "<div>, <p>, <br>, <table>, <style>, без class и target.",
+        "- Каждый открытый тег закрой и не перекрещивай теги.",
+        "- Знаки <, > и & в тексте пиши как &lt;, &gt; и &amp;.",
+        "- Без Markdown: ни **, ни #, ни ```.",
+        "- Перенос строки — обычный перевод строки; пункт списка — строка с «• »;"
+        " заголовок — строка в <b>.",
+    )
+)
+
 _TAG = re.compile(r"</?(?P<name>[a-zA-Z][a-zA-Z0-9-]*)(?P<attrs>\s[^<>]*)?/?>")
 _BR = re.compile(r"<br\s*/?>", re.I)
 _HREF = re.compile(r"""href\s*=\s*['"]([^'"]+)['"]""", re.I)
@@ -267,7 +290,9 @@ def rich_html_to_plain(rich: str) -> str:
     text = re.sub(r"</?(table|caption|tbody|thead)[^<>]*>", "\n", text)
     # Абзац и разделитель: `sendMessage` их не знает, а пустая строка знает.
     text = re.sub(r"</p>", "\n\n", text)
-    text = re.sub(r"<p[^<>]*>|<hr\s*/?>", "\n", text)
+    # Только сам `<p>`: `<p[^<>]*>` съедал и `<pre>`, а оставшийся без пары
+    # `</pre>` — это 400 и на запасном пути (13.25).
+    text = re.sub(r"<p(?:\s[^<>]*)?>|<hr\s*/?>", "\n", text)
     text = re.sub(r"</?tr[^<>]*>|</?t[dh][^<>]*>", "", text)
     text = re.sub(r"<h[1-6][^<>]*>", "<b>", text)
     text = re.sub(r"</h[1-6]>", "</b>", text)
@@ -374,11 +399,36 @@ def _text(chunk: str) -> str:
     return html.unescape(chunk)
 
 
+# Заглушка кода Markdown — своя, не `_PLACEHOLDER`: `_markdown` нумерует свои
+# заглушки с нуля и при возврате заменил бы чужую заглушку своим содержимым.
+_CODE_PLACEHOLDER = "\x01{}\x01"
+
+
+def _stash_code(text: str, kept: list[str]) -> str:
+    """Код Markdown — буквальный текст, и убирается ДО поиска тегов (13.25).
+
+    Иначе `<pre>` из примера кода становился настоящим тегом, ограждение
+    рвалось по его границе и уже не находило пары: ответ модели, который
+    объяснял HTML для Telegram, уходил с тридцатью незакрытыми тегами, и Bot
+    API отвергал сообщение целиком. Внутри кода ничего не разбирается: ни
+    теги, ни `<br>`, ни Markdown — всё показывается как написано.
+    """
+
+    def keep(rendered: str) -> str:
+        kept.append(rendered)
+        return _CODE_PLACEHOLDER.format(len(kept) - 1)
+
+    text = _FENCE.sub(lambda m: keep(f"<pre>{escape(m.group(1))}</pre>"), text)
+    return _INLINE_CODE.sub(lambda m: keep(f"<code>{escape(m.group(1))}</code>"), text)
+
+
 def to_telegram_html(text: str) -> str:
     """Привести ответ модели к разметке, которую разберёт Bot API."""
     if not text:
         return ""
     text = unwrap_fence(text)
+    code: list[str] = []
+    text = _stash_code(text, code)
     text = _BR.sub("\n", text)
 
     parts: list[str] = []
@@ -402,4 +452,7 @@ def to_telegram_html(text: str) -> str:
 
     tail = _text(text[position:])
     parts.append(escape(tail) if depth_literal else _markdown(escape(tail)))
-    return _rich_line_breaks("".join(parts))
+    rich = "".join(parts)
+    for index, rendered in enumerate(code):
+        rich = rich.replace(_CODE_PLACEHOLDER.format(index), rendered)
+    return _rich_line_breaks(rich)

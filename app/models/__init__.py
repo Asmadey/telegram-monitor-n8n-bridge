@@ -24,6 +24,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    false,
 )
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -194,6 +195,13 @@ class Monitor(Base):
     # поведение на выкладке было бы сюрпризом.
     assembly_mode: Mapped[str] = mapped_column(
         String(16), nullable=False, default="prompt", server_default="prompt"
+    )
+    # Флажок «Применить HTML-разметку» (13.27): сервис дописывает к промпту
+    # итогового шага правила оформления для Telegram. Умолчание — выключен:
+    # включённый без спроса поменял бы вывод источникам, чей промпт уже
+    # требует свой формат.
+    html_markup: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
     )
     # собственные часы источника: `last_checked` уехал в канал, и без этого
     # поля расписание либо не сработает никогда, либо будет срабатывать
