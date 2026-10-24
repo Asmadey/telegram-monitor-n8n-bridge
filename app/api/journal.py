@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 # «все статусы» — то же слово, что понимает текущий фронтенд
 ANY_STATUS = "ALL"
+# Тип записи, которой очистка журнала оставляет след; крестиком не удаляется
+CLEAR_TRACE = "SYSTEM"
+# Верхняя граница BIGINT: номер больше записи не называет
+MAX_ID = 2**63 - 1
 
 
 def _reactions(raw: str | None) -> list[dict]:
@@ -95,6 +99,10 @@ async def list_logs(
     limit: int = Query(150, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     status: str = Query(ANY_STATUS),
+    # Курсор «Загрузить ещё» (13.29): записи старше этой. Сдвиг ломается от
+    # удаления крестиком во время дозагрузки — страница съезжает, и одна
+    # запись не показывается никогда; курсор от удалений не зависит.
+    before_id: int | None = Query(None, ge=1),
     repo: TenantRepo = Depends(get_tenant_repo),
 ) -> dict:
     stmt = repo.query(LogEntry)
@@ -103,11 +111,12 @@ async def list_logs(
     total = await repo.db.scalar(
         stmt.with_only_columns(func.count(), maintain_column_froms=True)
     )
-    rows = (
-        await repo.db.scalars(
-            stmt.order_by(LogEntry.id.desc()).offset(offset).limit(limit)
-        )
-    ).all()
+    page = stmt.order_by(LogEntry.id.desc())
+    if before_id is not None:
+        page = page.where(LogEntry.id < before_id)
+    else:
+        page = page.offset(offset)
+    rows = (await repo.db.scalars(page.limit(limit))).all()
 
     sent_total = await repo.db.scalar(
         repo.query(SentMessage).with_only_columns(func.count())
@@ -132,7 +141,7 @@ async def clear_logs(repo: TenantRepo = Depends(get_tenant_repo)) -> dict:
     await add_log(
         repo.db,
         repo.user_id,
-        "SYSTEM",
+        CLEAR_TRACE,
         "Журнал событий очищен пользователем",
         "INFO",
     )
@@ -153,9 +162,18 @@ async def delete_log_entry(
     Отметки «прочитано» (`sent_messages`) — другая таблица и не трогаются:
     удалённая запись журнала не делает пост снова новым.
     """
-    entry = await repo.get(LogEntry, entry_id)
+    # Номер вне BIGINT записи не называет — это 404, а не ошибка
+    # переполнения базы, то есть 500 (13.29)
+    entry = await repo.get(LogEntry, entry_id) if 0 < entry_id <= MAX_ID else None
     if entry is None:
         raise HTTPException(status_code=404, detail="Запись не найдена")
+    if entry.event_type == CLEAR_TRACE:
+        # След очистки — сам след действия, стирающего историю (см.
+        # clear_logs). Крестик на нём стёр бы и действие, и его след (13.29).
+        raise HTTPException(
+            status_code=409,
+            detail="Запись об очистке журнала не удаляется: это её след",
+        )
     logger.info(
         "тенант %s удалил запись журнала %s (%s)",
         repo.user_id,

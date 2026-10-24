@@ -502,7 +502,12 @@ def test_history_pages_offer_load_more_instead_of_hiding_old_records():
     html = (ROOT / "static/index.html").read_text()
     for area in ("Messages", "Feed", "Logs"):
         source = (ROOT / f"static/js/{area.lower()}.js").read_text()
-        assert "offset=" in source, f"{area} never requests records after page one"
+        # Журнал листает курсором `before_id` (13.29): сдвиг ломался от
+        # удаления строки во время дозагрузки. Смысл проверки прежний —
+        # страница просит записи после первой.
+        assert "offset=" in source or "before_id=" in source, (
+            f"{area} never requests records after page one"
+        )
         assert f'id="loadMore{area}Btn"' in html
 
 
