@@ -2,7 +2,7 @@
 // очистка журнала (задача 5.1, разрез index.html).
 
 import { apiFetch, apiGet } from './api.js';
-import { html, showToast } from './render.js';
+import { html, raw, showToast } from './render.js';
 
 const tabLogsCount = document.getElementById('tabLogsCount');
 const logsTableBody = document.getElementById('logsTableBody');
@@ -12,6 +12,8 @@ const loadMoreLogsBtn = document.getElementById('loadMoreLogsBtn');
 const clearLogsBtn = document.getElementById('clearLogsBtn');
 
 let currentLogs = [];
+// След очистки журнала крестиком не удаляется: сервер ответит 409 (13.29)
+const CLEAR_TRACE = 'SYSTEM';
 const LOGS_PAGE_SIZE = 150;
 let totalLogs = 0;
 
@@ -75,8 +77,11 @@ export async function loadOpsStatus() {
 export async function loadLogs(append = false) {
   const status = filterLogStatus ? filterLogStatus.value : 'ALL';
   try {
-    const offset = append ? currentLogs.length : 0;
-    const res = await apiGet(`/api/logs?limit=${LOGS_PAGE_SIZE}&offset=${offset}&status=${encodeURIComponent(status)}`);
+    // Курсор, а не сдвиг (13.29): удаление крестиком во время дозагрузки
+    // сдвигало страницы, и одна запись не показывалась никогда.
+    const last = append ? currentLogs[currentLogs.length - 1] : null;
+    const cursor = last ? `&before_id=${last.id}` : '';
+    const res = await apiGet(`/api/logs?limit=${LOGS_PAGE_SIZE}${cursor}&status=${encodeURIComponent(status)}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const page = data.logs || [];
@@ -121,7 +126,7 @@ function renderLogs() {
         ${log.details || ''}
       </td>
       <td class="u-ta-center">
-        <button class="btn btn-secondary btn-icon-sm" type="button" data-action="delete-log" data-log-id="${log.id}" title="Удалить запись">✕</button>
+        ${log.event_type === CLEAR_TRACE ? '' : raw(html`<button class="btn btn-secondary btn-icon-sm" type="button" data-action="delete-log" data-log-id="${log.id}" title="Удалить запись">✕</button>`)}
       </td>
     </tr>
   `).join('');
@@ -143,7 +148,14 @@ logsTableBody.addEventListener('click', async (event) => {
     currentLogs = currentLogs.filter(log => log.id !== id);
     totalLogs = Math.max(0, totalLogs - 1);
     if (tabLogsCount) tabLogsCount.textContent = totalLogs;
-    renderLogs();
+    // Убирается одна строка, а не перерисовывается вся таблица (13.29)
+    button.closest('tr').remove();
+    if (!currentLogs.length) {
+      // Удалена последняя загруженная строка: если на сервере записи ещё
+      // есть, догрузить их, а не показать «записей нет»
+      if (totalLogs > 0) await loadLogs();
+      else renderLogs();
+    }
   } catch (e) {
     button.disabled = false;
     showToast('Не удалось удалить запись', true);
