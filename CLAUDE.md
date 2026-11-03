@@ -67,7 +67,7 @@ mypy app/                               # типы
 - `app/` — бэкенд: `config` (единственная точка чтения ENV, `.env` никогда не
   пишется), `db`, `deps`, `models` (**18 таблиц**, `user_id` NOT NULL + FK +
   индекс), `security`, `api` (роутеры), `services`, `worker`. Postgres, схема —
-  только Alembic (20 ревизий, head `0020`; актуальный head —
+  только Alembic (21 ревизия, head `0021`; актуальный head —
   `ls alembic/versions/ | tail -1`).
 - `static/` — SPA без сборки: `index.html` — ~860 строк разметки, логика в
   **13 модулях** `static/js/` (~3500 строк). Инлайновых обработчиков нет: их

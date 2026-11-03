@@ -100,6 +100,19 @@ function channelChips(source) {
   }).join('');
 }
 
+// Исход последнего прогона на карточке (13.32) — и по расписанию тоже:
+// замолчавший источник иначе выглядел так же, как работающий.
+const OUTCOME_SHORT = {
+  no_new: 'новых постов нет',
+  filtered_out: 'всё отсеяно стоп-словами',
+  dispatched: 'сводка отправлена',
+  failed: 'каналы не прочитаны',
+  no_channels: 'нет включённых каналов',
+  no_account: 'нет Telegram-аккаунта',
+  flood_wait: 'Telegram просит подождать',
+  error: 'ошибка, см. журнал',
+};
+
 function renderSources() {
   sourcesCount.textContent = currentSources.length;
   tabSourcesCount.textContent = currentSources.length;
@@ -126,7 +139,7 @@ function renderSources() {
           <span class="timeline-segment">${raw(formatIntervalHuman(s.interval_minutes))}</span>
           <span class="timeline-divider">•</span>
           <span class="timeline-segment" title="Время последнего прогона">
-            Последний: ${s.last_run_at ? new Date(s.last_run_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : 'ещё не было'}
+            Последний: ${s.last_run_at ? new Date(s.last_run_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : 'ещё не было'}${s.last_outcome ? ' — ' + (OUTCOME_SHORT[s.last_outcome] || s.last_outcome) : ''}
           </span>
           <span class="timeline-divider">•</span>
           <span class="timeline-next-status ${s.is_active ? 'active' : ''}" title="Расчётное время следующего прогона">
@@ -144,6 +157,7 @@ function renderSources() {
         </label>
         <button class="btn btn-primary btn-sm" data-action="run" data-source-id="${s.public_id}" title="Запустить прогон сейчас">⚡ Запустить</button>
         <button class="btn btn-secondary btn-sm" data-action="check" data-source-id="${s.public_id}" title="Проверить, что каждый канал открывается и из него читаются сообщения">🩺 Проверить</button>
+        <button class="btn btn-secondary btn-sm" data-action="reparse" data-source-id="${s.public_id}" title="Забыть прочитанное и разобрать посты из окна каналов заново">↺ Разобрать заново</button>
         <button class="btn btn-secondary btn-icon-sm" data-action="edit" data-source-id="${s.public_id}" title="Каналы, лимиты и промпты">✎</button>
         <button class="btn btn-danger btn-icon-sm" data-action="delete" data-source-id="${s.public_id}" title="Удалить источник">🗑</button>
       </div>
@@ -506,6 +520,7 @@ document.addEventListener('click', (event) => {
     return;
   }
   if (el.dataset.action === 'run') runSource(id, el);
+  else if (el.dataset.action === 'reparse') reparseSource(id, el);
   else if (el.dataset.action === 'check') checkSource(id, el);
   else if (el.dataset.action === 'edit') openSourceModal(id);
   else if (el.dataset.action === 'delete') deleteSource(id);
@@ -566,6 +581,25 @@ function tellRunOutcome(lastRun, jobId) {
   if (!lastRun || (jobId && lastRun.job_id !== jobId)) return;
   const known = RUN_OUTCOMES[lastRun.outcome];
   if (known) showToast(known[0], known[1]);
+}
+
+// «Разобрать заново» (13.30): сбросить отметки «прочитано» источника и тут
+// же запустить прогон. Серверная часть (`reset-dedup`) была давно, кнопки —
+// нет: применить исправленный промпт к прочитанному из кабинета было нельзя.
+async function reparseSource(id, button) {
+  const sure = confirm(
+    'Разобрать заново? Отметки «прочитано» источника сбросятся, и посты из окна '
+    + 'каналов (лимит и глубина в часах) разберутся снова: сообщения придут '
+    + 'повторно в бот и n8n, токены уйдут повторно. Более старые посты не вернутся.'
+  );
+  if (!sure) return;
+  try {
+    const reset = await apiFetch(`/api/sources/${id}/reset-dedup`, { method: 'POST' });
+    if (!reset.ok) throw new Error('Не удалось сбросить отметки «прочитано»');
+    await runSource(id, button);
+  } catch (e) {
+    showToast(e.message, true);
+  }
 }
 
 async function waitForRun(id, button, jobId, attempt = 0) {

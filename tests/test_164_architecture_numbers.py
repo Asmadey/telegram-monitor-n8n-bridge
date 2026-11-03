@@ -59,7 +59,9 @@ def test_claude_md_knows_the_real_migration_head() -> None:
         "Рядом лежит правило про expand/contract: по устаревшему head будут "
         "приняты решения о миграциях."
     )
-    claimed_count = _claimed(r"\((\d+) ревизий")
+    # Любая форма слова: «21 ревизия», «24 ревизии» — число сверяется так же
+    # строго, а грамматику тест не диктует (13.32).
+    claimed_count = _claimed(r"\((\d+) ревизи\w*")
     assert claimed_count == len(revisions), (
         f"CLAUDE.md обещает {claimed_count} ревизий, в дереве — {len(revisions)}"
     )
