@@ -203,6 +203,10 @@ class Monitor(Base):
     html_markup: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false()
     )
+    # Исход последнего прогона — и по расписанию, и ручного (13.32): `no_new`,
+    # `filtered_out`, `dispatched`, `failed`… Без него исход по расписанию
+    # оставался только в журнале, и замолчавший источник выглядел работающим.
+    last_outcome: Mapped[str | None] = mapped_column(String(32))
     # собственные часы источника: `last_checked` уехал в канал, и без этого
     # поля расписание либо не сработает никогда, либо будет срабатывать
     # каждый тик (дефект, найденный аудитом плана, а не прогоном)

@@ -183,3 +183,28 @@ async def delete_log_entry(
     await repo.db.delete(entry)
     await repo.db.commit()
     return {"status": "deleted", "id": entry_id}
+
+
+@router.delete("/api/messages/{mark_id}")
+async def forget_mark(
+    mark_id: int, repo: TenantRepo = Depends(get_tenant_repo)
+) -> dict:
+    """Забыть одну отметку «прочитано» — крестик во вкладке «Сообщения» (13.31).
+
+    Отметка — то, по чему прогон узнаёт разобранный пост. Без неё пост, если он
+    ещё в окне канала, следующий прогон разберёт как новый. Чужая отметка и
+    номер вне BIGINT — 404, как у записи журнала.
+    """
+    mark = await repo.get(SentMessage, mark_id) if 0 < mark_id <= MAX_ID else None
+    if mark is None:
+        raise HTTPException(status_code=404, detail="Отметка не найдена")
+    logger.info(
+        "тенант %s забыл отметку %s (чат %s, сообщение %s)",
+        repo.user_id,
+        mark_id,
+        mark.chat_id,
+        mark.message_id,
+    )
+    await repo.db.delete(mark)
+    await repo.db.commit()
+    return {"status": "forgotten", "id": mark_id}

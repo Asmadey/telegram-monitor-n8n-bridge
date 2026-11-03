@@ -459,6 +459,7 @@ class Worker:
             # id — до опроса: внутри него бывает откат, и после него поле
             # ORM-объекта — это ленивая загрузка (MissingGreenlet)
             job_id = job.id
+            monitor_id = monitor.id
             # Имя другое: у ветки батча `result` — словарь диспетчера, а
             # здесь исход опроса строкой. Одно имя на два типа mypy ловит
             # справедливо: читающему это тоже мешало бы.
@@ -472,6 +473,7 @@ class Worker:
                     {**payload, "outcome": outcome}, ensure_ascii=False
                 )
                 await db.commit()
+            await self._remember_outcome(db, monitor_id, outcome)
             if outcome == "flood_wait":
                 account = (
                     await db.scalars(TenantRepo(db, job.user_id).query(TelegramAccount))
@@ -1001,6 +1003,17 @@ class Worker:
     def _out_of_budget(self, deadline: float) -> bool:
         return asyncio.get_running_loop().time() >= deadline
 
+    async def _remember_outcome(self, db, monitor_id: int, outcome: str) -> None:
+        """Исход опроса — в источник, и по расписанию, и вручную (13.32).
+
+        Источник перечитывается по id: внутри опроса бывает откат, и прежний
+        ORM-объект после него — ленивая загрузка (факт 4 CLAUDE.md).
+        """
+        source = await db.get(Monitor, monitor_id)
+        if source is not None:
+            source.last_outcome = outcome
+            await db.commit()
+
     async def run_schedule(self, db, **senders) -> int:
         now = _utcnow()
         deadline = asyncio.get_running_loop().time() + TICK_BUDGET
@@ -1031,6 +1044,7 @@ class Worker:
             public_id = monitor.public_id
             try:
                 outcome = await self.poll_source(db, monitor, **senders)
+                await self._remember_outcome(db, monitor_id, outcome)
                 # Прерванный или несостоявшийся опрос не считается
                 # выполненным: счётчик — это диагностика, и врать он не
                 # должен даже в мелочах.

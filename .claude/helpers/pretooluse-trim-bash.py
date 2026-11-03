@@ -59,8 +59,11 @@ def main() -> int:
     if MARKER in cmd or not NOISY.search(cmd) or UNSAFE.search(cmd):
         return 0
 
+    # Шаблон mktemp кончается иксами: BSD mktemp (macOS) не подставляет их,
+    # если за ними суффикс, — `run-XXXXXX.log` создавался буквально, и каждая
+    # следующая команда падала на «File exists».
     wrapped = (
-        f"mkdir -p {LOGDIR}; {MARKER}=$(mktemp {LOGDIR}/run-XXXXXX.log); "
+        f"mkdir -p {LOGDIR}; {MARKER}=$(mktemp {LOGDIR}/run-XXXXXX); "
         f'{{ {cmd}\n}} >"${MARKER}" 2>&1; {MARKER}_rc=$?; '
         f'python3 {TRIMMER} "${MARKER}"; (exit ${MARKER}_rc)'
     )

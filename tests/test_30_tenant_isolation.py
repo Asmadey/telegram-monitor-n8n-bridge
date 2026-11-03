@@ -256,15 +256,14 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
     )
     db.add(feed_a)
     # посты и журнал A: те же списки обязаны не отдавать их B
-    db.add(
-        SentMessage(
-            user_id=user_a.id,
-            chat_id=chat_a,
-            message_id=1,
-            text=marker,
-            reactions_json="[]",
-        )
+    mark_a = SentMessage(
+        user_id=user_a.id,
+        chat_id=chat_a,
+        message_id=1,
+        text=marker,
+        reactions_json="[]",
     )
+    db.add(mark_a)
     log_a = LogEntry(user_id=user_a.id, event_type="X", status="INFO", details=marker)
     db.add(log_a)
     # собственные данные B: списки/эндпоинты обязаны работать и отдавать своё
@@ -359,6 +358,8 @@ async def test_user_a_cannot_see_or_touch_user_b_resources(
         "channel_id": 1,
         # запись журнала A: крестик B по её номеру обязан получить 404 (13.28)
         "entry_id": log_a.id,
+        # отметка «прочитано» A: крестик B по её номеру обязан получить 404 (13.31)
+        "mark_id": mark_a.id,
     }
     exercised = set()
     for route in routes:

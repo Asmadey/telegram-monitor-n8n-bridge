@@ -146,6 +146,7 @@ def _source_card(
         "is_active": source.is_active,
         "running": source.running,
         "last_run_at": source.last_run_at,
+        "last_outcome": source.last_outcome,
         "created_at": source.created_at,
         "channels": [
             _channel_card(c, counts.get(c.chat_id or 0, 0))
