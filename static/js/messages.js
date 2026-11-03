@@ -7,7 +7,7 @@
 // синхронного прогона монолита, а прогон с 11.6 асинхронный (202 queued,
 // работу делает воркер) и постов в ответе не приносит.
 
-import { apiGet } from './api.js';
+import { apiFetch, apiGet } from './api.js';
 import { html, raw, formatTelegramText, showToast, openModalAnimated, closeModalAnimated } from './render.js';
 
 const tabMessagesCount = document.getElementById('tabMessagesCount');
@@ -64,7 +64,7 @@ export function renderTable() {
   if (filtered.length === 0) {
     messagesTableBody.innerHTML = html`
       <tr>
-        <td colspan="6" class="u-ta-center u-p-3xl u-c-mute">
+        <td colspan="7" class="u-ta-center u-p-3xl u-c-mute">
           Сообщения по заданным фильтрам не найдены.
         </td>
       </tr>
@@ -107,6 +107,9 @@ export function renderTable() {
           </a>
         `) : '<span class="u-c-mute">-</span>'}
       </td>
+      <td class="u-ta-center">
+        <button class="btn btn-secondary btn-icon-sm" type="button" data-action="forget-mark" data-mark-id="${msg.id}" title="Забыть: если пост ещё в окне канала, следующий прогон разберёт его заново">✕</button>
+      </td>
     </tr>
     `;
   }).join('');
@@ -125,6 +128,30 @@ document.addEventListener('click', (event) => {
 });
 
 window.toggleExpand = toggleExpand;
+
+// Крестик «забыть отметку» (13.31): пост, если он ещё в окне канала,
+// следующий прогон разберёт как новый. Убирается одна строка, таблица не
+// перерисовывается; 404 — отметки уже нет, убрать её и здесь.
+messagesTableBody.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-action="forget-mark"]');
+  if (!button) return;
+  const id = Number(button.dataset.markId);
+  button.disabled = true;
+  try {
+    const res = await apiFetch(`/api/messages/${id}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) throw new Error('HTTP ' + res.status);
+    currentMessages = currentMessages.filter(m => m.id !== id);
+    totalMessages = Math.max(0, totalMessages - 1);
+    button.closest('tr').remove();
+    const left = getFilteredMessages().length;
+    tabMessagesCount.textContent = left;
+    if (!left) renderTable();
+    showToast('Отметка забыта: пост разберётся заново, если он ещё в окне канала');
+  } catch (e) {
+    button.disabled = false;
+    showToast('Не удалось забыть отметку', true);
+  }
+});
 
 export function setFilterChatOptions(monitors) {
   // опции фильтра «Канал» наполняет вкладка каналов после renderMonitors
