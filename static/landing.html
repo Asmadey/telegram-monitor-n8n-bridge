@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teleton — сводка из Telegram для предпринимателей</title>
+<meta name="description" content="Telegram читает за вас. Сервис мониторит каналы и чаты, находит заявки, цены конкурентов и тренды и присылает только то, что нужно.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="/static/css/landing.css">
+</head>
+<body>
+
+<!-- 0. Шапка: логотип — заглушка до генерации через Higgsfield -->
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true"></span>
+      Teleton
+    </a>
+    <nav class="nav" aria-label="Основная навигация">
+      <a href="#how">Как работает</a>
+      <a href="#features">Возможности</a>
+      <a href="#security">Безопасность</a>
+      <a href="#pricing">Цены</a>
+      <a href="#faq">Вопросы</a>
+    </nav>
+    <a class="btn btn-small" href="/signup">Подключить</a>
+  </div>
+</header>
+
+<main>
+
+<!-- 1. Hero -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">Для предпринимателей и соло-основателей</p>
+      <h1>Telegram читает за вас</h1>
+      <p class="lead">Сервис мониторит сообщения за вас. Вы получаете только то, что ищете.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="/signup">Попробовать бесплатно</a>
+        <a class="btn btn-ghost" href="#how">Как это работает</a>
+      </div>
+      <p class="fine">Без карты · отключить можно в любой момент</p>
+      <p class="trust">Сессия Telegram хранится зашифрованной, ключ к ней лежит отдельно от базы. <a href="#security">Как это устроено</a></p>
+    </div>
+
+    <!-- Пример сводки: визуал вместо стоковых картинок -->
+    <figure class="digest" aria-label="Пример сводки">
+      <figcaption class="digest-head">
+        <span>Мониторинг по группе каналов</span>
+        <span class="digest-tag">пример</span>
+      </figcaption>
+      <ol class="digest-list">
+        <li>
+          <span class="chip chip-lead">Заявка</span>
+          <p><strong>Чат «Ремонт и отделка»</strong><br>Ищу подрядчика на ремонт офиса 40 м², до конца месяца.</p>
+        </li>
+        <li>
+          <span class="chip chip-price">Цена</span>
+          <p><strong>Канал «Конкурент X»</strong><br>Пакет «Старт» подорожал с 990 до 1 290 ₽.</p>
+        </li>
+        <li>
+          <span class="chip chip-trend">Тренд</span>
+          <p><strong>4 канала за неделю</strong><br>Все четыре обсуждают один и тот же новый сервис.</p>
+        </li>
+      </ol>
+    </figure>
+  </div>
+</section>
+
+<!-- 2. Факты вместо логотипов клиентов (клиентов пока нет) -->
+<section class="facts" aria-label="Что умеет сервис">
+  <ul class="wrap facts-list">
+    <li>До 10 каналов в источнике</li>
+    <li>Свой промпт на каждый канал</li>
+    <li>Лимит расхода на канал</li>
+    <li>Доставка: бот, вебхук, лента</li>
+  </ul>
+</section>
+
+<!-- 3. Три боли -->
+<section class="section">
+  <div class="wrap">
+    <h2>Знакомо?</h2>
+    <div class="cards cards-3">
+      <article class="card">
+        <h3>Заявки уходят тому, кто ответил первым</h3>
+        <p>Клиент пишет «ищу…» в профильном чате, а вы видите это через день.</p>
+        <p class="answer">Сервис находит запрос и присылает его в бота сразу.</p>
+      </article>
+      <article class="card">
+        <h3>Конкуренты меняют цены, а вы узнаёте последним</h3>
+        <p>Акции и новые тарифы проходят мимо, пока о них не спросил клиент.</p>
+        <p class="answer">Каналы конкурентов разбираются по вашему промпту.</p>
+      </article>
+      <article class="card">
+        <h3>Чтение каналов отнимает время, которое не приносит денег</h3>
+        <p>Час в день складывается в двадцать часов в месяц, которые могли уйти клиентам.</p>
+        <p class="answer">Эти часы возвращаются вам.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Как это работает: три шага -->
+<section class="section section-alt" id="how">
+  <div class="wrap">
+    <h2>Три шага до первой сводки</h2>
+    <ol class="steps">
+      <li>
+        <span class="step-num">1</span>
+        <h3>Подключите аккаунт</h3>
+        <p>Вход по коду из Telegram, как на новом устройстве.</p>
+      </li>
+      <li>
+        <span class="step-num">2</span>
+        <h3>Соберите источник</h3>
+        <p>Выберите каналы и опишите, что искать.</p>
+      </li>
+      <li>
+        <span class="step-num">3</span>
+        <h3>Получите сводку</h3>
+        <p>В бота, в вебхук для автоматизации или в ленту сервиса.</p>
+      </li>
+    </ol>
+    <p class="note">Каждый канал разбирается отдельно, потом всё сводится в одну выжимку.</p>
+  </div>
+</section>
+
+<!-- 5. Возможности: польза → функция → пример -->
+<section class="section" id="features">
+  <div class="wrap">
+    <h2>Что вы получаете</h2>
+    <div class="cards cards-2">
+      <article class="card">
+        <h3>Заявка приходит в бота сразу</h3>
+        <p>Доставка в Telegram-бота: вы увидите запрос в ту же минуту, когда он появился.</p>
+      </article>
+      <article class="card">
+        <h3>Сразу в вашу CRM или таблицу</h3>
+        <p>Вебхук подключается к вашей автоматизации. Данные уходят сами, без копирования вручную.</p>
+      </article>
+      <article class="card">
+        <h3>У каждого канала свои правила</h3>
+        <p>В чате заказов ищем заявки, а в канале конкурента следим за ценами. Свой промпт и свой лимит сообщений на каждый канал.</p>
+      </article>
+      <article class="card">
+        <h3>Работает, пока вы заняты делом</h3>
+        <p>Прогоны идут по расписанию, которое вы задаёте для каждого источника.</p>
+      </article>
+      <article class="card card-wide">
+        <h3>Видит закрытые чаты, где вы состоите</h3>
+        <p>Клубы и закрытые чаты ниши. Именно там чаще всего лежат настоящие заявки, а публичные агрегаторы туда не попадают.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- 6. Сценарии: у каждой карточки — готовый шаблон источника -->
+<section class="section section-alt" id="scenarios">
+  <div class="wrap">
+    <h2>Для чего предприниматели подключают сервис</h2>
+    <div class="cards cards-3">
+      <article class="card">
+        <h3>Лиды</h3>
+        <p>Запросы на ваши услуги в профильных чатах.</p>
+        <p class="template">Шаблон: чаты ниши + «заявки на наши услуги»</p>
+      </article>
+      <article class="card">
+        <h3>Конкуренты</h3>
+        <p>Цены, акции, новые продукты.</p>
+        <p class="template">Шаблон: каналы конкурентов + «изменения цен и запуски»</p>
+      </article>
+      <article class="card">
+        <h3>Контент</h3>
+        <p>О чём сейчас говорят в нише и что стоит взять в свой канал.</p>
+        <p class="template">Шаблон: новостные каналы + «темы недели»</p>
+      </article>
+      <article class="card">
+        <h3>Поставщики и закупки</h3>
+        <p>Предложения, опт, снижение цен.</p>
+        <p class="template">Шаблон: оптовые каналы + «предложения и скидки»</p>
+      </article>
+      <article class="card">
+        <h3>Гранты и господдержка</h3>
+        <p>Объявления из тематических каналов.</p>
+        <p class="template">Шаблон: каналы программ + «новые конкурсы»</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- 7. Безопасность: центральный блок, а не сноска -->
+<section class="section" id="security">
+  <div class="wrap security">
+    <div>
+      <h2>Как мы обращаемся с доступом к вашему аккаунту</h2>
+      <p class="lead-small">Сессия Telegram самое чувствительное, что у нас есть. Поэтому говорим о ней прямо.</p>
+    </div>
+    <ul class="check-list">
+      <li><strong>Сессия зашифрована.</strong> Ключ шифрования хранится отдельно от базы данных.</li>
+      <li><strong>Отозвать доступ можно самому.</strong> Telegram → Настройки → Устройства → завершить сеанс. Доступ пропадает сразу и без нас.</li>
+      <li><strong>Экспорт и удаление в один клик.</strong> Забрать свои данные или удалить аккаунт можно в любой момент.</li>
+      <li><strong>Telegram может ограничить аккаунт</strong> при слишком частых запросах. Сервис ждёт паузу, которую просит Telegram, и не повторяет запрос сразу. Гарантий от ограничений при этом нет.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 8. Доказательства: без выдуманных отзывов -->
+<section class="section section-alt" id="proof">
+  <div class="wrap proof-grid">
+    <article class="card">
+      <h3>Пример сводки по публичным каналам</h3>
+      <p>Подставить реальную сводку за неделю по открытым каналам ниши. Без имён клиентов, пока их нет.</p>
+      <p class="template">[заглушка: скриншот реальной сводки]</p>
+    </article>
+    <article class="card">
+      <h3>Почему это делает один человек</h3>
+      <p>Я сам тонул в каналах и не мог читать их и работать одновременно. Поэтому сделал сервис, который читает за меня, и теперь делаю его для таких же, как я.</p>
+      <p class="template">[заглушка: имя основателя и ссылка на контакт]</p>
+    </article>
+  </div>
+</section>
+
+<!-- 9. Цены: тарифов в коде нет, поэтому бета без оплаты -->
+<section class="section" id="pricing">
+  <div class="wrap">
+    <h2>Цены</h2>
+    <article class="price-card">
+      <p class="price-tag">Бесплатно в бете</p>
+      <p class="price-note">Платите только за модель. Она оплачивается напрямую в OpenRouter по реальному расходу, примерно <span class="placeholder">$N</span> в месяц на источник.</p>
+      <ul class="check-list">
+        <li>Без карты и без подписки</li>
+        <li>Все возможности сервиса</li>
+        <li>Потолок расхода на каждый канал</li>
+        <li>Отключить можно в любой момент</li>
+      </ul>
+      <a class="btn btn-primary" href="/signup">Попробовать бесплатно</a>
+    </article>
+  </div>
+</section>
+
+<!-- 10. Вопросы = возражения -->
+<section class="section" id="faq">
+  <div class="wrap faq">
+    <h2>Вопросы, которые обычно задают перед подключением</h2>
+    <details>
+      <summary>Я не технарь. Справлюсь?</summary>
+      <p>Да. Три шага и готовые шаблоны источников. Если что-то непонятно, в каждом шаблоне уже написано, что именно настроено.</p>
+    </details>
+    <details>
+      <summary>Что такое ключ OpenRouter и зачем он мне?</summary>
+      <p>Это доступ к языковой модели, которая читает сообщения и делает сводку. Ключ создаётся за пару минут, а счёт приходит от OpenRouter напрямую. <span class="placeholder">[заглушка: инструкция со скриншотами]</span></p>
+    </details>
+    <details>
+      <summary>Заблокирует ли Telegram мой аккаунт?</summary>
+      <p>Это возможно, если Telegram увидит слишком частые запросы. Сервис ждёт паузу, которую просит Telegram, и не повторяет запрос сразу. Гарантии всё же нет, и об этом сказано в блоке безопасности.</p>
+    </details>
+    <details>
+      <summary>Видите ли вы мои личные переписки?</summary>
+      <p>Сервис читает только те каналы и чаты, которые вы выбрали в источнике. <span class="placeholder">[проверить по коду перед публикацией]</span></p>
+    </details>
+    <details>
+      <summary>Что будет, если сервис взломают?</summary>
+      <p>Сессии зашифрованы, а ключ лежит отдельно от базы. Чтобы закрыть доступ немедленно, достаточно завершить сеанс в настройках Telegram.</p>
+    </details>
+    <details>
+      <summary>Чем это лучше бота-агрегатора или ChatGPT?</summary>
+      <p>Бот-агрегатор не видит закрытых чатов, где вы состоите. А копировать посты в ChatGPT вручную каждый день не нужно: сводка приходит сама.</p>
+    </details>
+    <details>
+      <summary>Как всё отключить и удалить?</summary>
+      <p>В настройках аккаунта: экспорт данных, удаление аккаунта и завершение сеанса Telegram. Удаление не требует нашей помощи.</p>
+    </details>
+  </div>
+</section>
+
+<!-- 11. Финальный призыв -->
+<section class="final">
+  <div class="wrap final-inner">
+    <h2>Попробуйте на одном источнике</h2>
+    <p class="lead-small">Без карты, отключить можно в любой момент.</p>
+    <a class="btn btn-primary btn-large" href="/signup">Попробовать бесплатно</a>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <span>© Teleton</span>
+    <nav aria-label="Документы">
+      <a href="#">Политика конфиденциальности</a>
+      <a href="#">Условия</a>
+      <a href="/signup">Регистрация</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

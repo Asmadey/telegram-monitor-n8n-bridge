@@ -1,0 +1,353 @@
+/* Лендинг в стиле stripe.com: белый холст, полосы #f8fafd, плоские блоки без
+   теней, фиолетовый акцент только для кнопок и ссылок, заголовки в весе 300.
+
+   Снято с живой страницы (computed styles): заголовки 300, h2 28px, h3 20px,
+   текст 16px, кнопки 4px радиус, primary #533afd, ghost с рамкой #d6d9fc,
+   тени везде none, фон секции #f8fafd, navy #061b31 для заголовков.
+
+   Шрифт Söhne Stripe не используем (проприетарный): замена — Inter (подключён
+   в landing.html с весом 300). Значения записаны литералами: test_141 требует,
+   чтобы каждая используемая CSS-переменная была объявлена в main.css. */
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #50617a;                    /* текст: из computed p */
+  font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: #533afd; text-decoration: none; }
+
+h1, h2, h3 {
+  margin: 0;
+  color: #061b31;                    /* заголовки: navy */
+  font-weight: 300;                  /* лёгкий вес — главный признак стиля */
+}
+h1 { font-size: 40px; line-height: 1.1; letter-spacing: -0.02em; }
+h2 { font-size: 28px; line-height: 1.07; letter-spacing: -0.01em; margin-bottom: 40px; }
+h3 { font-size: 20px; line-height: 1.3; letter-spacing: -0.01em; margin-bottom: 8px; font-weight: 400; }
+p { margin: 0; }
+
+.wrap {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* Секции чередуются: белая → #f8fafd. Вертикальный ритм — 64px на телефоне. */
+.section { padding: 64px 0; }
+.section-alt { background: #f8fafd; }
+
+.eyebrow {
+  margin-bottom: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #50617a;
+}
+
+.lead { font-size: 20px; font-weight: 300; line-height: 1.4; margin: 20px 0 32px; max-width: 540px; color: #50617a; }
+.lead-small { font-size: 16px; margin-top: 12px; max-width: 540px; color: #50617a; }
+.note { margin-top: 32px; font-size: 14px; color: #64748d; }
+.fine { margin-top: 12px; font-size: 13px; color: #64748d; }
+.trust { margin-top: 24px; font-size: 14px; color: #64748d; max-width: 480px; }
+.trust a { color: #533afd; }
+
+/* Кнопки: радиус 4px, primary — сплошной #533afd, ghost — рамка #d6d9fc. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 12px 24px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+.btn:hover { opacity: 0.9; }
+.btn-primary { background: #533afd; color: #ffffff; }
+.btn-ghost { background: transparent; border-color: #d6d9fc; color: #533afd; }
+.btn-small { min-height: 40px; padding: 8px 16px; background: #533afd; color: #ffffff; font-size: 14px; }
+.btn-large { padding: 16px 28px; font-size: 17px; }
+
+.hero-cta { display: flex; flex-wrap: wrap; gap: 12px; }
+
+.btn:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #533afd;
+  outline-offset: 3px;
+}
+
+/* Шапка: белая, плоская, липкая. Высота 64px. */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #ffffff;
+}
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 500;
+  color: #061b31;
+  text-decoration: none;
+}
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: #061b31;               /* заглушка логотипа, до Higgsfield */
+}
+.nav { display: none; gap: 28px; font-size: 16px; }
+.nav a { color: #061b31; text-decoration: none; }
+.nav a:hover { color: #533afd; }
+
+/* Hero: белый холст, заголовок 300. */
+.hero { padding: 48px 0 64px; background: #ffffff; }
+.hero-grid { display: grid; gap: 48px; align-items: center; }
+.hero-copy h1 { max-width: 620px; }
+
+/* Пример сводки: плоский блок на #f8fafd, рамка и 4px радиус. */
+.digest {
+  margin: 0;
+  background: #f8fafd;
+  border: 1px solid #d6d9fc;
+  border-radius: 4px;
+  padding: 24px;
+}
+.digest-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: #061b31;
+  padding-bottom: 14px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #d6d9fc;
+}
+.digest-tag {
+  font-size: 12px;
+  color: #533afd;
+  background: #e2e4ff;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+.digest-list { list-style: none; margin: 0; padding: 0; }
+.digest-list li {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #d6d9fc;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.digest-list li:last-child { border-bottom: none; }
+.digest-list strong { color: #061b31; font-weight: 500; }
+
+/* Метки в кадре: одна лавандовая плашка для всех типов, без цветных статусов. */
+.chip {
+  flex-shrink: 0;
+  align-self: flex-start;
+  font-size: 12px;
+  line-height: 16px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #e2e4ff;
+  color: #533afd;
+}
+
+/* Полоса фактов: плоская, между линиями #d6d9fc. */
+.facts { background: #ffffff; border-top: 1px solid #d6d9fc; border-bottom: 1px solid #d6d9fc; }
+.facts-list {
+  list-style: none;
+  margin: 0 auto;
+  padding-top: 24px;
+  padding-bottom: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  font-size: 16px;
+  color: #061b31;
+}
+.facts-list li::before { content: "✓ "; color: #533afd; }
+
+/* Карточки: без теней и рамок, 4px радиус. На белом — #f8fafd, на #f8fafd — белые. */
+.cards { display: grid; gap: 16px; }
+.card {
+  background: #f8fafd;
+  border: none;
+  border-radius: 4px;
+  padding: 28px;
+}
+.section-alt .card { background: #ffffff; border: 1px solid #d6d9fc; }
+.card p + p { margin-top: 8px; }
+.card-wide { grid-column: 1 / -1; }
+.answer { color: #061b31; font-weight: 400; }
+.template {
+  margin-top: 16px;
+  font-size: 14px;
+  color: #64748d;
+}
+
+/* Заглушки: тёплый оранжевый из design.md не нужен, здесь — акцент бренда. */
+.placeholder { color: #533afd; font-weight: 500; }
+
+/* Шаги: номер в квадрате #e2e4ff. */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 32px;
+}
+.steps li { position: relative; padding-left: 0; }
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  background: #e2e4ff;
+  color: #533afd;
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 14px;
+}
+
+/* Безопасность: список с фиолетовыми маркерами. */
+.security { display: grid; gap: 40px; }
+.check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.check-list li { padding-left: 24px; position: relative; }
+.check-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #533afd;
+}
+.check-list strong { color: #061b31; font-weight: 500; }
+
+.proof-grid { display: grid; gap: 16px; }
+
+/* Цены: один плоский блок #f8fafd, цена крупно в весе 300. */
+.price-card {
+  max-width: 520px;
+  background: #f8fafd;
+  border: 1px solid #d6d9fc;
+  border-radius: 4px;
+  padding: 28px;
+}
+.price-tag {
+  font-size: 40px;
+  font-weight: 300;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: #061b31;
+}
+.price-note { margin: 12px 0 24px; font-size: 16px; color: #50617a; }
+.price-card .check-list { margin-bottom: 28px; }
+/* Кнопка в карточке цен — тёмная, а не фиолетовая: конверсия здесь на фоне ценника. */
+.price-card .btn-primary { background: #061b31; }
+
+/* FAQ: линии 1px, без блоков. */
+.faq h2 { margin-bottom: 24px; }
+.faq details {
+  border-bottom: 1px solid #d6d9fc;
+  padding: 18px 0;
+}
+.faq summary {
+  cursor: pointer;
+  color: #061b31;
+  font-size: 20px;
+  font-weight: 300;
+  line-height: 1.3;
+  list-style: none;
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: " +"; color: #64748d; }
+.faq details[open] summary::after { content: " −"; }
+.faq details p { margin-top: 12px; max-width: 680px; }
+
+/* Финальный призыв: полоса #f8fafd. */
+.final { padding: 80px 0; background: #f8fafd; text-align: center; }
+.final-inner { display: flex; flex-direction: column; align-items: center; }
+.final h2 { margin-bottom: 12px; }
+.final .lead-small { margin-bottom: 28px; }
+
+/* Подвал: #f8fafd, мелкий текст. */
+.site-footer {
+  background: #f8fafd;
+  border-top: 1px solid #d6d9fc;
+  padding: 28px 0;
+  font-size: 13px;
+  color: #64748d;
+}
+.footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+.footer-inner nav { display: flex; flex-wrap: wrap; gap: 20px; }
+.footer-inner a { text-decoration: none; color: #64748d; }
+.footer-inner a:hover { color: #061b31; }
+
+/* Якорные переходы не прячут заголовок под шапкой 64px. */
+section[id] { scroll-margin-top: 80px; }
+
+/* Планшет и десктоп. */
+@media (min-width: 768px) {
+  h1 { font-size: 56px; letter-spacing: -0.02em; }
+  h2 { font-size: 40px; letter-spacing: -0.01em; }
+  .section { padding: 96px 0; }
+  .final { padding: 96px 0; }
+  .hero { padding: 96px 0 96px; }
+  .nav { display: flex; }
+  .hero-grid { grid-template-columns: 1.05fr 1fr; }
+  .cards { grid-template-columns: 1fr 1fr; }
+  .cards-3 { grid-template-columns: repeat(3, 1fr); }
+  .steps { grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .security { grid-template-columns: 1fr 1.1fr; align-items: start; gap: 56px; }
+  .proof-grid { grid-template-columns: 1fr 1fr; }
+  .facts-list { grid-template-columns: repeat(4, 1fr); }
+  .eyebrow { font-size: 18px; }
+}
+
+@media (max-width: 380px) {
+  h1 { font-size: 34px; }
+  .facts-list { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
